@@ -15,10 +15,11 @@ from pathlib import Path
 from typing import Any
 
 
-REGULAR_REASONING_LEVELS = ("Very High", "High")
+REGULAR_REASONING_LEVELS = ("Very High", "High", "Medium")
 REGULAR_THINKING_TIME = {
     "Very High": "heavy",
     "High": "extended",
+    "Medium": "standard",
 }
 DEVSPACE_APP_NAME = "DevSpace"
 PRO_MODEL = "gpt-5.5-pro"
@@ -89,10 +90,12 @@ def _resolve_reasoning(requested: str | None) -> str:
     if requested is None or not str(requested).strip():
         return REGULAR_REASONING_LEVELS[0]
     normalized = str(requested).strip().casefold()
-    if normalized in {"very high", "very-high", "extra high", "extra-high", "매우 높음"}:
+    if normalized in {"very high", "very-high", "extra high", "extra-high", "xhigh", "매우 높음"}:
         return "Very High"
-    if normalized == "high":
+    if normalized in {"high", "높음"}:
         return "High"
+    if normalized in {"medium", "중간"}:
+        return "Medium"
     raise OracleProfileError(
         "REGULAR_REASONING_UNAVAILABLE",
         "requested regular reasoning level is unavailable; no downgrade was made",

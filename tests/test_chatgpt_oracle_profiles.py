@@ -51,13 +51,13 @@ def test_deep_research_is_only_a_mode_flag() -> None:
     assert contract["attachments"] == []
 
 
-@pytest.mark.parametrize("level", ["xhigh", "Medium"])
+@pytest.mark.parametrize("level", ["low", "Pro"])
 def test_regular_reasoning_rejects_unsupported_level_without_downgrade(tmp_path: Path, level: str) -> None:
     profiles = load_profiles()
     with pytest.raises(profiles.OracleProfileError) as exc:
         profiles.build_launch_contract("plan", mission_path=(tmp_path / "mission.md").resolve(), reasoning_level=level)
     assert exc.value.code == "REGULAR_REASONING_UNAVAILABLE"
-    assert exc.value.evidence["supported"] == ["Very High", "High"]
+    assert exc.value.evidence["supported"] == ["Very High", "High", "Medium"]
 
 
 def test_pro_is_oracle_attachment_only_and_manual_launches_nothing(tmp_path: Path) -> None:
@@ -80,12 +80,14 @@ def test_pro_is_oracle_attachment_only_and_manual_launches_nothing(tmp_path: Pat
     assert manual["oracle_launch"] is False
 
 
-def test_high_and_very_high_have_distinct_oracle_ui_effort_contracts(tmp_path: Path) -> None:
+def test_regular_ui_effort_contracts_are_distinct_and_accept_korean_labels(tmp_path: Path) -> None:
     profiles = load_profiles()
     mission = (tmp_path / "mission.md").resolve()
-    high = profiles.build_launch_contract("direct", mission_path=mission, reasoning_level="High")
-    very_high = profiles.build_launch_contract("direct", mission_path=mission, reasoning_level="Very High")
+    medium = profiles.build_launch_contract("direct", mission_path=mission, reasoning_level="중간")
+    high = profiles.build_launch_contract("direct", mission_path=mission, reasoning_level="높음")
+    very_high = profiles.build_launch_contract("direct", mission_path=mission, reasoning_level="xhigh")
 
+    assert medium["thinking_time"] == "standard"
     assert high["thinking_time"] == "extended"
     assert very_high["thinking_time"] == "heavy"
 
