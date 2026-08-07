@@ -37,6 +37,26 @@ def test_regular_and_deep_research_compile_to_oracle_without_attachments(tmp_pat
         assert value["research"] == research
 
 
+def test_regular_high_is_forwarded_as_the_visible_high_tier(tmp_path: Path) -> None:
+    module = load()
+    mission = tmp_path / "mission.md"
+    mission.write_text("work", encoding="utf-8")
+    target = tmp_path / "high.json"
+
+    result = module.compile_manifest(
+        mode="direct",
+        project_root=tmp_path,
+        mission_path=mission,
+        output_path=target,
+        reasoning_level="High",
+    )
+
+    value = json.loads(target.read_text(encoding="utf-8"))
+    assert result["contract"]["reasoning_level"] == "High"
+    assert result["contract"]["thinking_time"] == "extended"
+    assert value["thinking_time"] == "extended"
+
+
 def test_pro_compiles_attachment_only_oracle_and_manual_never_launches(tmp_path: Path) -> None:
     module = load()
     prompt = tmp_path / "prompt.txt"

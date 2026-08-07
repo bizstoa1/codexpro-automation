@@ -16,6 +16,10 @@ from typing import Any
 
 
 REGULAR_REASONING_LEVELS = ("Very High", "High")
+REGULAR_THINKING_TIME = {
+    "Very High": "heavy",
+    "High": "extended",
+}
 DEVSPACE_APP_NAME = "DevSpace"
 PRO_MODEL = "gpt-5.5-pro"
 PRO_COMPOSER_PROMPT = "Read the attached prompt/instructions and all attached files, then complete the task."
@@ -177,11 +181,16 @@ def build_launch_contract(
             "REGULAR_ATTACHMENTS_FORBIDDEN",
             "non-Pro Oracle modes use DevSpace and must not attach files",
         )
+    reasoning = _resolve_reasoning(reasoning_level)
     result.update({
         "route": "oracle-devspace",
         "app_policy": "prompt-mention-only",
         "app_name": DEVSPACE_APP_NAME,
-        "reasoning_level": _resolve_reasoning(reasoning_level),
+        "reasoning_level": reasoning,
+        # Oracle maps extended -> the visible High tier and heavy -> Extra
+        # High.  Keep this in the mode contract so dispatch cannot silently
+        # turn a requested High run into Extra High.
+        "thinking_time": REGULAR_THINKING_TIME[reasoning],
         "mission_path": str(mission),
         "composer_prompt": composer_handoff(mission),
     })

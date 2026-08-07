@@ -45,6 +45,7 @@ def test_deep_research_is_only_a_mode_flag() -> None:
     contract = profiles.build_launch_contract("deep_research", mission_path=Path.cwd().resolve() / "mission.md")
     assert contract["research"] is True
     assert contract["reasoning_level"] == "Very High"
+    assert contract["thinking_time"] == "heavy"
     assert "research_picker" not in contract
     assert "research_app" not in contract
     assert contract["attachments"] == []
@@ -77,6 +78,16 @@ def test_pro_is_oracle_attachment_only_and_manual_launches_nothing(tmp_path: Pat
     assert manual["route"] == "manual-no-launch"
     assert manual["composer_prompt"] is None
     assert manual["oracle_launch"] is False
+
+
+def test_high_and_very_high_have_distinct_oracle_ui_effort_contracts(tmp_path: Path) -> None:
+    profiles = load_profiles()
+    mission = (tmp_path / "mission.md").resolve()
+    high = profiles.build_launch_contract("direct", mission_path=mission, reasoning_level="High")
+    very_high = profiles.build_launch_contract("direct", mission_path=mission, reasoning_level="Very High")
+
+    assert high["thinking_time"] == "extended"
+    assert very_high["thinking_time"] == "heavy"
 
 
 def test_pro_includes_mission_once_and_regular_rejects_attachments(tmp_path: Path) -> None:
