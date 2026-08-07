@@ -13,15 +13,7 @@
     "bin/chatgpt_devspace_compat.py",
     "bin/devspace-compat/1.0.4/workspaces.patch",
     "bin/chatgpt_oracle_compat.py",
-    "bin/oracle-compat/0.16.1/browserTabs.patch",
-    "bin/oracle-compat/0.16.1/browserTabs.pre-readiness.patch",
-    "bin/oracle-compat/0.16.1/browserConfig.patch",
-    "bin/oracle-compat/0.16.1/browserIndex.patch",
-    "bin/oracle-compat/0.16.1/chromeLifecycle.patch",
-    "bin/oracle-compat/0.16.1/modelSelection.patch",
-    "bin/oracle-compat/0.16.1/profileCopy.patch",
-    "bin/oracle-compat/0.16.1/promptComposer.patch",
-    "bin/oracle-compat/0.16.1/recoverConversation.patch",
+    "bin/oracle-compat/0.17.1/thinkingTime.strict.patch",
     "bin/chatgpt_oracle_state.py",
     "bin/chatgpt_oracle_profiles.py",
     "bin/chatgpt_oracle_dispatch.py",
@@ -105,10 +97,10 @@
     },
     "oracle": {
       "package": "@steipete/oracle",
-      "tested_version": "0.16.1",
+      "tested_version": "0.17.1",
       "license": "MIT",
-      "integrity": "sha512-oJEAcWLvLihtSOGqznN4ErGIE7GEpVWpx02a5JUwoqeQql/lgWyc7ASnEegov3MGpGROF13CkgcISPgtw2INqg==",
-      "installation": "resolved by the invoking agent through explicit npx @steipete/oracle@0.16.1; unknown versions and hash mismatches fail closed"
+      "integrity": "sha512-bq4SqMvRtT5Im+R57UPSXTV5p/BFTU24OXgGXqx2ckABWFX9uLDuKeJLoOdfBm7RzllrzjrlSSGgiMsrrvh+9Q==",
+      "installation": "resolved by the invoking agent through explicit npx @steipete/oracle@0.17.1; unknown versions and hash mismatches fail closed"
     },
     "devspace": {
       "package": "@waishnav/devspace",

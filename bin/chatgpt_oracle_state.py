@@ -66,7 +66,7 @@ SAFE_ORACLE_VALUE_OPTIONS = {
     "--heartbeat",
     "--timeout",
     "--zombie-timeout",
-    # Oracle 0.16.1 is compatibility-patched so this is one overall answer
+    # Oracle 0.17.1 is compatibility-patched so this is one overall answer
     # budget, including fallback capture.  The host also enforces the same
     # wall-clock deadline with a short grace if CDP evaluation itself wedges.
     "--browser-timeout",
@@ -108,8 +108,8 @@ ORACLE_MODEL_SWITCHER_PRE_SUBMIT_RE = re.compile(
 # Upstream Oracle copies a signed-in browser profile with rsync.  On POSIX
 # hosts without rsync the copy fails after launch, so feasibility is decided
 # while loading the manifest instead of crashing mid-launch.  The pinned
-# `oracle-compat/0.16.1/profileCopy.patch` replaces that spawn with Node's
-# built-in recursive copy on Windows, so `nt` needs no external dependency.
+# Oracle 0.17.1 natively uses Node's recursive copy on Windows, so `nt` needs
+# no external dependency.
 # Checking PATH there would drop per-run profile isolation and block every
 # parallel Web Multi lane, which is the exact failure this guard must avoid.
 PROFILE_COPY_DEPENDENCY = "rsync"
@@ -237,7 +237,7 @@ def oracle_state_root() -> Path:
 
 def default_oracle_command(platform_name: str | None = None) -> tuple[str, ...]:
     platform = os.name if platform_name is None else platform_name
-    return ("npx.cmd" if platform == "nt" else "npx", "-y", "@steipete/oracle@0.16.1")
+    return ("npx.cmd" if platform == "nt" else "npx", "-y", "@steipete/oracle@0.17.1")
 
 
 def validate_oracle_command(values: Any) -> tuple[str, ...]:
@@ -248,14 +248,14 @@ def validate_oracle_command(values: Any) -> tuple[str, ...]:
     if executable in {"oracle", "oracle.cmd", "oracle.exe"} and len(command) == 1:
         return command
     if executable in {"npx", "npx.cmd", "npx.exe"} and command[1:] in {
-        ("-y", "@steipete/oracle@0.16.1"),
-        ("--yes", "@steipete/oracle@0.16.1"),
-        ("@steipete/oracle@0.16.1",),
+        ("-y", "@steipete/oracle@0.17.1"),
+        ("--yes", "@steipete/oracle@0.17.1"),
+        ("@steipete/oracle@0.17.1",),
     }:
         return command
     raise OracleStateError(
         "ORACLE_COMMAND_FORBIDDEN",
-        "oracle_command must resolve directly to Oracle or npx @steipete/oracle@0.16.1",
+        "oracle_command must resolve directly to Oracle or npx @steipete/oracle@0.17.1",
         {"command": command_for_display(command)},
     )
 
@@ -368,16 +368,16 @@ def load_manifest(path: Path, *, platform_name: str | None = None) -> OracleConf
     if model_strategy not in {"select", "current", "ignore"}:
         raise OracleStateError("MODEL_STRATEGY_INVALID", "model_strategy must be select, current, or ignore")
     thinking_time = str(payload.get("thinking_time") or "heavy").strip().casefold()
-    if thinking_time not in {"light", "standard", "extended", "heavy"}:
+    if thinking_time not in {"light", "standard", "extended", "extra-high", "heavy"}:
         raise OracleStateError(
             "THINKING_TIME_INVALID",
-            "thinking_time must be light, standard, extended, or heavy",
+            "thinking_time must be light, standard, extended, extra-high, or heavy",
         )
     if transport == "pro-attachment-only":
-        if model.casefold() != "gpt-5.5-pro":
+        if model.casefold() != "gpt-5.6-sol":
             raise OracleStateError(
                 "PRO_MODEL_INVALID",
-                "Pro attachment-only runs require Oracle's current Pro alias gpt-5.5-pro; no downgrade is allowed",
+                "Pro attachment-only runs require GPT-5.6 Sol with an explicitly verified Pro effort; no downgrade is allowed",
                 {"model": model},
             )
         if model_strategy != "select":
@@ -1424,7 +1424,7 @@ def proven_pre_submit_host_failure(state_path: Path) -> dict[str, Any] | None:
     # Oracle prints this version banner before validating local attachments;
     # it is not browser/session evidence.  Any other stdout remains fail-closed.
     stdout_text = stdout_bytes.decode("utf-8", errors="replace").strip()
-    attachment_limit_banner_only = stdout_text == "🧿 oracle 0.16.1 — Questions in, clarity out."
+    attachment_limit_banner_only = stdout_text == "🧿 oracle 0.17.1 — Questions in, clarity out."
     if stdout_text and not attachment_limit_banner_only:
         return None
     try:

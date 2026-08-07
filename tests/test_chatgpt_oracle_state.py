@@ -75,7 +75,7 @@ def test_pro_manifest_is_attachment_only_and_hashes_exact_files(tmp_path: Path) 
             prompt.resolve(),
             transport="pro-attachment-only",
             app_name=None,
-            model="gpt-5.5-pro",
+            model="gpt-5.6-sol",
             thinking_time="heavy",
             attachments=[str(prompt.resolve()), str(packet.resolve())],
         )
@@ -98,7 +98,7 @@ def test_pro_manifest_is_attachment_only_and_hashes_exact_files(tmp_path: Path) 
     assert str(tmp_path.resolve()) not in composer
     assert "@DevSpace" not in composer
     layout = state.create_layout(config, run_id="20260725T151414Z-a3aeba967d99")
-    payload = state.state_payload(config, layout, status="prepared", resolved_version="oracle 0.16.1")
+    payload = state.state_payload(config, layout, status="prepared", resolved_version="oracle 0.17.1")
     assert payload["transport"] == "pro-attachment-only"
     assert payload["attachments"][1]["sha256"] == state.sha256_file(packet.resolve())
 
@@ -117,7 +117,7 @@ def test_pro_composer_identity_changes_with_project_or_attachment_bytes(tmp_path
             prompt.resolve(),
             transport="pro-attachment-only",
             app_name=None,
-            model="gpt-5.5-pro",
+            model="gpt-5.6-sol",
             thinking_time="heavy",
             attachments=[str(prompt.resolve()), str(packet.resolve())],
         ))
@@ -152,7 +152,7 @@ def test_pro_manifest_fails_closed_without_exact_contract(tmp_path: Path, extra:
     value = {
         "transport": "pro-attachment-only",
         "app_name": None,
-        "model": "gpt-5.5-pro",
+        "model": "gpt-5.6-sol",
         "thinking_time": "heavy",
         "attachments": [str(prompt.resolve())],
     }

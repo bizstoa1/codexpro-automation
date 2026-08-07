@@ -45,7 +45,7 @@ def test_deep_research_is_only_a_mode_flag() -> None:
     contract = profiles.build_launch_contract("deep_research", mission_path=Path.cwd().resolve() / "mission.md")
     assert contract["research"] is True
     assert contract["reasoning_level"] == "Very High"
-    assert contract["thinking_time"] == "heavy"
+    assert contract["thinking_time"] == "extra-high"
     assert "research_picker" not in contract
     assert "research_app" not in contract
     assert contract["attachments"] == []
@@ -70,7 +70,7 @@ def test_pro_is_oracle_attachment_only_and_manual_launches_nothing(tmp_path: Pat
     assert pro["app_policy"] == "forbidden"
     assert pro["oracle_launch"] is True
     assert pro["devspace_required"] is False
-    assert pro["model"] == "gpt-5.5-pro"
+    assert pro["model"] == "gpt-5.6-sol"
     assert pro["attachment_policy"] == "always"
     assert pro["attachments"] == [str(mission), str(packet)]
     assert pro["composer_prompt"] == "Read the attached prompt/instructions and all attached files, then complete the task."
@@ -89,7 +89,7 @@ def test_regular_ui_effort_contracts_are_distinct_and_accept_korean_labels(tmp_p
 
     assert medium["thinking_time"] == "standard"
     assert high["thinking_time"] == "extended"
-    assert very_high["thinking_time"] == "heavy"
+    assert very_high["thinking_time"] == "extra-high"
 
 
 def test_pro_includes_mission_once_and_regular_rejects_attachments(tmp_path: Path) -> None:

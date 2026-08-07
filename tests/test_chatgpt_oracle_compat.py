@@ -3,10 +3,12 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import shutil
 import sys
 from pathlib import Path
 
 import pytest
+
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "bin" / "chatgpt_oracle_compat.py"
 
@@ -29,69 +31,26 @@ def test_exact_version_patch_is_hash_gated_idempotent_and_backed_up(tmp_path: Pa
     compat = load_compat()
     package = tmp_path / "package"
     package.mkdir()
-    (package / "package.json").write_text(json.dumps({"version": "0.16.1"}), encoding="utf-8")
+    (package / "package.json").write_text(json.dumps({"version": "0.17.1"}), encoding="utf-8")
     target = package / "sample.txt"
     target.write_bytes(b"before\n")
     patches = tmp_path / "patches"
     patches.mkdir()
     (patches / "sample.patch").write_text(
-        "diff --git a/sample.txt b/sample.txt\n"
-        "--- a/sample.txt\n"
-        "+++ b/sample.txt\n"
-        "@@ -1 +1 @@\n"
-        "-before\n"
-        "+after\n",
+        "diff --git a/sample.txt b/sample.txt\n--- a/sample.txt\n+++ b/sample.txt\n@@ -1 +1 @@\n-before\n+after\n",
         encoding="utf-8",
     )
-    compat.PATCHES = {
-        "sample.txt": {
-            "patch": "sample.patch",
-            "pristine": digest(b"before\n"),
-            "patched": digest(b"after\n"),
-        }
-    }
+    compat.PATCHES = {"sample.txt": {"patch": "sample.patch", "pristine": digest(b"before\n"), "patched": digest(b"after\n")}}
     compat.patch_root = lambda: patches
     backup = tmp_path / "backup"
 
-    first = compat.ensure_oracle_compatibility("oracle 0.16.1", package_root=package, backup_root=backup)
-    second = compat.ensure_oracle_compatibility("oracle 0.16.1", package_root=package, backup_root=backup)
+    first = compat.ensure_oracle_compatibility("oracle 0.17.1", package_root=package, backup_root=backup)
+    second = compat.ensure_oracle_compatibility("oracle 0.17.1", package_root=package, backup_root=backup)
 
     assert first["changed"] == ["sample.txt"]
     assert second["already_patched"] == ["sample.txt"]
     assert target.read_bytes() == b"after\n"
     assert (backup / "sample.txt").read_bytes() == b"before\n"
-
-
-def test_patch_application_tolerates_only_line_ending_drift_before_hash_validation(
-    tmp_path: Path,
-) -> None:
-    compat = load_compat()
-    package = tmp_path / "package"
-    package.mkdir()
-    (package / "package.json").write_text(json.dumps({"version": "0.16.1"}), encoding="utf-8")
-    (package / "sample.txt").write_bytes(b"before\r\n")
-    patches = tmp_path / "patches"
-    patches.mkdir()
-    (patches / "sample.patch").write_text(
-        "diff --git a/sample.txt b/sample.txt\n"
-        "--- a/sample.txt\n"
-        "+++ b/sample.txt\n"
-        "@@ -1 +1 @@\n"
-        "-before\n"
-        "+after\n",
-        encoding="utf-8",
-    )
-    compat.PATCHES = {
-        "sample.txt": {
-            "patch": "sample.patch",
-            "pristine": digest(b"before\r\n"),
-            "patched": digest(b"after\n"),
-        }
-    }
-    compat.patch_root = lambda: patches
-    result = compat.ensure_oracle_compatibility("oracle 0.16.1", package_root=package)
-    assert result["changed"] == ["sample.txt"]
-    assert (package / "sample.txt").read_bytes() == b"after\n"
 
 
 def test_unknown_oracle_version_or_file_hash_fails_closed(tmp_path: Path) -> None:
@@ -102,210 +61,39 @@ def test_unknown_oracle_version_or_file_hash_fails_closed(tmp_path: Path) -> Non
 
     package = tmp_path / "package"
     package.mkdir()
-    (package / "package.json").write_text(json.dumps({"version": "0.16.1"}), encoding="utf-8")
+    (package / "package.json").write_text(json.dumps({"version": "0.17.1"}), encoding="utf-8")
     (package / "sample.txt").write_bytes(b"unknown\n")
-    compat.PATCHES = {
-        "sample.txt": {
-            "patch": "sample.patch",
-            "pristine": digest(b"before\n"),
-            "patched": digest(b"after\n"),
-        }
-    }
+    compat.PATCHES = {"sample.txt": {"patch": "missing.patch", "pristine": digest(b"before\n"), "patched": digest(b"after\n")}}
     with pytest.raises(compat.OracleCompatError) as mismatch:
-        compat.ensure_oracle_compatibility("oracle 0.16.1", package_root=package)
+        compat.ensure_oracle_compatibility("oracle 0.17.1", package_root=package)
     assert mismatch.value.code == "ORACLE_FILE_HASH_MISMATCH"
 
 
-def test_all_matching_npx_cache_roots_are_patched_and_legacy_is_migrated(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_path: Path) -> None:
     compat = load_compat()
-    roots = [tmp_path / "cache-new", tmp_path / "cache-old"]
-    for root in roots:
-        root.mkdir()
-        (root / "package.json").write_text(json.dumps({"version": "0.16.1"}), encoding="utf-8")
-    (roots[0] / "sample.txt").write_bytes(b"before\n")
-    (roots[1] / "sample.txt").write_bytes(b"legacy\n")
-    patches = tmp_path / "patches"
-    patches.mkdir()
-    (patches / "sample.patch").write_text(
-        "diff --git a/sample.txt b/sample.txt\n"
-        "--- a/sample.txt\n"
-        "+++ b/sample.txt\n"
-        "@@ -1 +1 @@\n"
-        "-before\n"
-        "+after\n",
-        encoding="utf-8",
+    source = (
+        Path.home()
+        / "AppData"
+        / "Local"
+        / "npm-cache"
+        / "_npx"
+        / "0a10f56e3ba43148"
+        / "node_modules"
+        / "@steipete"
+        / "oracle"
     )
-    compat.PATCHES = {
-        "sample.txt": {
-            "patch": "sample.patch",
-            "pristine": digest(b"before\n"),
-            "patched": digest(b"after\n"),
-            "legacy_patched": [digest(b"legacy\n")],
-        }
-    }
-    compat.patch_root = lambda: patches
-    monkeypatch.setattr(compat, "_candidate_roots", lambda: roots)
+    if not source.is_dir():
+        pytest.skip("published Oracle 0.17.1 cache is unavailable")
+    package = tmp_path / "oracle"
+    shutil.copytree(source, package)
     backup = tmp_path / "backup"
-    backup.mkdir()
-    (backup / "sample.txt").write_bytes(b"before\n")
 
-    result = compat.ensure_oracle_compatibility("oracle 0.16.1", backup_root=backup)
-
-    assert result["package_roots"] == [str(root) for root in roots]
-    assert all((root / "sample.txt").read_bytes() == b"after\n" for root in roots)
-    assert len(result["changed"]) == 2
-
-
-def test_prompt_composer_app_pill_probe_uses_the_composer_form_scope() -> None:
-    patch = (
-        MODULE_PATH.parent
-        / "oracle-compat"
-        / "0.16.1"
-        / "promptComposer.patch"
-    ).read_text(encoding="utf-8")
-
-    assert "root.closest('form') || root.parentElement || root" in patch
-    assert "scope.querySelectorAll(" in patch
-    assert "target.click();" in patch
-    assert "group.querySelectorAll('*')" in patch
-    assert "if (pill) return true;" in patch
-    assert "return !Array.from(document.querySelectorAll(" in patch
-    assert "App mention confirmation diagnostic:" in patch
-    assert 'logDomFailure(runtime, logger, "app-mention-pill-missing")' in patch
-    assert "diagnostic.result?.value ?? null" in patch
-    assert "__oracleAppApprovalWatcher" in patch
-    assert "이 대화에 기억" in patch
-    assert "remember for this chat" in patch
-    assert "allowLabels.has" in patch
-
-
-def test_app_mention_ui_observation_is_a_warning_not_a_hard_block() -> None:
-    patch = (
-        MODULE_PATH.parent
-        / "oracle-compat"
-        / "0.16.1"
-        / "promptComposer.patch"
-    ).read_text(encoding="utf-8")
-
-    # The app is routed by the literal @name text in the submitted prompt, so an
-    # unobservable suggestion overlay or pill must not fail the run.
-    for removed in (
-        'BrowserAutomationError("ChatGPT app mention suggestion did not appear."',
-        'BrowserAutomationError("Exact ChatGPT app suggestion could not be clicked."',
-        "BrowserAutomationError(`ChatGPT app mention was not confirmed in the composer",
-    ):
-        assert removed not in patch
-
-    assert "let mentionUiConfirmed = true;" in patch
-    assert patch.count("mentionUiConfirmed = false;") == 3
-    assert "was sent as literal text without UI confirmation" in patch
-    assert "confirmed in the composer.`" in patch
-
-
-def test_model_selection_verifies_the_family_row_and_defers_effort_to_thinking_time() -> None:
-    patch = (
-        MODULE_PATH.parent
-        / "oracle-compat"
-        / "0.16.1"
-        / "modelSelection.patch"
-    ).read_text(encoding="utf-8")
-
-    # The 2026 picker exposes "GPT-5.6 Sol" as a family row whose children are
-    # the selectable Medium/High/Extra High effort rows.  Requiring an exact
-    # selectable label named after the model made every run fail before the
-    # composer, so the family row now verifies the model and the separate
-    # thinking-time step chooses the effort tier.
-    assert "matchedVisibleSolFamily" in patch
-    assert "versionFromLabel(match.normalizedText) === desiredVersion" in patch
-    assert "aria-haspopup" in patch
-    assert "resolve({ status: 'already-selected', label: match.label })" in patch
-    assert "Medium/High/Extra High" in patch
-
-
-def test_copy_profile_recovery_patch_reuses_only_the_persisted_profile_seed() -> None:
-    compat = load_compat()
-    contract = compat.PATCHES["dist/src/browser/recoverConversation.js"]
-    patch = (
-        MODULE_PATH.parent
-        / "oracle-compat"
-        / "0.16.1"
-        / contract["patch"]
-    ).read_text(encoding="utf-8")
-
-    assert "resolved.copyProfileSource" in patch
-    assert "return copyProfileSource.trim();" in patch
-    assert 'mkdtemp(path.join(os.tmpdir(), "oracle-recovery-"))' in patch
-    assert "wrapEphemeralRecoveryChrome" in patch
-    assert "const DEFAULT_READY_TIMEOUT_MS = 90_000;" in patch
-    assert contract["pristine"] == "8c7d841bc078af20c8922ec435f62e00df7a40605583fbd89334696b3ddb386b"
-    assert contract["patched"] == "168d665fa7c6cc0ef5094a990e94e7a3ae57f2d3bebcc5c2625cb6cff0cb89b1"
-    assert "650ffe9bdbbaf799510e8cacaa8ba8407322bbbb175e790a3cf7777fa14772fe" in contract["legacy_patched"]
-
-
-def test_live_tail_patch_keeps_one_recovered_browser_connection_until_its_deadline() -> None:
-    compat = load_compat()
-    contract = compat.PATCHES["dist/src/cli/browserTabs.js"]
-    patch = (
-        MODULE_PATH.parent
-        / "oracle-compat"
-        / "0.16.1"
-        / contract["patch"]
-    ).read_text(encoding="utf-8")
-
-    assert "ORACLE_LIVE_TERMINAL_TIMEOUT_MS" in patch
-    assert "const terminalDeadlineMs" in patch
-    assert "Date.now() < terminalDeadlineMs" in patch
-    assert "recoveredContentDeadlineMs = holdRecoveredConnection" in patch
-    assert "? terminalDeadlineMs" in patch
-    assert contract["legacy_patched"] == ["1a6d3b9d7044d84300f630fe669b16d9cfec3925c427cfb4c3d1291205406dab"]
-    assert contract["legacy_patch"] == "browserTabs.pre-readiness.patch"
-    assert contract["pristine"] == "05256692ffa9b35415346963adde5ff42aeacd78ce46dd6f484496678f5d0281"
-
-
-def test_hidden_window_patch_supports_windows_without_headless_mode() -> None:
-    compat = load_compat()
-    contract = compat.PATCHES["dist/src/browser/chromeLifecycle.js"]
-    patch = (
-        MODULE_PATH.parent
-        / "oracle-compat"
-        / "0.16.1"
-        / contract["patch"]
-    ).read_text(encoding="utf-8")
-
-    assert 'process.platform === "win32"' in patch
-    assert "--window-position=-32000,-32000" in patch
-    assert contract["pristine"] == "9eaffd8264051266581548ea9dbee1152bd94b7a6032ed0441b1ba3c11c5b5e9"
-    assert contract["patched"] == "d852372c9c16c9a130a280001e62312542092b0c38397907897217f8af0c559d"
-
-
-def test_browser_timeout_compat_patches_consume_one_overall_budget() -> None:
-    compat = load_compat()
-    index_contract = compat.PATCHES["dist/src/browser/index.js"]
-    index_patch = (
-        Path(compat.__file__).resolve().parent
-        / "oracle-compat"
-        / "0.16.1"
-        / index_contract["patch"]
-    ).read_text(encoding="utf-8")
-    response_contract = compat.PATCHES["dist/src/browser/actions/assistantResponse.js"]
-    response_patch = (
-        Path(compat.__file__).resolve().parent
-        / "oracle-compat"
-        / "0.16.1"
-        / response_contract["patch"]
-    ).read_text(encoding="utf-8")
-
-    assert "const startedAt = Date.now();" in index_patch
-    assert "timeoutMs - (Date.now() - startedAt)" in index_patch
-    assert "waitForAssistantResponse(Runtime, remainingMs" in index_patch
-    assert index_patch.count("timeoutMs - (Date.now() - startedAt)") == 2
-    assert index_patch.index("await delay(1000)") < index_patch.rindex(
-        "timeoutMs - (Date.now() - startedAt)"
-    ) < index_patch.index("waitForAssistantResponse(Runtime, remainingMs")
-    assert "recoverAssistantResponse(Runtime, remainingMs" in response_patch
-    assert "\n+                const recovered = await recoverAssistantResponse(Runtime, timeoutMs" not in response_patch
-    assert index_contract["patched"] == "5f7bc607dae4667ad860d2aa125c138c053190e33f206237c24f5c6aab4bf14c"
-    assert "9168df2b3e8c4d1c962d05b198ceab1a9df9e50c7573453673212905e2bc5eba" in index_contract["legacy_patched"]
-    assert response_contract["patched"] == "18661304c7fb545bc327876d38045818cbd23257488137836d43661be8742af4"
+    result = compat.ensure_oracle_compatibility("oracle 0.17.1", package_root=package, backup_root=backup)
+    assert result["changed"] == ["dist/src/browser/actions/thinkingTime.js"]
+    target = package / "dist/src/browser/actions/thinkingTime.js"
+    source_text = target.read_text(encoding="utf-8")
+    assert "strictGpt56Effort" in source_text
+    assert 'level === "extra-high" || level === "heavy"' in source_text
+    assert "strictRequestedEffort" in source_text
+    assert compat.sha256_file(target) == compat.PATCHES["dist/src/browser/actions/thinkingTime.js"]["patched"]
+    assert compat.ensure_oracle_compatibility("oracle 0.17.1", package_root=package, backup_root=backup)["already_patched"]

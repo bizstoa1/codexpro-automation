@@ -17,12 +17,14 @@ from typing import Any
 
 REGULAR_REASONING_LEVELS = ("Very High", "High", "Medium")
 REGULAR_THINKING_TIME = {
-    "Very High": "heavy",
+    "Very High": "extra-high",
     "High": "extended",
     "Medium": "standard",
 }
 DEVSPACE_APP_NAME = "DevSpace"
-PRO_MODEL = "gpt-5.5-pro"
+# Current ChatGPT exposes Pro as the maximum effort for GPT-5.6 Sol, not as a
+# separate model row.  Oracle 0.17.1 verifies that Pro effort independently.
+PRO_MODEL = "gpt-5.6-sol"
 PRO_COMPOSER_PROMPT = "Read the attached prompt/instructions and all attached files, then complete the task."
 
 
@@ -190,9 +192,9 @@ def build_launch_contract(
         "app_policy": "prompt-mention-only",
         "app_name": DEVSPACE_APP_NAME,
         "reasoning_level": reasoning,
-        # Oracle maps extended -> the visible High tier and heavy -> Extra
-        # High.  Keep this in the mode contract so dispatch cannot silently
-        # turn a requested High run into Extra High.
+        # Oracle 0.17.1 keeps `extra-high` distinct from the separate Pro
+        # effort. Keep this in the mode contract so dispatch cannot silently
+        # turn a requested High run into Extra High or Pro.
         "thinking_time": REGULAR_THINKING_TIME[reasoning],
         "mission_path": str(mission),
         "composer_prompt": composer_handoff(mission),

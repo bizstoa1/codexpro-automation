@@ -46,7 +46,7 @@ python skills/chatgpt-oracle-runtime/scripts/run_chatgpt_oracle.py run --manifes
 ```
 
 The preview must include final argv, prompt first line, absolute mission path, SHA-256, and artifact paths without launching Oracle or a browser.
-Use this wrapper preview only. Do not substitute Oracle's own browser `--dry-run`, because Oracle 0.16.1 may still enter browser preflight.
+Use this wrapper preview only. Do not substitute Oracle's own browser `--dry-run`, because Oracle 0.17.1 may still enter browser preflight.
 
 Execute only after an explicit live-run request:
 

@@ -51,7 +51,7 @@ def pro_manifest(tmp_path: Path, **extra) -> Path:
         tmp_path,
         transport="pro-attachment-only",
         app_name=None,
-        model="gpt-5.5-pro",
+        model="gpt-5.6-sol",
         model_strategy="select",
         thinking_time="heavy",
         attachments=[str(prompt.resolve()), str(packet.resolve())],
@@ -75,11 +75,11 @@ def test_version_resolution_allows_a_bounded_slow_valid_oracle_0161() -> None:
     def slow_valid(command, **kwargs):
         captured["command"] = command
         captured["timeout"] = kwargs["timeout"]
-        return subprocess.CompletedProcess(command, 0, stdout="oracle 0.16.1\n", stderr="")
+        return subprocess.CompletedProcess(command, 0, stdout="oracle 0.17.1\n", stderr="")
 
-    assert runner.resolve_oracle_version(["npx.cmd", "-y", "@steipete/oracle@0.16.1"], run_factory=slow_valid) == "oracle 0.16.1"
+    assert runner.resolve_oracle_version(["npx.cmd", "-y", "@steipete/oracle@0.17.1"], run_factory=slow_valid) == "oracle 0.17.1"
     assert captured == {
-        "command": ["npx.cmd", "-y", "@steipete/oracle@0.16.1", "--version"],
+        "command": ["npx.cmd", "-y", "@steipete/oracle@0.17.1", "--version"],
         "timeout": runner.ORACLE_VERSION_RESOLUTION_TIMEOUT_SECONDS,
     }
     assert runner.ORACLE_VERSION_RESOLUTION_TIMEOUT_SECONDS == 90
@@ -89,9 +89,9 @@ def test_default_oracle_command_is_pinned_to_the_hash_validated_version() -> Non
     runner = load_runner()
 
     assert runner.STATE.default_oracle_command(platform_name="nt") == (
-        "npx.cmd", "-y", "@steipete/oracle@0.16.1",
+        "npx.cmd", "-y", "@steipete/oracle@0.17.1",
     )
-    with pytest.raises(runner.STATE.OracleStateError, match="0.16.1"):
+    with pytest.raises(runner.STATE.OracleStateError, match="0.17.1"):
         runner.STATE.validate_oracle_command(["npx.cmd", "-y", "@steipete/oracle@0.17.0"])
 
 
@@ -149,7 +149,7 @@ def popen_for(code: int, output: bytes | None, captured: dict, events: list[str]
 
 def duplicate_prompt_popen(command, **kwargs):
     kwargs["stdout"].write(
-        b'oracle 0.16.1\nA session with the same prompt is already running '
+        b'oracle 0.17.1\nA session with the same prompt is already running '
         b'(oracle-global-agent-instructio-f39cc47ba5). Reattach with '
         b'"oracle session oracle-global-agent-instructio-f39cc47ba5" or rerun with '
         b'--force to start another run.\n'
@@ -350,7 +350,7 @@ def test_pro_dry_run_uses_oracle_attachments_and_no_app_mention(tmp_path: Path) 
     attachments = [argv[index + 1] for index, value in enumerate(argv) if value == "--file"]
     assert result["transport"] == "pro-attachment-only"
     assert result["contains_file_flag"] is True
-    assert argv[argv.index("--model") + 1] == "gpt-5.5-pro"
+    assert argv[argv.index("--model") + 1] == "gpt-5.6-sol"
     assert argv[argv.index("--browser-attachments") + 1] == "always"
     assert attachments == [
         str((tmp_path / "prompt.txt").resolve()),
@@ -1053,7 +1053,7 @@ def test_recovery_no_session_keeps_pre_submit_authority_and_allows_fresh_attempt
     layout.run_dir.mkdir(parents=True)
     runner.STATE.write_json_atomic(
         layout.state_path,
-        runner.STATE.state_payload(config, layout, status="failed", resolved_version="oracle 0.16.1"),
+        runner.STATE.state_payload(config, layout, status="failed", resolved_version="oracle 0.17.1"),
     )
     for path in (layout.stdout_path, layout.stderr_path):
         path.touch()
@@ -1082,7 +1082,7 @@ def test_recovery_no_session_never_releases_submitted_unknown_run(tmp_path: Path
     config = runner.STATE.load_manifest(manifest(tmp_path, run_id="f" * 32))
     layout = runner.STATE.create_layout(config, run_id=config.requested_run_id)
     layout.run_dir.mkdir(parents=True)
-    state = runner.STATE.state_payload(config, layout, status="attention_required", resolved_version="oracle 0.16.1")
+    state = runner.STATE.state_payload(config, layout, status="attention_required", resolved_version="oracle 0.17.1")
     state["session_authority"] = "submitted_unknown"
     runner.STATE.write_json_atomic(layout.state_path, state)
     for path in (layout.stdout_path, layout.stderr_path):
@@ -1313,7 +1313,7 @@ def test_user_confirmation_cannot_replace_missing_recovery_evidence(tmp_path: Pa
     config = runner.STATE.load_manifest(manifest(tmp_path, run_id="f" * 32))
     layout = runner.STATE.create_layout(config, run_id=config.requested_run_id)
     layout.run_dir.mkdir(parents=True)
-    state = runner.STATE.state_payload(config, layout, status="attention_required", resolved_version="0.16.1")
+    state = runner.STATE.state_payload(config, layout, status="attention_required", resolved_version="0.17.1")
     state["session_authority"] = "submitted_unknown"
     runner.STATE.write_json_atomic(layout.state_path, state)
     for path in (layout.stdout_path, layout.stderr_path):
@@ -1414,7 +1414,7 @@ def test_direct_web_multi_child_settlement_requires_recovery_pair(tmp_path: Path
     lane_dir.mkdir(parents=True)
     (lane_dir / "oracle.json").write_text(json.dumps({"schema": "codex.chatgpt.oracle-run/v1", "project_root": str(tmp_path.resolve()), "mission_path": str(config.mission_path), "parallel_parent_id": parent_id}), encoding="utf-8")
     (oracle_output / "result.json").write_text(json.dumps({"schema": "codex.chatgpt.oracle-multi-result/v1", "parent_id": parent_id, "lanes": [{"id": "lane", "run_dir": str(layout.run_dir), "session_locator": layout.slug}]}), encoding="utf-8")
-    state = runner.STATE.state_payload(config, layout, status="attention_required", resolved_version="0.16.1")
+    state = runner.STATE.state_payload(config, layout, status="attention_required", resolved_version="0.17.1")
     state["session_authority"] = "submitted_unknown"
     runner.STATE.write_json_atomic(layout.state_path, state)
 
@@ -1430,7 +1430,7 @@ def test_settlement_transcript_scan_uses_canonical_path_not_state_mapping(tmp_pa
     layout.run_dir.mkdir(parents=True)
     layout.stdout_path.touch()
     layout.stderr_path.touch()
-    state = runner.STATE.state_payload(config, layout, status="attention_required", resolved_version="0.16.1")
+    state = runner.STATE.state_payload(config, layout, status="attention_required", resolved_version="0.17.1")
     runner.STATE.write_json_atomic(layout.state_path, state)
     layout.transcript_path.write_text("https://chatgpt.com/c/hidden-in-canonical\n", encoding="utf-8")
     state["artifacts"].pop("transcript")
@@ -1475,7 +1475,7 @@ def test_direct_web_multi_child_settlement_rejects_identity_mismatch(tmp_path: P
     lane_dir.mkdir(parents=True)
     (lane_dir / "oracle.json").write_text(json.dumps({"schema": "codex.chatgpt.oracle-run/v1", "project_root": str(tmp_path.resolve()), "mission_path": str(config.mission_path), "parallel_parent_id": "b" * 64}), encoding="utf-8")
     (oracle_output / "result.json").write_text(json.dumps({"schema": "codex.chatgpt.oracle-multi-result/v1", "parent_id": "b" * 64, "lanes": [{"id": "lane", "run_dir": str(layout.run_dir), "session_locator": layout.slug}]}), encoding="utf-8")
-    state = runner.STATE.state_payload(config, layout, status="attention_required", resolved_version="0.16.1")
+    state = runner.STATE.state_payload(config, layout, status="attention_required", resolved_version="0.17.1")
     state["session_authority"] = "submitted_unknown"
     if field == "parallel_parent_id":
         state[field] = "invalid"

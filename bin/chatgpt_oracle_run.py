@@ -119,14 +119,14 @@ def build_oracle_argv(config, layout, prompt: str) -> list[str]:
 
 _BROWSER_TIMEOUT_RE = re.compile(r"^(?P<value>[0-9]+(?:\.[0-9]+)?)(?P<unit>ms|s|m|h)?$", re.IGNORECASE)
 MAX_HOST_WATCHDOG_SECONDS = 7 * 24 * 60 * 60
-# Oracle 0.16.1 rejects an individual browser attachment above this upstream
+# Oracle 0.17.1 rejects an individual browser attachment above this upstream
 # input limit before it can create a ChatGPT conversation.  Keep this narrow:
 # context-packet construction may retain its broader configured envelope.
 ORACLE_0161_ATTACHMENT_MAX_BYTES = 1024 * 1024
 
 
 def validate_oracle_attachment_sizes(config) -> None:
-    """Reject Pro attachments Oracle 0.16.1 cannot submit before any launch."""
+    """Reject Pro attachments Oracle 0.17.1 cannot submit before any launch."""
     if config.transport != "pro-attachment-only":
         return
     oversized = [
@@ -137,7 +137,7 @@ def validate_oracle_attachment_sizes(config) -> None:
     if oversized:
         raise OracleRunError(
             "ORACLE_ATTACHMENT_SIZE_PRELAUNCH_FAILED",
-            "Oracle 0.16.1 Pro attachments must not exceed 1 MiB each",
+            "Oracle 0.17.1 Pro attachments must not exceed 1 MiB each",
             {"limit_bytes": ORACLE_0161_ATTACHMENT_MAX_BYTES, "attachments": oversized},
         )
 
@@ -145,7 +145,7 @@ def validate_oracle_attachment_sizes(config) -> None:
 def host_watchdog_timeout_seconds(config, argv: Sequence[str]) -> float | None:
     """Return one host wall-clock ceiling without changing Oracle's process.
 
-    Oracle 0.16.1 can remain inside a blocked CDP evaluation after its own
+    Oracle 0.17.1 can remain inside a blocked CDP evaluation after its own
     browser deadline.  The host deadline is therefore independent and only
     releases the caller; it never terminates the submitted Oracle process.
     """
@@ -210,7 +210,7 @@ ORACLE_VERSION_RESOLUTION_TIMEOUT_SECONDS = 90
 def resolve_oracle_version(command: Sequence[str], *, run_factory=subprocess.run, platform_name: str | None = None) -> str:
     """Resolve Oracle before launch with a bounded cold-cache allowance.
 
-    The returned value is still passed immediately to the exact 0.16.1
+    The returned value is still passed immediately to the exact 0.17.1
     compatibility/hash contract before a browser can be launched.
     """
     completed = run_factory(
@@ -324,7 +324,7 @@ def conversation_url_conflict(state: dict[str, Any], observed: str | None) -> di
 def exact_recovery_binding_unavailable(*paths: Path) -> bool:
     """Return true only for Oracle's exact no-live-tab plus no-saved-URL proof.
 
-    Oracle 0.16.1 writes the no-live-tab line to stdout and the missing-URL
+    Oracle 0.17.1 writes the no-live-tab line to stdout and the missing-URL
     detail to stderr.  Both streams belong to one exact recovery attempt.
     """
     chunks: list[str] = []

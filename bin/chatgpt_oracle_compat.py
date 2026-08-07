@@ -9,9 +9,11 @@ import tempfile
 from pathlib import Path
 from typing import Any, Sequence
 
-SUPPORTED_VERSION = "0.16.1"
+SUPPORTED_VERSION = "0.17.1"
 CREATE_NO_WINDOW = 0x08000000
-PATCHES = {
+# Retained only to document the old package lineage.  New work validates and
+# patches the published 0.17.1 package below; 0.16.1 is not accepted anymore.
+PATCHES_0161 = {
     "dist/src/cli/browserTabs.js": {
         "patch": "browserTabs.patch",
         "pristine": "05256692ffa9b35415346963adde5ff42aeacd78ce46dd6f484496678f5d0281",
@@ -69,6 +71,14 @@ PATCHES = {
         "patch": "modelSelection.patch",
         "pristine": "62351158216c0f9f81652f072413487d2db12cd20a1cf7c21575a3f3a2074573",
         "patched": "7e19a5bfd10668929d24961259c4ddedfdd8c26bc85b3ac4672c29f1f40f74fc",
+    },
+}
+
+PATCHES = {
+    "dist/src/browser/actions/thinkingTime.js": {
+        "patch": "thinkingTime.strict.patch",
+        "pristine": "508f1fbc175b82e6bfd4c978da6199306800615f432e28d7721c155c402795ca",
+        "patched": "536571fccc3f8137bfbf0ea96dfd827f1eabdaf92f93fe7cff92af242ef01d53",
     },
 }
 
@@ -276,7 +286,7 @@ def ensure_oracle_compatibility(
 def main(argv: Sequence[str] | None = None) -> int:
     import argparse
 
-    parser = argparse.ArgumentParser(description="Apply the exact Oracle 0.16.1 ChatGPT compatibility patch.")
+    parser = argparse.ArgumentParser(description="Apply the exact Oracle 0.17.1 ChatGPT compatibility patch.")
     parser.add_argument("--resolved-version", default=f"oracle {SUPPORTED_VERSION}")
     parser.add_argument("--package-root", type=Path)
     args = parser.parse_args(argv)

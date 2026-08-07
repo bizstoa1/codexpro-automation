@@ -87,7 +87,7 @@ ChatGPT web sessions through Oracle and merges their results.
 - An Oracle browser profile signed in to ChatGPT
 - One manually registered DevSpace app in ChatGPT Developer Mode
 
-The validated combination is Oracle `0.16.1` and DevSpace `1.0.4`. The installer
+The validated combination is Oracle `0.17.1` and DevSpace `1.0.4`. The installer
 applies Windows compatibility patches only when exact upstream file hashes
 match.
 

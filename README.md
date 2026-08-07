@@ -87,7 +87,7 @@ Oracle이 여러 독립 ChatGPT 웹 세션을 실행한 뒤 결과를 병합합�
 - 브라우저에서 ChatGPT에 로그인된 Oracle 프로필
 - ChatGPT Developer Mode에 최초 한 번 수동 등록한 DevSpace 앱
 
-현재 검증된 조합은 Oracle `0.16.1`과 DevSpace `1.0.4`입니다. 설치기는
+현재 검증된 조합은 Oracle `0.17.1`과 DevSpace `1.0.4`입니다. 설치기는
 정확한 파일 해시가 일치할 때만 Windows 호환 패치를 적용합니다.
 
 ## 설치
