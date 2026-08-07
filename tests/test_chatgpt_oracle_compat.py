@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -53,6 +54,47 @@ def test_exact_version_patch_is_hash_gated_idempotent_and_backed_up(tmp_path: Pa
     assert (backup / "sample.txt").read_bytes() == b"before\n"
 
 
+def test_hash_specific_legacy_patch_migrates_without_backup(tmp_path: Path) -> None:
+    compat = load_compat()
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "package.json").write_text(json.dumps({"version": "0.17.1"}), encoding="utf-8")
+    target = package / "sample.txt"
+    target.write_bytes(b"middle\n")
+    patches = tmp_path / "patches"
+    patches.mkdir()
+    (patches / "sample.patch").write_text(
+        "diff --git a/sample.txt b/sample.txt\n--- a/sample.txt\n+++ b/sample.txt\n@@ -1 +1 @@\n-before\n+after\n",
+        encoding="utf-8",
+    )
+    (patches / "legacy.patch").write_text(
+        "diff --git a/sample.txt b/sample.txt\n--- a/sample.txt\n+++ b/sample.txt\n@@ -1 +1 @@\n-before\n+middle\n",
+        encoding="utf-8",
+    )
+    legacy_hash = digest(b"middle\n")
+    compat.PATCHES = {
+        "sample.txt": {
+            "patch": "sample.patch",
+            "pristine": digest(b"before\n"),
+            "patched": digest(b"after\n"),
+            "legacy_patched": [legacy_hash],
+            "legacy_patches": {legacy_hash: "legacy.patch"},
+        }
+    }
+    compat.patch_root = lambda: patches
+    backup = tmp_path / "backup"
+
+    result = compat.ensure_oracle_compatibility(
+        "oracle 0.17.1",
+        package_root=package,
+        backup_root=backup,
+    )
+
+    assert result["changed"] == ["sample.txt"]
+    assert target.read_bytes() == b"after\n"
+    assert (backup / "sample.txt").read_bytes() == b"before\n"
+
+
 def test_unknown_oracle_version_or_file_hash_fails_closed(tmp_path: Path) -> None:
     compat = load_compat()
     with pytest.raises(compat.OracleCompatError) as version:
@@ -96,7 +138,17 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
     assert 'level === "extra-high" || level === "heavy"' in source_text
     assert "strictRequestedEffort" in source_text
     assert "composer-model-picker-slider-simple-view" in source_text
-    assert "Power ${current} of 5" in source_text
+    assert "label: 'Power ' + current + ' of 5'" in source_text
+    assert "`Power ${current} of 5`" not in source_text
     assert "targetPower: POWER_TARGET" in source_text
+    node = shutil.which("node")
+    assert node is not None, "Node.js is required to validate the patched Oracle source"
+    syntax = subprocess.run(
+        [node, "--check", str(target)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert syntax.returncode == 0, syntax.stderr
     assert compat.sha256_file(target) == compat.PATCHES["dist/src/browser/actions/thinkingTime.js"]["patched"]
     assert compat.ensure_oracle_compatibility("oracle 0.17.1", package_root=package, backup_root=backup)["already_patched"]

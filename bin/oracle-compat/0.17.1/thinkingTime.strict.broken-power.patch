@@ -1,4 +1,4 @@
-﻿diff --git a/dist/src/browser/actions/thinkingTime.js b/dist/src/browser/actions/thinkingTime.js
+diff --git a/dist/src/browser/actions/thinkingTime.js b/dist/src/browser/actions/thinkingTime.js
 index 491445b..4f2946d 100644
 --- a/dist/src/browser/actions/thinkingTime.js
 +++ b/dist/src/browser/actions/thinkingTime.js
@@ -84,7 +84,7 @@ index 491445b..4f2946d 100644
 +      let current = readPowerValue(view);
 +      if (current === POWER_TARGET) {
 +        closeOpenMenus();
-+        return { status: 'already-selected', label: 'Power ' + current + ' of 5' };
++        return { status: 'already-selected', label: `Power ${current} of 5` };
 +      }
 +      if (current === null || !control) return failure('selection-unverified');
 +      try { control.focus?.(); } catch {}
@@ -98,7 +98,7 @@ index 491445b..4f2946d 100644
 +      current = readPowerValue(view);
 +      if (current === POWER_TARGET) {
 +        closeOpenMenus();
-+        return { status: 'switched', label: 'Power ' + current + ' of 5' };
++        return { status: 'switched', label: `Power ${current} of 5` };
 +      }
 +      return failure('selection-unverified', { power: current, targetPower: POWER_TARGET });
 +    };
