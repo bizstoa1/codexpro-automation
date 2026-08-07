@@ -78,7 +78,9 @@ PATCHES = {
     "dist/src/browser/actions/thinkingTime.js": {
         "patch": "thinkingTime.strict.patch",
         "pristine": "508f1fbc175b82e6bfd4c978da6199306800615f432e28d7721c155c402795ca",
-        "patched": "536571fccc3f8137bfbf0ea96dfd827f1eabdaf92f93fe7cff92af242ef01d53",
+        "patched": "fe6db3c1d48ccf7eff212dab7e69a2b3c7439f44b5cc823d474aa4fbd0925151",
+        "legacy_patched": ["536571fccc3f8137bfbf0ea96dfd827f1eabdaf92f93fe7cff92af242ef01d53"],
+        "legacy_patch": "thinkingTime.strict.pre-power.patch",
     },
 }
 

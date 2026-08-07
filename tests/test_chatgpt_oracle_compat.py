@@ -95,5 +95,8 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
     assert "strictGpt56Effort" in source_text
     assert 'level === "extra-high" || level === "heavy"' in source_text
     assert "strictRequestedEffort" in source_text
+    assert "composer-model-picker-slider-simple-view" in source_text
+    assert "Power ${current} of 5" in source_text
+    assert "targetPower: POWER_TARGET" in source_text
     assert compat.sha256_file(target) == compat.PATCHES["dist/src/browser/actions/thinkingTime.js"]["patched"]
     assert compat.ensure_oracle_compatibility("oracle 0.17.1", package_root=package, backup_root=backup)["already_patched"]

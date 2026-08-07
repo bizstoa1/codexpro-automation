@@ -42,6 +42,11 @@ Oracle explicitly selects `GPT-5.6 Sol` and `extra-high`, verifies the visible
 compatibility layer is hash-gated and fails closed on an unknown version or
 third-party file. Never invent xhigh or silently downgrade.
 
+On the current Power-slider UI, Oracle verifies `Power 4 of 5` for regular
+`extra-high`; attachment-only Pro uses the same verified `GPT-5.6 Sol` model
+with `Power 5 of 5` (the visible `Pro` choice). `heavy` is only Oracle's
+internal compatibility token for that latter choice, never a claimed UI label.
+
 Every new run copies the manually signed-in Oracle profile into a throwaway
 per-run profile and asks Oracle to hide its owned window. This isolates
 different projects: one completed run cannot close another run's live Chrome.
