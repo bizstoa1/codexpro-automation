@@ -15,6 +15,7 @@
     "bin/chatgpt_oracle_compat.py",
     "bin/oracle-compat/0.17.1/thinkingTime.strict.patch",
     "bin/oracle-compat/0.17.1/thinkingTime.strict.pre-power.patch",
+    "bin/oracle-compat/0.17.1/thinkingTime.strict.broken-power.patch",
     "bin/chatgpt_oracle_state.py",
     "bin/chatgpt_oracle_profiles.py",
     "bin/chatgpt_oracle_dispatch.py",
