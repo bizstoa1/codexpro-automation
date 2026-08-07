@@ -110,6 +110,31 @@ def test_pre_submit_signature_outranks_post_submit_interpretation(tmp_path: Path
     assert run["signature"] == "app-mention-suggestion-absent"
 
 
+def test_settled_model_switcher_no_cookie_failure_remains_retry_safe(tmp_path: Path) -> None:
+    module = load()
+    state_root = tmp_path / "oracle-state"
+    run_dir = write_run(
+        state_root,
+        "m" * 8,
+        status="attention_required",
+        session_authority="pre_submit",
+    )
+    state_path = run_dir / "state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["pre_submit_failure"] = {
+        "code": "ORACLE_MODEL_SWITCHER_PRE_SUBMIT_FAILED",
+        "output_absent": True,
+        "conversation_url_absent": True,
+    }
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    report = module.diagnose(state_root)
+    run = report["unresolved_runs"][0]
+
+    assert run["bucket"] == "pre-submit-ui-contract"
+    assert run["signature"] == "model-option-label-missing"
+
+
 def test_durable_terminal_run_is_complete_and_not_executed_is_separated(tmp_path: Path) -> None:
     module = load()
     state_root = tmp_path / "oracle-state"

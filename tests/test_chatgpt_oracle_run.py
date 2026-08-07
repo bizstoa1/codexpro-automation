@@ -168,6 +168,16 @@ def profile_copy_ebusy_popen(command, **kwargs):
     return Process(1, [])
 
 
+def model_switcher_no_cookie_popen(command, **kwargs):
+    kwargs["stdout"].write(
+        b'ERROR: Unable to find model option matching "Pro" in the model switcher. '
+        b'Available: Advanced, ModelGPT-5.6 Sol, EffortHigh. No cookies were applied; '
+        b'log in to ChatGPT in Chrome or provide inline cookies.\n'
+    )
+    kwargs["stdout"].flush()
+    return Process(1, [])
+
+
 def test_dry_run_never_executes_and_has_no_file_flag(tmp_path: Path) -> None:
     runner = load_runner()
     calls = []
@@ -873,6 +883,47 @@ def test_profile_copy_ebusy_is_proven_pre_submit_and_releases_project(tmp_path: 
         runner.STATE.load_manifest(pro_manifest(tmp_path)).run_root,
         tmp_path,
     ) == []
+
+
+def test_model_switcher_no_cookie_failure_is_proven_pre_submit_and_releases_project(tmp_path: Path) -> None:
+    runner = load_runner()
+    result = execute_run(
+        runner,
+        pro_manifest(tmp_path, run_id="f" * 32),
+        run_factory=version_runner,
+        popen_factory=model_switcher_no_cookie_popen,
+    )
+    run_dir = Path(result["run_dir"])
+    state = runner.STATE.load_state(run_dir / "state.json")
+
+    assert result["status"] == "pre_submit_failed"
+    assert result["safe_for_fresh_run"] is True
+    assert state["session_authority"] == "pre_submit"
+    assert state["transport_status"] == "failed_pre_submit"
+    assert state["task_outcome"] == "pending"
+    assert state["pre_submit_failure"]["code"] == "ORACLE_MODEL_SWITCHER_PRE_SUBMIT_FAILED"
+    assert runner.STATE.unresolved_project_sessions(
+        runner.STATE.load_manifest(pro_manifest(tmp_path)).run_root,
+        tmp_path,
+    ) == []
+
+
+def test_model_switcher_failure_with_a_conversation_url_does_not_release_lock(tmp_path: Path) -> None:
+    runner = load_runner()
+    initial = execute_run(
+        runner,
+        pro_manifest(tmp_path, run_id="g" * 32),
+        run_factory=version_runner,
+        popen_factory=model_switcher_no_cookie_popen,
+    )
+    state_path = Path(initial["run_dir"]) / "state.json"
+    legacy = runner.STATE.load_state(state_path)
+    legacy["session_authority"] = "submitted_unknown"
+    legacy["oracle"]["conversation_url"] = "https://chatgpt.com/c/exact-submitted-session"
+    legacy.pop("pre_submit_failure", None)
+    runner.STATE.write_json_atomic(state_path, legacy)
+    assert runner.STATE.settle_proven_pre_submit_failure(state_path) is None
+    assert runner.STATE.load_state(state_path)["session_authority"] == "submitted_unknown"
 
 
 def test_recovery_repairs_legacy_profile_copy_ebusy_without_oracle_call(tmp_path: Path) -> None:

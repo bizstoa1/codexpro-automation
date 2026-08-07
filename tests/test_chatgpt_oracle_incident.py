@@ -93,6 +93,26 @@ def test_version_resolution_prelaunch_incident_is_safe_to_retry(tmp_path: Path) 
     assert packet["safe_for_fresh_run"] is True
 
 
+def test_model_switcher_pre_submit_incident_is_safe_to_retry(tmp_path: Path) -> None:
+    module = load()
+    run_dir = write_run(tmp_path, "m" * 8, status="attention_required")
+    state_path = run_dir / "state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["session_authority"] = "pre_submit"
+    state["pre_submit_failure"] = {
+        "code": "ORACLE_MODEL_SWITCHER_PRE_SUBMIT_FAILED",
+        "output_absent": True,
+        "conversation_url_absent": True,
+    }
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    packet = module.build_packet(run_dir)
+
+    assert packet["bucket"] == "pre-submit-ui-contract"
+    assert packet["signature"] == "model-option-label-missing"
+    assert packet["safe_for_fresh_run"] is True
+
+
 def test_version_compatibility_drift_incident_is_safe_to_retry(tmp_path: Path) -> None:
     module = load()
     run_dir = write_run(tmp_path, "c" * 8, status="failed")

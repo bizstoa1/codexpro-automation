@@ -100,6 +100,11 @@ ORACLE_PROFILE_COPY_EBUSY_RE = re.compile(
     r"(?im)^(?:ERROR:\s*|User error \(browser-automation\):\s*)?"
     r"EBUSY: resource busy or locked, copyfile ['\"](?P<source>[^'\"]+)['\"] -> ['\"](?P<destination>[^'\"]+)['\"]\s*$"
 )
+ORACLE_MODEL_SWITCHER_PRE_SUBMIT_RE = re.compile(
+    r"Unable to find model option matching .+? in the model switcher\."
+    r".*?No cookies were applied;",
+    re.IGNORECASE | re.DOTALL,
+)
 # Upstream Oracle copies a signed-in browser profile with rsync.  On POSIX
 # hosts without rsync the copy fails after launch, so feasibility is decided
 # while loading the manifest instead of crashing mid-launch.  The pinned
@@ -1519,10 +1524,53 @@ def proven_pre_submit_profile_copy_ebusy(state_path: Path) -> dict[str, Any] | N
     }
 
 
+def proven_pre_submit_model_switcher_failure(state_path: Path) -> dict[str, Any] | None:
+    """Prove Oracle failed selecting a model before it could send a prompt.
+
+    This intentionally accepts only Oracle's exact model-switcher/no-cookie
+    diagnostic, with both output and conversation evidence absent.  A generic
+    browser error, a recorded conversation URL, or any durable output remains
+    submitted-unknown and therefore keeps the project lock fail-closed.
+    """
+    state = load_state(state_path)
+    if str(state.get("session_authority") or "") not in {"pre_submit", "submitted_unknown"}:
+        return None
+    if state.get("terminal_harvested") is True or _state_has_conversation_url(state):
+        return None
+    artifacts = state.get("artifacts") if isinstance(state.get("artifacts"), dict) else {}
+    output = Path(str(artifacts.get("output") or ""))
+    stdout_record = _artifact_bytes(state, "stdout")
+    stderr_record = _artifact_bytes(state, "stderr")
+    if output_is_nonempty(output) or stdout_record is None or stderr_record is None:
+        return None
+    _, stdout_bytes = stdout_record
+    _, stderr_bytes = stderr_record
+    combined = (stdout_bytes + b"\n" + stderr_bytes).decode("utf-8", errors="replace")
+    if CHATGPT_CONVERSATION_URL_RE.search(combined):
+        return None
+    if ORACLE_MODEL_SWITCHER_PRE_SUBMIT_RE.search(combined) is None:
+        return None
+    oracle = state.get("oracle") if isinstance(state.get("oracle"), dict) else {}
+    locator = str(oracle.get("session_locator") or oracle.get("slug") or "").strip()
+    if not locator:
+        return None
+    return {
+        "schema": "codex.chatgpt.oracle-pre-submit-ui-failure/v1",
+        "code": "ORACLE_MODEL_SWITCHER_PRE_SUBMIT_FAILED",
+        "oracle_locator": locator,
+        "stdout_sha256": hashlib.sha256(stdout_bytes).hexdigest(),
+        "stderr_sha256": hashlib.sha256(stderr_bytes).hexdigest(),
+        "output_absent": True,
+        "conversation_url_absent": True,
+        "failure_reason": "oracle-model-switcher-no-cookies",
+    }
+
+
 def proven_pre_submit_failure(state_path: Path) -> dict[str, Any] | None:
     return (
         proven_pre_submit_rejection(state_path)
         or proven_pre_submit_profile_copy_ebusy(state_path)
+        or proven_pre_submit_model_switcher_failure(state_path)
         or proven_pre_submit_host_failure(state_path)
         or proven_user_confirmed_no_submission(state_path)
     )
@@ -1561,6 +1609,8 @@ def settle_proven_pre_submit_failure(state_path: Path) -> dict[str, Any] | None:
     if evidence is None:
         evidence = proven_pre_submit_profile_copy_ebusy(state_path)
     if evidence is None:
+        evidence = proven_pre_submit_model_switcher_failure(state_path)
+    if evidence is None:
         return None
     payload = load_state(state_path)
     payload.update({
@@ -1574,6 +1624,8 @@ def settle_proven_pre_submit_failure(state_path: Path) -> dict[str, Any] | None:
         "task_outcome_reason": (
             "oracle-profile-copy-ebusy-pre-submit"
             if evidence["code"] == "ORACLE_PROFILE_COPY_EBUSY_PRELAUNCH_FAILED"
+            else "oracle-model-switcher-pre-submit"
+            if evidence["code"] == "ORACLE_MODEL_SWITCHER_PRE_SUBMIT_FAILED"
             else "prelaunch-host-failure"
         ),
         "pre_submit_failure": evidence,
