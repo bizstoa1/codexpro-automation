@@ -184,5 +184,52 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
     assert behavior.returncode == 0, behavior.stderr
     assert json.loads(behavior.stdout) == {"copied": False, "explicit": True}
 
+    profile_copy = package / "dist/src/browser/profileCopy.js"
+    profile_copy_text = profile_copy.read_text(encoding="utf-8")
+    assert 'process.platform === "win32"' in profile_copy_text
+    assert "recursive: true" in profile_copy_text
+    assert compat.sha256_file(profile_copy) == compat.PATCHES["dist/src/browser/profileCopy.js"]["patched"]
+    profile_syntax = subprocess.run(
+        [node, "--check", str(profile_copy)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert profile_syntax.returncode == 0, profile_syntax.stderr
+
+    source_profile = tmp_path / "source-profile"
+    (source_profile / "Default/Network").mkdir(parents=True)
+    (source_profile / "Default/Cache").mkdir(parents=True)
+    (source_profile / "Default/Service Worker/CacheStorage").mkdir(parents=True)
+    (source_profile / "Local State").write_text(
+        json.dumps({"profile": {"last_used": "Default"}}),
+        encoding="utf-8",
+    )
+    (source_profile / "Default/Network/Cookies").write_text("signed-session", encoding="utf-8")
+    (source_profile / "Default/Cache/ignored").write_text("cache", encoding="utf-8")
+    (source_profile / "Default/Service Worker/CacheStorage/ignored").write_text("cache", encoding="utf-8")
+    copied_profile = tmp_path / "copied-profile"
+    copy_result = subprocess.run(
+        [
+            node,
+            "--input-type=module",
+            "-e",
+            (
+                f"import {{ copyChromeProfile }} from {json.dumps(profile_copy.as_uri())}; "
+                f"const selected = await copyChromeProfile({json.dumps(str(source_profile))}, "
+                f"{json.dumps(str(copied_profile))}); console.log(selected);"
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert copy_result.returncode == 0, copy_result.stderr
+    assert copy_result.stdout.strip() == "Default"
+    assert (copied_profile / "Local State").is_file()
+    assert (copied_profile / "Default/Network/Cookies").read_text(encoding="utf-8") == "signed-session"
+    assert not (copied_profile / "Default/Cache").exists()
+    assert not (copied_profile / "Default/Service Worker/CacheStorage").exists()
+
     second = compat.ensure_oracle_compatibility("oracle 0.17.1", package_root=package, backup_root=backup)
     assert set(second["already_patched"]) == set(compat.PATCHES)

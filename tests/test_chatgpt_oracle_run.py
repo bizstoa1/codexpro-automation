@@ -173,6 +173,19 @@ def copy_profile_manual_login_conflict_popen(command, **kwargs):
     return Process(1, [])
 
 
+def profile_copy_rsync_missing_popen(command, **kwargs):
+    kwargs["stdout"].write(
+        b"oracle 0.17.1\n"
+        b"Session: oracle-test-profile-rsync\n"
+        b"Launching browser mode (target=GPT-5.6 Sol; requested=gpt-5.6-sol) with 2 files.\n"
+        b"ERROR: --copy-profile requires rsync on PATH (spawn failed): spawn rsync ENOENT\n"
+        b"User error (browser-automation): --copy-profile requires rsync on PATH "
+        b"(spawn failed): spawn rsync ENOENT\n"
+    )
+    kwargs["stdout"].flush()
+    return Process(1, [])
+
+
 def profile_copy_ebusy_popen(command, **kwargs):
     source = Path(command[command.index("--copy-profile") + 1]) / "Default" / "Network" / "Cookies"
     destination = Path(kwargs["env"]["TEMP"]) / "oracle-browser-test" / "Default" / "Network" / "Cookies"
@@ -893,6 +906,32 @@ def test_copy_profile_manual_login_conflict_is_proven_pre_submit_and_releases_pr
     assert state["task_outcome"] == "not_executed"
     assert state["task_outcome_reason"] == "oracle-launch-flags-mutually-exclusive-pre-submit"
     assert state["pre_submit_failure"]["code"] == "ORACLE_LAUNCH_FLAGS_MUTUALLY_EXCLUSIVE_PRELAUNCH_FAILED"
+    assert runner.STATE.unresolved_project_sessions(
+        runner.STATE.load_manifest(pro_manifest(tmp_path)).run_root,
+        tmp_path,
+    ) == []
+
+
+def test_profile_copy_rsync_missing_is_proven_pre_submit_and_releases_project(tmp_path: Path) -> None:
+    runner = load_runner()
+    seed = tmp_path.parent / f"{tmp_path.name}-profile"
+    seed.mkdir(parents=True)
+    result = execute_run(
+        runner,
+        pro_manifest(tmp_path, run_id="e" * 32, copy_profile=str(seed)),
+        run_factory=version_0171_runner,
+        popen_factory=profile_copy_rsync_missing_popen,
+    )
+    run_dir = Path(result["run_dir"])
+    state = runner.STATE.load_state(run_dir / "state.json")
+
+    assert result["status"] == "pre_submit_failed"
+    assert result["safe_for_fresh_run"] is True
+    assert state["session_authority"] == "pre_submit"
+    assert state["transport_status"] == "failed_pre_submit"
+    assert state["task_outcome"] == "not_executed"
+    assert state["task_outcome_reason"] == "oracle-profile-copy-rsync-pre-submit"
+    assert state["pre_submit_failure"]["code"] == "ORACLE_PROFILE_COPY_RSYNC_PRELAUNCH_FAILED"
     assert runner.STATE.unresolved_project_sessions(
         runner.STATE.load_manifest(pro_manifest(tmp_path)).run_root,
         tmp_path,
