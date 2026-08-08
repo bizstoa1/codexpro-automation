@@ -141,6 +141,8 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
     assert "composer-model-picker-slider-simple-view" in source_text
     assert "label: 'Power ' + current + ' of 5'" in source_text
     assert "`Power ${current} of 5`" not in source_text
+    assert r"([1-5])\s*(?:of|\/)\s*5" in source_text
+    assert r"([1-5])\\s*" not in source_text
     assert "targetPower: POWER_TARGET" in source_text
     node = shutil.which("node")
     assert node is not None, "Node.js is required to validate the patched Oracle source"

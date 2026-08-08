@@ -1,4 +1,4 @@
-﻿diff --git a/dist/src/browser/actions/thinkingTime.js b/dist/src/browser/actions/thinkingTime.js
+diff --git a/dist/src/browser/actions/thinkingTime.js b/dist/src/browser/actions/thinkingTime.js
 index 491445b..4f2946d 100644
 --- a/dist/src/browser/actions/thinkingTime.js
 +++ b/dist/src/browser/actions/thinkingTime.js
@@ -64,7 +64,7 @@ index 491445b..4f2946d 100644
 +      const ariaValue = Number(control?.getAttribute?.('aria-valuenow') ?? '');
 +      if (Number.isInteger(ariaValue) && ariaValue >= 1 && ariaValue <= 5) return ariaValue;
 +      const text = String(view?.textContent ?? '');
-+      const match = text.match(/(?:^|[^0-9])([1-5])\s*(?:of|\/)\s*5(?:[^0-9]|$)/i);
++      const match = text.match(/(?:^|[^0-9])([1-5])\\s*(?:of|\\/)\\s*5(?:[^0-9]|$)/i);
 +      return match ? Number(match[1]) : null;
 +    };
 +    const selectPowerSlider = async () => {

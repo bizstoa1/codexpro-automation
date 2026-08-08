@@ -66,6 +66,7 @@ SIGNATURE_RULES: tuple[tuple[str, str, str], ...] = (
     ("app mention suggestion did not appear", PRE_SUBMIT_UI, "app-mention-suggestion-absent"),
     ("app mention was not confirmed", PRE_SUBMIT_UI, "app-mention-not-confirmed"),
     ("Unable to find model option", PRE_SUBMIT_UI, "model-option-label-missing"),
+    ("Thinking time: selection unverified", PRE_SUBMIT_UI, "thinking-time-selection-unverified"),
     ("Chrome window closed", BROWSER_LIFETIME, "browser-window-closed-early"),
     ("disconnected before completion", BROWSER_LIFETIME, "browser-disconnected-early"),
     ("ECONNREFUSED", RECOVERY_BINDING, "recovery-cdp-connection-refused"),
@@ -140,6 +141,8 @@ def classify_run(
             return {"bucket": PRE_SUBMIT_HOST, "signature": "oracle-attachment-size-prelaunch-limit"}
         if code == "ORACLE_MODEL_SWITCHER_PRE_SUBMIT_FAILED":
             return {"bucket": PRE_SUBMIT_UI, "signature": "model-option-label-missing"}
+        if code == "ORACLE_THINKING_TIME_PRE_SUBMIT_FAILED":
+            return {"bucket": PRE_SUBMIT_UI, "signature": "thinking-time-selection-unverified"}
         if code != "ORACLE_VERSION_RESOLUTION_PRELAUNCH_FAILED":
             return {"bucket": UNCLASSIFIED, "signature": "unrecognized-pre-submit-host-failure"}
         return {
