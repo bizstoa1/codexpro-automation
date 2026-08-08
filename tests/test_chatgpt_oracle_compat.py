@@ -141,8 +141,8 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
     assert "composer-model-picker-slider-simple-view" in source_text
     assert "label: 'Power ' + current + ' of 5'" in source_text
     assert "`Power ${current} of 5`" not in source_text
-    assert r"([1-5])\s*(?:of|\/)\s*5" in source_text
-    assert r"([1-5])\\s*" not in source_text
+    assert "replaceAll('/', ' of ')" in source_text
+    assert "[^0-9]{0,8}of[^0-9]{0,8}5" in source_text
     assert "targetPower: POWER_TARGET" in source_text
     node = shutil.which("node")
     assert node is not None, "Node.js is required to validate the patched Oracle source"
@@ -154,6 +154,29 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
     )
     assert syntax.returncode == 0, syntax.stderr
     assert compat.sha256_file(target) == compat.PATCHES["dist/src/browser/actions/thinkingTime.js"]["patched"]
+    slider_script = (
+        f"import {{ ensureThinkingTime }} from {json.dumps(target.as_uri())};"
+        "const view={textContent:'Pro, 5 of 5.Use Left and Right arrow keys to adjust power.',"
+        "querySelector:()=>null,getAttribute:()=>null,focus:()=>{},dispatchEvent:()=>true};"
+        "globalThis.document={querySelector:(selector)=>selector.includes("
+        "'composer-model-picker-slider-simple-view')?view:null,querySelectorAll:()=>[],"
+        "dispatchEvent:()=>true,body:{}};"
+        "globalThis.KeyboardEvent=class{constructor(type,init){this.type=type;Object.assign(this,init)}};"
+        "globalThis.HTMLElement=class{};"
+        "const logs=[];"
+        "const Runtime={evaluate:async({expression})=>{const value=await eval(expression);"
+        "return {result:{value}};}};"
+        "await ensureThinkingTime(Runtime,'heavy',(message)=>logs.push(message),'gpt-5.6-sol');"
+        "console.log(JSON.stringify(logs));"
+    )
+    slider = subprocess.run(
+        [node, "--input-type=module", "-e", slider_script],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert slider.returncode == 0, slider.stderr
+    assert json.loads(slider.stdout) == ["[browser] Thinking time: Power 5 of 5 (already selected)"]
 
     browser_config = package / "dist/src/browser/config.js"
     browser_config_text = browser_config.read_text(encoding="utf-8")

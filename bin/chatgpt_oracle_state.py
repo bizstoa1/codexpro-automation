@@ -113,8 +113,8 @@ ORACLE_MODEL_SWITCHER_PRE_SUBMIT_RE = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 ORACLE_THINKING_TIME_PRE_SUBMIT_RE = re.compile(
-    r"Thinking time: selection unverified \(requested (?P<requested>[^)]+)\); "
-    r"refusing to submit without confirmed (?P<required>[^.]+)\.",
+    r"Thinking time: (?:selection unverified \(requested |unknown outcome selecting )"
+    r"(?P<requested>[^);]+)\)?; refusing to submit without confirmed (?P<required>[^.]+)\.",
     re.IGNORECASE,
 )
 # Upstream Oracle copies a signed-in browser profile with rsync.  On POSIX
