@@ -146,6 +146,7 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
     assert "compact.includes(String(candidate) + 'of5')" in source_text
     assert "targetPower: POWER_TARGET" in source_text
     assert "exactGpt56ProProof" in source_text
+    assert "composer-model-picker-slider-advanced-view" in source_text
     assert "compact.includes('modelgpt56sol') && compact.includes('effortpro')" in source_text
     node = shutil.which("node")
     assert node is not None, "Node.js is required to validate the patched Oracle source"
@@ -190,11 +191,14 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
         "const hiddenView={textContent:'Pro, 5 of 5.Use Left and Right arrow keys to adjust power.',"
         "querySelector:()=>null,getAttribute:(name)=>name==='aria-hidden'?'true':null,"
         "getBoundingClientRect:()=>({width:0,height:0}),focus:()=>{},dispatchEvent:()=>true};"
+        "const intelligenceMenu={textContent:'Pro, 5 of 5.AdvancedFasterSmarterM',"
+        "querySelector:()=>null,querySelectorAll:()=>[],getAttribute:()=>null,"
+        "getBoundingClientRect:()=>({width:320,height:240})};"
         "const hiddenAdvanced={textContent:'ModelGPT-5.6 SolEffortPro',querySelector:()=>null,"
         "querySelectorAll:()=>[],getAttribute:(name)=>name==='aria-hidden'?'true':null,"
         "getBoundingClientRect:()=>({width:0,height:0})};"
         "const advanced={textContent:'ModelGPT-5.6 SolEffortPro',"
-        "querySelector:(selector)=>selector.includes('composer-intelligence-picker-content')?advanced:null,"
+        "querySelector:()=>null,"
         "querySelectorAll:()=>[],getAttribute:()=>null,"
         "getBoundingClientRect:()=>({width:320,height:240})};"
         "const modelButton=new class extends EventTarget{"
@@ -206,12 +210,12 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
         "globalThis.window=globalThis;"
         "globalThis.MouseEvent=class{constructor(type,init){this.type=type;Object.assign(this,init)}};"
         "globalThis.document={querySelector:(selector)=>selector.includes("
-        "'composer-intelligence-picker-content')?(menuOpen?hiddenAdvanced:null):(selector.includes("
+        "'composer-intelligence-picker-content')?(menuOpen?intelligenceMenu:null):(selector.includes("
         "'model-switcher-dropdown-button')||selector.includes('__composer-pill'))?modelButton:null,"
         "querySelectorAll:(selector)=>selector.includes('composer-model-picker-slider-simple-view')?"
-        "(menuOpen?[hiddenView]:[]):selector.includes('composer-intelligence-picker-content')?"
+        "(menuOpen?[hiddenView]:[]):selector.includes('composer-model-picker-slider-advanced-view')?"
         "(menuOpen?[hiddenAdvanced,advanced]:[]):(selector.includes('[role=\"menu\"]')?"
-        "(menuOpen?[advanced]:[]):[]),dispatchEvent:()=>true,body:{}};"
+        "(menuOpen?[intelligenceMenu]:[]):[]),dispatchEvent:()=>true,body:{}};"
         "globalThis.KeyboardEvent=class{constructor(type,init){this.type=type;Object.assign(this,init)}};"
         "globalThis.HTMLElement=class{};"
         "const logs=[];"
