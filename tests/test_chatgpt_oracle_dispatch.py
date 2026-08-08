@@ -93,8 +93,12 @@ def test_pro_compiles_attachment_only_oracle_and_manual_never_launches(tmp_path:
     )
     value = json.loads(pro_target.read_text(encoding="utf-8"))
     assert pro["contract"]["route"] == "oracle-pro-attachment-only"
+    assert pro["contract"]["task_kind"] == "pro"
+    assert pro["contract"]["thinking_time"] == "heavy"
     assert value["transport"] == "pro-attachment-only"
+    assert value["task_kind"] == "pro"
     assert value["model"] == "gpt-5.6-sol"
+    assert value["thinking_time"] == "heavy"
     assert value["attachments"] == [str(prompt.resolve()), str(packet.resolve())]
     assert "app_name" not in value
 
@@ -104,3 +108,34 @@ def test_pro_compiles_attachment_only_oracle_and_manual_never_launches(tmp_path:
     )
     assert manual["oracle_manifest_path"] is None
     assert not manual_target.exists()
+
+
+def test_pro_cli_dry_run_validates_compiled_manifest_without_submission(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    module = load()
+    prompt = tmp_path / "prompt.txt"
+    packet = tmp_path / "packet.zip"
+    target = tmp_path / "pro-dry-run.json"
+    prompt.write_text("instructions", encoding="utf-8")
+    packet.write_bytes(b"PK\x03\x04packet")
+    monkeypatch.setenv("CODEX_ORACLE_STATE_ROOT", str(tmp_path.parent / "host-state-pro-dry-run"))
+
+    exit_code = module.main([
+        "--mode", "pro",
+        "--project-root", str(tmp_path),
+        "--mission-path", str(prompt),
+        "--attachment", str(packet),
+        "--manifest-output", str(target),
+        "--dry-run",
+    ])
+
+    assert exit_code == 0
+    emitted = json.loads(capsys.readouterr().out)
+    manifest = json.loads(target.read_text(encoding="utf-8"))
+    assert emitted["ok"] is True
+    assert emitted["run"]["status"] == "dry-run"
+    assert emitted["run"]["transport"] == "pro-attachment-only"
+    assert manifest["task_kind"] == "pro"
+    assert manifest["model"] == "gpt-5.6-sol"
+    assert manifest["thinking_time"] == "heavy"

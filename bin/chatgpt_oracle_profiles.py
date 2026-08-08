@@ -177,6 +177,10 @@ def build_launch_contract(
             "attachments": [str(path) for path in attachments],
             "model": PRO_MODEL,
             "reasoning_level": "Pro",
+            # `heavy` is Oracle's compatibility token for the current
+            # account-visible Pro power tier.  Keep it explicit so parent
+            # runners cannot fall back to the regular Extra High default.
+            "thinking_time": "heavy",
             "mission_path": str(mission),
             "composer_prompt": PRO_COMPOSER_PROMPT,
         })

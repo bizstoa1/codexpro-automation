@@ -145,6 +145,8 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
     assert "const compact = Array.from(text)" in source_text
     assert "compact.includes(String(candidate) + 'of5')" in source_text
     assert "targetPower: POWER_TARGET" in source_text
+    assert "exactGpt56ProProof" in source_text
+    assert "compact.includes('modelgpt56sol') && compact.includes('effortpro')" in source_text
     node = shutil.which("node")
     assert node is not None, "Node.js is required to validate the patched Oracle source"
     syntax = subprocess.run(
@@ -181,6 +183,40 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
     )
     assert slider.returncode == 0, slider.stderr
     assert json.loads(slider.stdout) == ["[browser] Thinking time: Power 5 of 5 (already selected)"]
+
+    exact_diagnostic_script = (
+        f"import {{ ensureThinkingTime }} from {json.dumps(target.as_uri())};"
+        "const hiddenView={textContent:'Pro, 5 of 5.Use Left and Right arrow keys to adjust power.',"
+        "querySelector:()=>null,getAttribute:(name)=>name==='aria-hidden'?'true':null,"
+        "getBoundingClientRect:()=>({width:0,height:0}),focus:()=>{},dispatchEvent:()=>true};"
+        "const advanced={textContent:'ModelGPT-5.6 SolEffortPro',querySelector:()=>null,"
+        "getAttribute:()=>null,getBoundingClientRect:()=>({width:320,height:240})};"
+        "const modelButton={textContent:'Pro',querySelector:()=>null,"
+        "getAttribute:(name)=>name==='aria-expanded'?'true':null,"
+        "getBoundingClientRect:()=>({width:120,height:36}),focus:()=>{},dispatchEvent:()=>true};"
+        "globalThis.document={querySelector:(selector)=>selector.includes("
+        "'composer-intelligence-picker-content')?advanced:(selector.includes("
+        "'model-switcher-dropdown-button')||selector.includes('__composer-pill'))?modelButton:null,"
+        "querySelectorAll:(selector)=>selector.includes("
+        "'composer-model-picker-slider-simple-view')?[hiddenView]:[],dispatchEvent:()=>true,body:{}};"
+        "globalThis.KeyboardEvent=class{constructor(type,init){this.type=type;Object.assign(this,init)}};"
+        "globalThis.HTMLElement=class{};"
+        "const logs=[];"
+        "const Runtime={evaluate:async({expression})=>{const value=await eval(expression);"
+        "return {result:{value}};}};"
+        "await ensureThinkingTime(Runtime,'heavy',(message)=>logs.push(message),'gpt-5.6-sol');"
+        "console.log(JSON.stringify(logs));"
+    )
+    exact_diagnostic = subprocess.run(
+        [node, "--input-type=module", "-e", exact_diagnostic_script],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert exact_diagnostic.returncode == 0, exact_diagnostic.stderr
+    assert json.loads(exact_diagnostic.stdout) == [
+        "[browser] Thinking time: Power 5 of 5 (Pro) (already selected)"
+    ]
 
     browser_config = package / "dist/src/browser/config.js"
     browser_config_text = browser_config.read_text(encoding="utf-8")

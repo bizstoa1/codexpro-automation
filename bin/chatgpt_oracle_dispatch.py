@@ -50,10 +50,11 @@ def compile_manifest(
         "project_root": str(root),
         "mission_path": contract["mission_path"],
         "mode": "browser",
+        "task_kind": contract["task_kind"],
         "transport": "pro-attachment-only" if contract["mode"] == "pro" else "devspace",
         "model": contract.get("model") or "gpt-5.6",
         "model_strategy": "select",
-        "thinking_time": contract.get("thinking_time") or "extra-high",
+        "thinking_time": contract["thinking_time"],
         "research": "deep" if contract["research"] else "off",
         "archive": "auto",
     }
