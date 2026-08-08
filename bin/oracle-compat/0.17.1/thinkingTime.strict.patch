@@ -160,7 +160,7 @@ index 491445b..4f2946d 100644
      const modelKindFromLegacyTrailing = (trailing) => {
        const row = trailing.closest?.(
          '[role="menuitem"], [role="menuitemradio"], [data-radix-collection-item]',
-@@ -855,10 +964,14 @@ function buildThinkingTimeExpression(level, desiredModel) {
+@@ -855,8 +964,12 @@ function buildThinkingTimeExpression(level, desiredModel) {
      // Open model menu (idempotent — leaves it open if already open).
      if (
        modelBtn.getAttribute('aria-expanded') !== 'true' &&
@@ -173,5 +173,3 @@ index 491445b..4f2946d 100644
 +      closeOpenMenus();
 +      return { status: 'already-selected', label: 'Power 5 of 5 (Pro)' };
 +    }
- 
-     // ---------- COMPATIBILITY UI: unified "Intelligence" effort picker ----------
