@@ -1,4 +1,4 @@
-﻿diff --git a/dist/src/browser/actions/thinkingTime.js b/dist/src/browser/actions/thinkingTime.js
+diff --git a/dist/src/browser/actions/thinkingTime.js b/dist/src/browser/actions/thinkingTime.js
 index 491445b..4f2946d 100644
 --- a/dist/src/browser/actions/thinkingTime.js
 +++ b/dist/src/browser/actions/thinkingTime.js
@@ -53,9 +53,9 @@ index 491445b..4f2946d 100644
 +      'extra-high': 4,
 +      heavy: 5,
 +    }[TARGET_LEVEL] ?? null;
-+    const powerSliderView = () => Array.from(document.querySelectorAll(
++    const powerSliderView = () => document.querySelector(
 +      '[data-testid="composer-model-picker-slider-simple-view"]',
-+    )).find(isVisible) ?? null;
++    );
 +    const powerSliderControl = (view) => view?.querySelector?.(
 +      '[role="slider"], input[type="range"]',
 +    ) || view;

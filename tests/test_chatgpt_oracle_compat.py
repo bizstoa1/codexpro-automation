@@ -139,6 +139,7 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
     assert 'level === "extra-high" || level === "heavy"' in source_text
     assert "strictRequestedEffort" in source_text
     assert "composer-model-picker-slider-simple-view" in source_text
+    assert ").find(isVisible) ?? null" in source_text
     assert "label: 'Power ' + current + ' of 5'" in source_text
     assert "`Power ${current} of 5`" not in source_text
     assert "const compact = Array.from(text)" in source_text
@@ -156,11 +157,14 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
     assert compat.sha256_file(target) == compat.PATCHES["dist/src/browser/actions/thinkingTime.js"]["patched"]
     slider_script = (
         f"import {{ ensureThinkingTime }} from {json.dumps(target.as_uri())};"
+        "const hiddenView={textContent:'',querySelector:()=>null,"
+        "getAttribute:(name)=>name==='aria-hidden'?'true':null,"
+        "getBoundingClientRect:()=>({width:0,height:0}),focus:()=>{},dispatchEvent:()=>true};"
         "const view={textContent:'Pro,\\u200b 5\\u00a0of\\u202f5.Use Left and Right arrow keys to adjust power.',"
-        "querySelector:()=>null,getAttribute:()=>null,focus:()=>{},dispatchEvent:()=>true};"
-        "globalThis.document={querySelector:(selector)=>selector.includes("
-        "'composer-model-picker-slider-simple-view')?view:null,querySelectorAll:()=>[],"
-        "dispatchEvent:()=>true,body:{}};"
+        "querySelector:()=>null,getAttribute:()=>null,getBoundingClientRect:()=>({width:224,height:40}),"
+        "focus:()=>{},dispatchEvent:()=>true};"
+        "globalThis.document={querySelector:()=>null,querySelectorAll:(selector)=>selector.includes("
+        "'composer-model-picker-slider-simple-view')?[hiddenView,view]:[],dispatchEvent:()=>true,body:{}};"
         "globalThis.KeyboardEvent=class{constructor(type,init){this.type=type;Object.assign(this,init)}};"
         "globalThis.HTMLElement=class{};"
         "const logs=[];"
