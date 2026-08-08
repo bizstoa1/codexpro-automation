@@ -141,17 +141,7 @@ index 491445b..4f2946d 100644
      const findOptionInMenu = (menu, modelKindOverride = null) => {
        const items = Array.from(menu.querySelectorAll(MENU_ITEM_SELECTOR));
        const modelKind = modelKindOverride || effectiveTargetModelKind();
-@@ -561,5 +664,9 @@ function buildThinkingTimeExpression(level, desiredModel) {
-         modelKindFromNode(trigger) ||
-         effectiveTargetModelKind();
-+      if (exactGpt56ProProof()) {
-+        closeOpenMenus();
-+        return { status: 'already-selected', label: 'Power 5 of 5 (Pro)' };
-+      }
-       const option = findOption();
-       if (!option && TARGET_IS_GPT56_MODEL && TARGET_LEVEL === 'heavy') {
-         // GPT-5.6 has no "heavy" tier: Pro is the closest thing. Accept a pill that
-@@ -686,6 +793,8 @@ function buildThinkingTimeExpression(level, desiredModel) {
+@@ -686,6 +789,8 @@ function buildThinkingTimeExpression(level, desiredModel) {
      };
      let composerEffortPill = findComposerEffortPill();
      let modelBtn = findModelButton();
