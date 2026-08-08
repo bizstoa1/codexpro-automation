@@ -64,6 +64,10 @@ def version_runner(command, **kwargs):
     return subprocess.CompletedProcess(command, 0, stdout="oracle 0.13.0\n", stderr="")
 
 
+def version_0171_runner(command, **kwargs):
+    return subprocess.CompletedProcess(command, 0, stdout="oracle 0.17.1\n", stderr="")
+
+
 def version_timeout_runner(command, **kwargs):
     raise subprocess.TimeoutExpired(command, kwargs.get("timeout", 30))
 
@@ -153,6 +157,17 @@ def duplicate_prompt_popen(command, **kwargs):
         b'(oracle-global-agent-instructio-f39cc47ba5). Reattach with '
         b'"oracle session oracle-global-agent-instructio-f39cc47ba5" or rerun with '
         b'--force to start another run.\n'
+    )
+    kwargs["stdout"].flush()
+    return Process(1, [])
+
+
+def copy_profile_manual_login_conflict_popen(command, **kwargs):
+    kwargs["stdout"].write(
+        b"oracle 0.17.1\n"
+        b"Launching browser mode (gpt-5.6-sol) with 2 files.\n"
+        b"ERROR: --copy-profile cannot be combined with --browser-manual-login: choose either a "
+        b"throwaway copied profile or the persistent manual-login profile.\n"
     )
     kwargs["stdout"].flush()
     return Process(1, [])
@@ -856,6 +871,32 @@ def test_oracle_global_prompt_duplicate_is_proven_pre_submit_and_releases_projec
     )
     assert second["ok"] is True
     assert launches
+
+
+def test_copy_profile_manual_login_conflict_is_proven_pre_submit_and_releases_project(tmp_path: Path) -> None:
+    runner = load_runner()
+    seed = tmp_path.parent / f"{tmp_path.name}-profile"
+    seed.mkdir(parents=True)
+    result = execute_run(
+        runner,
+        pro_manifest(tmp_path, run_id="d" * 32, copy_profile=str(seed)),
+        run_factory=version_0171_runner,
+        popen_factory=copy_profile_manual_login_conflict_popen,
+    )
+    run_dir = Path(result["run_dir"])
+    state = runner.STATE.load_state(run_dir / "state.json")
+
+    assert result["status"] == "pre_submit_failed"
+    assert result["safe_for_fresh_run"] is True
+    assert state["session_authority"] == "pre_submit"
+    assert state["transport_status"] == "failed_pre_submit"
+    assert state["task_outcome"] == "not_executed"
+    assert state["task_outcome_reason"] == "oracle-launch-flags-mutually-exclusive-pre-submit"
+    assert state["pre_submit_failure"]["code"] == "ORACLE_LAUNCH_FLAGS_MUTUALLY_EXCLUSIVE_PRELAUNCH_FAILED"
+    assert runner.STATE.unresolved_project_sessions(
+        runner.STATE.load_manifest(pro_manifest(tmp_path)).run_root,
+        tmp_path,
+    ) == []
 
 
 def test_profile_copy_ebusy_is_proven_pre_submit_and_releases_project(tmp_path: Path) -> None:
