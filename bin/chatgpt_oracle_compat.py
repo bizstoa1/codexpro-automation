@@ -88,7 +88,7 @@ PATCHES = {
     "dist/src/browser/actions/thinkingTime.js": {
         "patch": "thinkingTime.strict.patch",
         "pristine": "508f1fbc175b82e6bfd4c978da6199306800615f432e28d7721c155c402795ca",
-        "patched": "d8fbe1394314efaa38343539ad7be519212fd5301f74e4aa92336f6925e3b5fd",
+        "patched": "9ac1cab3200fb848ca2f88c07f98b19d94c7d4ad5a9b2e578c1c5a9dee4df15f",
         "legacy_patched": [
             "536571fccc3f8137bfbf0ea96dfd827f1eabdaf92f93fe7cff92af242ef01d53",
             "fe6db3c1d48ccf7eff212dab7e69a2b3c7439f44b5cc823d474aa4fbd0925151",
@@ -97,6 +97,7 @@ PATCHES = {
             "4e73e1c1d9c04e7bea7811a5e32bf17c559a2e1171581dc4cc33f48163ef28e7",
             "374f0fabd62ea82ecf359c3050995da7a3de2d791905d04742f91ebe098d910a",
             "864f8365ecbd0aef9b631f7ae61c80b3e43424dc37c34cdfd5c6e5aa06b0c1b3",
+            "d8fbe1394314efaa38343539ad7be519212fd5301f74e4aa92336f6925e3b5fd",
         ],
         "legacy_patch": "thinkingTime.strict.pre-power.patch",
         "legacy_patches": {
@@ -112,6 +113,8 @@ PATCHES = {
                 "thinkingTime.strict.compact-power.patch",
             "864f8365ecbd0aef9b631f7ae61c80b3e43424dc37c34cdfd5c6e5aa06b0c1b3":
                 "thinkingTime.strict.hidden-slider.patch",
+            "d8fbe1394314efaa38343539ad7be519212fd5301f74e4aa92336f6925e3b5fd":
+                "thinkingTime.strict.pro-proof-model-bound.patch",
         },
     },
 }

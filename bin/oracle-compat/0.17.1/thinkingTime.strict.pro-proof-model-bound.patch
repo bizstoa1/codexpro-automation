@@ -38,7 +38,7 @@ index 491445b..4f2946d 100644
              }
              logger(formatBrowserThinkingLog(`unknown outcome selecting ${capitalizedLevel}; continuing with ChatGPT default.`));
              return;
-@@ -371,6 +378,102 @@ function buildThinkingTimeExpression(level, desiredModel) {
+@@ -371,6 +378,101 @@ function buildThinkingTimeExpression(level, desiredModel) {
        ...extra,
        diagnostic: collectPickerDiagnostic(),
      });
@@ -75,7 +75,7 @@ index 491445b..4f2946d 100644
 +      return null;
 +    };
 +    const exactGpt56ProProof = () => {
-+      if (TARGET_LEVEL !== 'heavy') return false;
++      if (!TARGET_IS_GPT56_MODEL || TARGET_LEVEL !== 'heavy') return false;
 +      const modelButton = findModelButton();
 +      const modelLabel = normalize(
 +        (modelButton?.textContent ?? '') + ' ' +
@@ -99,12 +99,11 @@ index 491445b..4f2946d 100644
 +      return compact.includes('modelgpt56sol') && compact.includes('effortpro');
 +    };
 +    const selectPowerSlider = async () => {
-+      if (POWER_TARGET === null) return null;
++      if (!TARGET_IS_GPT56_MODEL || POWER_TARGET === null) return null;
 +      if (exactGpt56ProProof()) {
 +        closeOpenMenus();
 +        return { status: 'already-selected', label: 'Power 5 of 5 (Pro)' };
 +      }
-+      if (!TARGET_IS_GPT56_MODEL) return null;
 +      let view = powerSliderView();
 +      if (!view) {
 +        const button = findModelButton();
@@ -141,7 +140,7 @@ index 491445b..4f2946d 100644
      const findOptionInMenu = (menu, modelKindOverride = null) => {
        const items = Array.from(menu.querySelectorAll(MENU_ITEM_SELECTOR));
        const modelKind = modelKindOverride || effectiveTargetModelKind();
-@@ -686,6 +789,8 @@ function buildThinkingTimeExpression(level, desiredModel) {
+@@ -686,6 +788,8 @@ function buildThinkingTimeExpression(level, desiredModel) {
      };
      let composerEffortPill = findComposerEffortPill();
      let modelBtn = findModelButton();

@@ -204,7 +204,7 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
         "const logs=[];"
         "const Runtime={evaluate:async({expression})=>{const value=await eval(expression);"
         "return {result:{value}};}};"
-        "await ensureThinkingTime(Runtime,'heavy',(message)=>logs.push(message),'gpt-5.6-sol');"
+        "await ensureThinkingTime(Runtime,'heavy',(message)=>logs.push(message));"
         "console.log(JSON.stringify(logs));"
     )
     exact_diagnostic = subprocess.run(
