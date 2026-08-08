@@ -141,8 +141,8 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
     assert "composer-model-picker-slider-simple-view" in source_text
     assert "label: 'Power ' + current + ' of 5'" in source_text
     assert "`Power ${current} of 5`" not in source_text
-    assert "replaceAll('/', ' of ')" in source_text
-    assert "[^0-9]{0,8}of[^0-9]{0,8}5" in source_text
+    assert "const compact = Array.from(text)" in source_text
+    assert "compact.includes(String(candidate) + 'of5')" in source_text
     assert "targetPower: POWER_TARGET" in source_text
     node = shutil.which("node")
     assert node is not None, "Node.js is required to validate the patched Oracle source"
@@ -156,7 +156,7 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
     assert compat.sha256_file(target) == compat.PATCHES["dist/src/browser/actions/thinkingTime.js"]["patched"]
     slider_script = (
         f"import {{ ensureThinkingTime }} from {json.dumps(target.as_uri())};"
-        "const view={textContent:'Pro, 5 of 5.Use Left and Right arrow keys to adjust power.',"
+        "const view={textContent:'Pro,\\u200b 5\\u00a0of\\u202f5.Use Left and Right arrow keys to adjust power.',"
         "querySelector:()=>null,getAttribute:()=>null,focus:()=>{},dispatchEvent:()=>true};"
         "globalThis.document={querySelector:(selector)=>selector.includes("
         "'composer-model-picker-slider-simple-view')?view:null,querySelectorAll:()=>[],"

@@ -1,4 +1,4 @@
-﻿diff --git a/dist/src/browser/actions/thinkingTime.js b/dist/src/browser/actions/thinkingTime.js
+diff --git a/dist/src/browser/actions/thinkingTime.js b/dist/src/browser/actions/thinkingTime.js
 index 491445b..4f2946d 100644
 --- a/dist/src/browser/actions/thinkingTime.js
 +++ b/dist/src/browser/actions/thinkingTime.js
@@ -38,7 +38,7 @@ index 491445b..4f2946d 100644
              }
              logger(formatBrowserThinkingLog(`unknown outcome selecting ${capitalizedLevel}; continuing with ChatGPT default.`));
              return;
-@@ -371,6 +378,73 @@ function buildThinkingTimeExpression(level, desiredModel) {
+@@ -371,6 +378,66 @@ function buildThinkingTimeExpression(level, desiredModel) {
        ...extra,
        diagnostic: collectPickerDiagnostic(),
      });
@@ -63,16 +63,9 @@ index 491445b..4f2946d 100644
 +      const control = powerSliderControl(view);
 +      const ariaValue = Number(control?.getAttribute?.('aria-valuenow') ?? '');
 +      if (Number.isInteger(ariaValue) && ariaValue >= 1 && ariaValue <= 5) return ariaValue;
-+      const text = String(view?.textContent ?? '').toLowerCase();
-+      const compact = Array.from(text)
-+        .filter((character) =>
-+          (character >= 'a' && character <= 'z') ||
-+          (character >= '0' && character <= '9'))
-+        .join('');
-+      for (let candidate = 1; candidate <= 5; candidate += 1) {
-+        if (compact.includes(String(candidate) + 'of5')) return candidate;
-+      }
-+      return null;
++      const text = String(view?.textContent ?? '').replaceAll('/', ' of ');
++      const match = text.match(/(?:^|[^0-9])([1-5])[^0-9]{0,8}of[^0-9]{0,8}5(?:[^0-9]|$)/i);
++      return match ? Number(match[1]) : null;
 +    };
 +    const selectPowerSlider = async () => {
 +      if (!TARGET_IS_GPT56_MODEL || POWER_TARGET === null) return null;
@@ -112,7 +105,7 @@ index 491445b..4f2946d 100644
      const findOptionInMenu = (menu, modelKindOverride = null) => {
        const items = Array.from(menu.querySelectorAll(MENU_ITEM_SELECTOR));
        const modelKind = modelKindOverride || effectiveTargetModelKind();
-@@ -686,6 +760,8 @@ function buildThinkingTimeExpression(level, desiredModel) {
+@@ -686,6 +753,8 @@ function buildThinkingTimeExpression(level, desiredModel) {
      };
      let composerEffortPill = findComposerEffortPill();
      let modelBtn = findModelButton();
