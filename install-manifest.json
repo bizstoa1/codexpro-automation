@@ -25,6 +25,7 @@
     "bin/oracle-compat/0.17.1/thinkingTime.strict.hidden-slider.patch",
     "bin/oracle-compat/0.17.1/thinkingTime.strict.pro-proof-model-bound.patch",
     "bin/oracle-compat/0.17.1/thinkingTime.strict.null-model-menu-closed.patch",
+    "bin/oracle-compat/0.17.1/thinkingTime.strict.pre-outer-model-proof.patch",
     "bin/chatgpt_oracle_state.py",
     "bin/chatgpt_oracle_profiles.py",
     "bin/chatgpt_oracle_dispatch.py",
