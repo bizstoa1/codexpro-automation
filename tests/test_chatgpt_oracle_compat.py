@@ -131,7 +131,8 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
     backup = tmp_path / "backup"
 
     result = compat.ensure_oracle_compatibility("oracle 0.17.1", package_root=package, backup_root=backup)
-    assert result["changed"] == ["dist/src/browser/actions/thinkingTime.js"]
+    touched = set(result["changed"]) | set(result["already_patched"])
+    assert set(compat.PATCHES) <= touched
     target = package / "dist/src/browser/actions/thinkingTime.js"
     source_text = target.read_text(encoding="utf-8")
     assert "strictGpt56Effort" in source_text
@@ -151,4 +152,37 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
     )
     assert syntax.returncode == 0, syntax.stderr
     assert compat.sha256_file(target) == compat.PATCHES["dist/src/browser/actions/thinkingTime.js"]["patched"]
-    assert compat.ensure_oracle_compatibility("oracle 0.17.1", package_root=package, backup_root=backup)["already_patched"]
+
+    browser_config = package / "dist/src/browser/config.js"
+    browser_config_text = browser_config.read_text(encoding="utf-8")
+    assert "config?.copyProfileSource" in browser_config_text
+    assert compat.sha256_file(browser_config) == compat.PATCHES["dist/src/browser/config.js"]["patched"]
+    config_syntax = subprocess.run(
+        [node, "--check", str(browser_config)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert config_syntax.returncode == 0, config_syntax.stderr
+    behavior = subprocess.run(
+        [
+            node,
+            "--input-type=module",
+            "-e",
+            (
+                f"import {{ resolveBrowserConfig }} from {json.dumps(browser_config.as_uri())}; "
+                "console.log(JSON.stringify({"
+                "copied:resolveBrowserConfig({copyProfileSource:'signed'}).manualLogin,"
+                "explicit:resolveBrowserConfig({copyProfileSource:'signed',manualLogin:true}).manualLogin"
+                "}));"
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert behavior.returncode == 0, behavior.stderr
+    assert json.loads(behavior.stdout) == {"copied": False, "explicit": True}
+
+    second = compat.ensure_oracle_compatibility("oracle 0.17.1", package_root=package, backup_root=backup)
+    assert set(second["already_patched"]) == set(compat.PATCHES)

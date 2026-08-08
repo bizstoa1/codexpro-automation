@@ -75,6 +75,11 @@ PATCHES_0161 = {
 }
 
 PATCHES = {
+    "dist/src/browser/config.js": {
+        "patch": "browserConfig.copy-profile-windows.patch",
+        "pristine": "aa4cd86b70217d08a3178c52c20eff621b553ef18b8d1adff9b930ad8e9c3b4a",
+        "patched": "9d2dbde2801ab39be9d81f2e84646592ce45063df571c480b09475a2861769c5",
+    },
     "dist/src/browser/actions/thinkingTime.js": {
         "patch": "thinkingTime.strict.patch",
         "pristine": "508f1fbc175b82e6bfd4c978da6199306800615f432e28d7721c155c402795ca",
