@@ -88,7 +88,7 @@ PATCHES = {
     "dist/src/browser/actions/thinkingTime.js": {
         "patch": "thinkingTime.strict.patch",
         "pristine": "508f1fbc175b82e6bfd4c978da6199306800615f432e28d7721c155c402795ca",
-        "patched": "0cb7bf4774e5507fb97682cf4e350fea03998c2a44548065bf8e9eb57fe16707",
+        "patched": "b55897a9d90627b226e39e77339819e446927ffc66f78181f5c2851cbcfe5f97",
         "legacy_patched": [
             "536571fccc3f8137bfbf0ea96dfd827f1eabdaf92f93fe7cff92af242ef01d53",
             "fe6db3c1d48ccf7eff212dab7e69a2b3c7439f44b5cc823d474aa4fbd0925151",
@@ -100,6 +100,7 @@ PATCHES = {
             "d8fbe1394314efaa38343539ad7be519212fd5301f74e4aa92336f6925e3b5fd",
             "9ac1cab3200fb848ca2f88c07f98b19d94c7d4ad5a9b2e578c1c5a9dee4df15f",
             "2baba20f9162eea8b4659ff42d85c26064d037bb18dd90f2022cf4764ddd710d",
+            "0cb7bf4774e5507fb97682cf4e350fea03998c2a44548065bf8e9eb57fe16707",
         ],
         "legacy_patch": "thinkingTime.strict.pre-power.patch",
         "legacy_patches": {
@@ -121,6 +122,8 @@ PATCHES = {
                 "thinkingTime.strict.null-model-menu-closed.patch",
             "2baba20f9162eea8b4659ff42d85c26064d037bb18dd90f2022cf4764ddd710d":
                 "thinkingTime.strict.pre-outer-model-proof.patch",
+            "0cb7bf4774e5507fb97682cf4e350fea03998c2a44548065bf8e9eb57fe16707":
+                "thinkingTime.strict.pre-visible-advanced-proof.patch",
         },
     },
 }
