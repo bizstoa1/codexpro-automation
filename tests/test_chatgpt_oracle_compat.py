@@ -133,6 +133,23 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
     result = compat.ensure_oracle_compatibility("oracle 0.17.1", package_root=package, backup_root=backup)
     touched = set(result["changed"]) | set(result["already_patched"])
     assert set(compat.PATCHES) <= touched
+    node = shutil.which("node")
+    assert node is not None, "Node.js is required to validate the patched Oracle source"
+    recovery_target = package / "dist/src/browser/recoverConversation.js"
+    recovery_text = recovery_target.read_text(encoding="utf-8")
+    assert "copyProfileSource" in recovery_text
+    assert "launching an isolated profile copy" in recovery_text
+    assert "wrapEphemeralRecoveryChrome" in recovery_text
+    assert 'return copyProfileSource.trim();' in recovery_text
+    assert 'const chromeProfile = await copyChromeProfile(profileSource, userDataDir, config.chromeProfile);' in recovery_text
+    recovery_syntax = subprocess.run(
+        [node, "--check", str(recovery_target)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert recovery_syntax.returncode == 0, recovery_syntax.stderr
+    assert compat.sha256_file(recovery_target) == compat.PATCHES["dist/src/browser/recoverConversation.js"]["patched"]
     target = package / "dist/src/browser/actions/thinkingTime.js"
     source_text = target.read_text(encoding="utf-8")
     assert "strictGpt56Effort" in source_text
@@ -148,8 +165,6 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
     assert "exactGpt56ProProof" in source_text
     assert "composer-model-picker-slider-advanced-view" in source_text
     assert "compact.includes('modelgpt56sol') && compact.includes('effortpro')" in source_text
-    node = shutil.which("node")
-    assert node is not None, "Node.js is required to validate the patched Oracle source"
     syntax = subprocess.run(
         [node, "--check", str(target)],
         capture_output=True,

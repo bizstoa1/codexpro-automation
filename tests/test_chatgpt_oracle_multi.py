@@ -116,3 +116,79 @@ def test_multi_rejects_lane_path_traversal(tmp_path: Path) -> None:
         pass
     else:
         raise AssertionError("unsafe lane id must fail")
+
+
+def test_reconcile_recovered_lanes_restores_stable_order_without_submission(tmp_path: Path, monkeypatch) -> None:
+    module = load()
+    monkeypatch.setenv("CODEX_ORACLE_STATE_ROOT", str((tmp_path / "state").resolve()))
+    manifest = make_manifest(tmp_path, 3)
+    config = module.load_manifest(manifest)
+    parent_id = "a" * 64
+    recorded = []
+    for lane in reversed(config["solvers"]):
+        run_dir = tmp_path / "state" / lane["id"]
+        run_dir.mkdir(parents=True)
+        output = run_dir / "output.md"
+        output.write_text(f"answer {lane['id']}", encoding="utf-8")
+        artifact_sha = module.hashlib.sha256(output.read_bytes()).hexdigest()
+        locator = f"oracle-{lane['id']}"
+        (run_dir / "state.json").write_text(json.dumps({
+            "project_root": str(tmp_path.resolve()),
+            "parallel_parent_id": parent_id,
+            "status": "complete",
+            "terminal_harvested": True,
+            "artifact_sha256": artifact_sha,
+            "mission": {"sha256": module.hashlib.sha256(lane["mission_path"].read_bytes()).hexdigest()},
+            "oracle": {"session_locator": locator},
+        }), encoding="utf-8")
+        recorded.append({"id": lane["id"], "ok": False, "run_dir": str(run_dir), "session_locator": locator})
+    module._write_json(config["output_dir"] / "result.json", {
+        "schema": module.RESULT_SCHEMA,
+        "status": "failed",
+        "parent_id": parent_id,
+        "lanes": recorded,
+        "merger_run_dir": str(tmp_path / "failed-pre-submit-merger"),
+    })
+
+    result = module.reconcile_recovered_lanes(manifest)
+
+    assert result["status"] == "merger_ready"
+    assert [lane["id"] for lane in result["lanes"]] == ["s0", "s1", "s2"]
+    assert result["successful_lane_count"] == 3
+    merger_text = Path(result["merger_mission_path"]).read_text(encoding="utf-8")
+    positions = [merger_text.index(f"handoffs\\s{index}.md") for index in range(3)]
+    assert positions == sorted(positions)
+    assert result["merger_run_dir"].endswith("failed-pre-submit-merger")
+
+
+def test_reconcile_recovered_lanes_rejects_parent_identity_mismatch(tmp_path: Path, monkeypatch) -> None:
+    module = load()
+    monkeypatch.setenv("CODEX_ORACLE_STATE_ROOT", str(tmp_path.resolve()))
+    manifest = make_manifest(tmp_path, 2)
+    config = module.load_manifest(manifest)
+    module._write_json(config["output_dir"] / "result.json", {
+        "schema": module.RESULT_SCHEMA,
+        "status": "failed",
+        "parent_id": "a" * 64,
+        "lanes": [
+            {"id": lane["id"], "run_dir": str(tmp_path / lane["id"]), "session_locator": f"oracle-{lane['id']}"}
+            for lane in config["solvers"]
+        ],
+    })
+    first = config["solvers"][0]
+    run_dir = tmp_path / first["id"]
+    run_dir.mkdir()
+    output = run_dir / "output.md"
+    output.write_text("answer", encoding="utf-8")
+    (run_dir / "state.json").write_text(json.dumps({
+        "project_root": str(tmp_path.resolve()),
+        "parallel_parent_id": "b" * 64,
+        "status": "complete",
+        "terminal_harvested": True,
+        "artifact_sha256": module.hashlib.sha256(output.read_bytes()).hexdigest(),
+        "mission": {"sha256": module.hashlib.sha256(first["mission_path"].read_bytes()).hexdigest()},
+        "oracle": {"session_locator": f"oracle-{first['id']}"},
+    }), encoding="utf-8")
+
+    with pytest.raises(module.MultiError, match="parent identity mismatch"):
+        module.reconcile_recovered_lanes(manifest)

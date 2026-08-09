@@ -241,6 +241,87 @@ def _merger_transport(
     return target
 
 
+def reconcile_recovered_lanes(manifest_path: Path) -> dict[str, Any]:
+    """Rebind durable exact-run outputs to an interrupted parent without submitting.
+
+    This is intentionally a host-only recovery step.  It validates every
+    original lane against the persisted parent/lane/mission identity, restores
+    stable-order handoffs, and prepares the merger mission.  It never calls the
+    Oracle runner and therefore cannot create a replacement conversation.
+    """
+    config = load_manifest(manifest_path)
+    result_path = config["output_dir"] / "result.json"
+    result = _read_json(result_path)
+    if result.get("schema") != RESULT_SCHEMA:
+        raise MultiError("existing multi result schema is invalid")
+    parent_id = str(result.get("parent_id") or "").strip()
+    if len(parent_id) != 64:
+        raise MultiError("existing multi result has no valid parent identity")
+    recorded = result.get("lanes")
+    if not isinstance(recorded, list):
+        raise MultiError("existing multi result has no lane ledger")
+    by_id = {str(item.get("id") or ""): item for item in recorded if isinstance(item, dict)}
+    expected_ids = [lane["id"] for lane in config["solvers"]]
+    if set(by_id) != set(expected_ids) or len(by_id) != len(expected_ids):
+        raise MultiError("existing lane ledger does not match the manifest")
+    reconciled: list[dict[str, Any]] = []
+    for lane in config["solvers"]:
+        prior = by_id[lane["id"]]
+        run_dir = Path(str(prior.get("run_dir") or "")).expanduser()
+        if not run_dir.is_absolute():
+            raise MultiError(f"lane {lane['id']} has no absolute exact run directory")
+        run_dir = run_dir.resolve()
+        if not STATE.is_within(STATE.oracle_state_root(), run_dir):
+            raise MultiError(f"lane {lane['id']} exact run directory is outside Oracle host state")
+        state_path = run_dir / "state.json"
+        output_path = run_dir / "output.md"
+        if not state_path.is_file() or not output_path.is_file() or not output_path.read_bytes().strip():
+            raise MultiError(f"lane {lane['id']} has no durable recovered output")
+        state = _read_json(state_path)
+        mission = state.get("mission") if isinstance(state.get("mission"), dict) else {}
+        oracle = state.get("oracle") if isinstance(state.get("oracle"), dict) else {}
+        if state.get("run_id") not in {None, run_dir.name}:
+            raise MultiError(f"lane {lane['id']} run identity mismatch")
+        if Path(str(state.get("project_root") or "")).resolve() != config["project_root"]:
+            raise MultiError(f"lane {lane['id']} project identity mismatch")
+        if state.get("parallel_parent_id") != parent_id:
+            raise MultiError(f"lane {lane['id']} parent identity mismatch")
+        expected_mission_sha = hashlib.sha256(lane["mission_path"].read_bytes()).hexdigest()
+        if mission.get("sha256") != expected_mission_sha:
+            raise MultiError(f"lane {lane['id']} mission identity mismatch")
+        if state.get("status") != "complete" or state.get("terminal_harvested") is not True:
+            raise MultiError(f"lane {lane['id']} is not terminally harvested")
+        artifact_sha = hashlib.sha256(output_path.read_bytes()).hexdigest()
+        if state.get("artifact_sha256") != artifact_sha:
+            raise MultiError(f"lane {lane['id']} durable output hash mismatch")
+        prior_locator = str(prior.get("session_locator") or "").strip()
+        exact_locator = str(oracle.get("session_locator") or oracle.get("slug") or "").strip()
+        if prior_locator and prior_locator != exact_locator:
+            raise MultiError(f"lane {lane['id']} exact session identity mismatch")
+        handoff = config["output_dir"] / "handoffs" / f"{lane['id']}.md"
+        handoff.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(output_path, handoff)
+        reconciled.append({
+            "id": lane["id"],
+            "ok": True,
+            "run_dir": str(run_dir),
+            "output_path": str(handoff),
+            "session_locator": exact_locator,
+            "artifact_sha256": artifact_sha,
+        })
+    merger_mission = _merger_transport(config, reconciled, parent_id)
+    updated = {
+        **result,
+        "status": "merger_ready",
+        "lanes": reconciled,
+        "successful_lane_count": len(reconciled),
+        "merger_mission_path": str(merger_mission),
+        "recovery_mode": "exact-runs-no-submit",
+    }
+    _write_json(result_path, updated)
+    return {"ok": True, **updated}
+
+
 def run_multi(
     manifest_path: Path,
     *,
@@ -299,9 +380,15 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run independent Oracle browser sessions in waves and merge handoffs.")
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--reconcile-recovered", action="store_true")
     args = parser.parse_args(argv)
     try:
-        result = run_multi(args.manifest, dry_run=args.dry_run)
+        if args.reconcile_recovered:
+            if args.dry_run:
+                raise MultiError("--reconcile-recovered cannot be combined with --dry-run")
+            result = reconcile_recovered_lanes(args.manifest)
+        else:
+            result = run_multi(args.manifest, dry_run=args.dry_run)
     except Exception as exc:
         result = {"ok": False, "error": {"code": "ORACLE_MULTI_FAILED", "message": str(exc)}}
     print(json.dumps(result, ensure_ascii=False, indent=2))
