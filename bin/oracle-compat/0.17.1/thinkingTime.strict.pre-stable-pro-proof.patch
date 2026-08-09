@@ -1,5 +1,5 @@
 diff --git a/dist/src/browser/actions/thinkingTime.js b/dist/src/browser/actions/thinkingTime.js
-index 491445b..101abe8 100644
+index 491445b..d0f4637 100644
 --- a/dist/src/browser/actions/thinkingTime.js
 +++ b/dist/src/browser/actions/thinkingTime.js
 @@ -32,6 +32,13 @@ export async function ensureThinkingTime(Runtime, level, logger, desiredModel) {
@@ -38,7 +38,7 @@ index 491445b..101abe8 100644
              }
              logger(formatBrowserThinkingLog(`unknown outcome selecting ${capitalizedLevel}; continuing with ChatGPT default.`));
              return;
-@@ -371,6 +378,116 @@ function buildThinkingTimeExpression(level, desiredModel) {
+@@ -371,6 +378,105 @@ function buildThinkingTimeExpression(level, desiredModel) {
        ...extra,
        diagnostic: collectPickerDiagnostic(),
      });
@@ -101,17 +101,6 @@ index 491445b..101abe8 100644
 +        return compact.includes('modelgpt56sol') && compact.includes('effortpro');
 +      });
 +    };
-+    const waitForStableGpt56ProProof = async () => {
-+      if (TARGET_LEVEL !== 'heavy') return false;
-+      const deadline = performance.now() + INTELLIGENCE_WAIT_MS;
-+      let consecutive = 0;
-+      while (performance.now() < deadline) {
-+        consecutive = exactGpt56ProProof() ? consecutive + 1 : 0;
-+        if (consecutive >= 2) return true;
-+        await sleep(100);
-+      }
-+      return false;
-+    };
 +    const selectPowerSlider = async () => {
 +      if (POWER_TARGET === null) return null;
 +      if (exactGpt56ProProof()) {
@@ -155,18 +144,18 @@ index 491445b..101abe8 100644
      const findOptionInMenu = (menu, modelKindOverride = null) => {
        const items = Array.from(menu.querySelectorAll(MENU_ITEM_SELECTOR));
        const modelKind = modelKindOverride || effectiveTargetModelKind();
-@@ -560,6 +677,10 @@ function buildThinkingTimeExpression(level, desiredModel) {
+@@ -560,6 +666,10 @@ function buildThinkingTimeExpression(level, desiredModel) {
          TARGET_MODEL_KIND ||
          modelKindFromNode(trigger) ||
          effectiveTargetModelKind();
-+      if (await waitForStableGpt56ProProof()) {
++      if (exactGpt56ProProof()) {
 +        closeOpenMenus();
 +        return { status: 'already-selected', label: 'Power 5 of 5 (Pro)' };
 +      }
        const option = findOption();
        if (!option && TARGET_IS_GPT56_MODEL && TARGET_LEVEL === 'heavy') {
          // GPT-5.6 has no "heavy" tier: Pro is the closest thing. Accept a pill that
-@@ -686,6 +807,8 @@ function buildThinkingTimeExpression(level, desiredModel) {
+@@ -686,6 +796,8 @@ function buildThinkingTimeExpression(level, desiredModel) {
      };
      let composerEffortPill = findComposerEffortPill();
      let modelBtn = findModelButton();
@@ -175,11 +164,11 @@ index 491445b..101abe8 100644
      const modelKindFromLegacyTrailing = (trailing) => {
        const row = trailing.closest?.(
          '[role="menuitem"], [role="menuitemradio"], [data-radix-collection-item]',
-@@ -860,6 +983,10 @@ function buildThinkingTimeExpression(level, desiredModel) {
+@@ -860,6 +972,10 @@ function buildThinkingTimeExpression(level, desiredModel) {
        dispatchClickSequence(modelBtn);
        await sleep(INITIAL_WAIT_MS);
      }
-+    if (await waitForStableGpt56ProProof()) {
++    if (exactGpt56ProProof()) {
 +      closeOpenMenus();
 +      return { status: 'already-selected', label: 'Power 5 of 5 (Pro)' };
 +    }

@@ -188,6 +188,7 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
     exact_diagnostic_script = (
         f"import {{ ensureThinkingTime }} from {json.dumps(target.as_uri())};"
         "let menuOpen=false;"
+        "let advancedQueries=0;"
         "const hiddenView={textContent:'Pro, 5 of 5.Use Left and Right arrow keys to adjust power.',"
         "querySelector:()=>null,getAttribute:(name)=>name==='aria-hidden'?'true':null,"
         "getBoundingClientRect:()=>({width:0,height:0}),focus:()=>{},dispatchEvent:()=>true};"
@@ -214,7 +215,7 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
         "'model-switcher-dropdown-button')||selector.includes('__composer-pill'))?modelButton:null,"
         "querySelectorAll:(selector)=>selector.includes('composer-model-picker-slider-simple-view')?"
         "(menuOpen?[hiddenView]:[]):selector.includes('composer-model-picker-slider-advanced-view')?"
-        "(menuOpen?[hiddenAdvanced,advanced]:[]):(selector.includes('[role=\"menu\"]')?"
+        "(menuOpen&&++advancedQueries>=3?[hiddenAdvanced,advanced]:[]):(selector.includes('[role=\"menu\"]')?"
         "(menuOpen?[intelligenceMenu]:[]):[]),dispatchEvent:()=>true,body:{}};"
         "globalThis.KeyboardEvent=class{constructor(type,init){this.type=type;Object.assign(this,init)}};"
         "globalThis.HTMLElement=class{};"
@@ -222,7 +223,7 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
         "const Runtime={evaluate:async({expression})=>{const value=await eval(expression);"
         "return {result:{value}};}};"
         "await ensureThinkingTime(Runtime,'heavy',(message)=>logs.push(message));"
-        "console.log(JSON.stringify(logs));"
+        "console.log(JSON.stringify({logs,advancedQueries}));"
     )
     exact_diagnostic = subprocess.run(
         [node, "--input-type=module", "-e", exact_diagnostic_script],
@@ -231,7 +232,9 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
         check=False,
     )
     assert exact_diagnostic.returncode == 0, exact_diagnostic.stderr
-    assert json.loads(exact_diagnostic.stdout) == [
+    exact_payload = json.loads(exact_diagnostic.stdout)
+    assert exact_payload["advancedQueries"] >= 4
+    assert exact_payload["logs"] == [
         "[browser] Thinking time: Power 5 of 5 (Pro) (already selected)"
     ]
 
