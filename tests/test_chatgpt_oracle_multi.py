@@ -192,3 +192,51 @@ def test_reconcile_recovered_lanes_rejects_parent_identity_mismatch(tmp_path: Pa
 
     with pytest.raises(module.MultiError, match="parent identity mismatch"):
         module.reconcile_recovered_lanes(manifest)
+
+
+def test_resume_recovered_merger_submits_only_stable_order_merger(tmp_path: Path, monkeypatch) -> None:
+    module = load()
+    monkeypatch.setenv("CODEX_ORACLE_STATE_ROOT", str((tmp_path / "state").resolve()))
+    manifest = make_manifest(tmp_path, 2)
+    config = module.load_manifest(manifest)
+    parent_id = "c" * 64
+    recorded = []
+    for lane in config["solvers"]:
+        run_dir = tmp_path / "state" / lane["id"]
+        run_dir.mkdir(parents=True)
+        output = run_dir / "output.md"
+        output.write_text(f"answer {lane['id']}", encoding="utf-8")
+        artifact_sha = module.hashlib.sha256(output.read_bytes()).hexdigest()
+        locator = f"oracle-{lane['id']}"
+        (run_dir / "state.json").write_text(json.dumps({
+            "project_root": str(tmp_path.resolve()),
+            "parallel_parent_id": parent_id,
+            "status": "complete",
+            "terminal_harvested": True,
+            "artifact_sha256": artifact_sha,
+            "mission": {"sha256": module.hashlib.sha256(lane["mission_path"].read_bytes()).hexdigest()},
+            "oracle": {"session_locator": locator},
+        }), encoding="utf-8")
+        recorded.append({"id": lane["id"], "run_dir": str(run_dir), "session_locator": locator})
+    module._write_json(config["output_dir"] / "result.json", {
+        "schema": module.RESULT_SCHEMA,
+        "status": "failed",
+        "parent_id": parent_id,
+        "lanes": recorded,
+        "merger_run_dir": str(tmp_path / "old-pre-submit-merger"),
+    })
+    module.reconcile_recovered_lanes(manifest)
+    calls = []
+
+    def fake_execute(path: Path, *, dry_run: bool):
+        calls.append(json.loads(path.read_text(encoding="utf-8")))
+        return {"ok": True, "run_dir": str(tmp_path / "new-merger-run")}
+
+    result = module.resume_recovered_merger(manifest, execute=fake_execute)
+
+    assert result["status"] == "complete"
+    assert len(calls) == 1
+    assert calls[0]["parallel_parent_id"] == parent_id
+    assert Path(calls[0]["mission_path"]).name == "mission.md"
+    assert result["merger_run_dir"].endswith("new-merger-run")
+    assert result["prior_merger_run_dirs"] == [str(tmp_path / "old-pre-submit-merger")]

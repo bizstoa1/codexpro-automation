@@ -322,6 +322,59 @@ def reconcile_recovered_lanes(manifest_path: Path) -> dict[str, Any]:
     return {"ok": True, **updated}
 
 
+def resume_recovered_merger(
+    manifest_path: Path,
+    *,
+    execute: Callable[..., dict[str, Any]] = RUNNER.execute_run,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    """Submit only the prepared merger after exact child recovery."""
+    config = load_manifest(manifest_path)
+    result_path = config["output_dir"] / "result.json"
+    result = _read_json(result_path)
+    if result.get("schema") != RESULT_SCHEMA or result.get("status") != "merger_ready":
+        raise MultiError("multi result is not ready for merger-only resume")
+    parent_id = str(result.get("parent_id") or "").strip()
+    lanes = result.get("lanes")
+    if len(parent_id) != 64 or not isinstance(lanes, list) or len(lanes) != len(config["solvers"]):
+        raise MultiError("merger-ready result identity is incomplete")
+    expected_ids = [lane["id"] for lane in config["solvers"]]
+    if [str(lane.get("id") or "") for lane in lanes if isinstance(lane, dict)] != expected_ids:
+        raise MultiError("merger-ready lane order does not match the manifest")
+    merger_mission = Path(str(result.get("merger_mission_path") or "")).resolve(strict=True)
+    expected_merger = (config["output_dir"] / "merger" / "mission.md").resolve(strict=True)
+    if merger_mission != expected_merger:
+        raise MultiError("merger mission identity mismatch")
+    merger_text = merger_mission.read_text(encoding="utf-8")
+    last_position = -1
+    for lane in lanes:
+        output_path = _inside(config["project_root"], lane.get("output_path"))
+        artifact_sha = hashlib.sha256(output_path.read_bytes()).hexdigest()
+        if lane.get("artifact_sha256") != artifact_sha:
+            raise MultiError(f"lane {lane.get('id')} handoff hash mismatch")
+        position = merger_text.find(str(output_path), last_position + 1)
+        if position < 0:
+            raise MultiError(f"lane {lane.get('id')} is absent or out of order in the merger mission")
+        last_position = position
+    merger_manifest = _child_manifest(
+        config,
+        {"id": "merger", "mission_path": merger_mission},
+        parent_id,
+    )
+    merger = execute(merger_manifest, dry_run=dry_run)
+    previous = [str(item) for item in result.get("prior_merger_run_dirs") or [] if str(item)]
+    if result.get("merger_run_dir"):
+        previous.append(str(result["merger_run_dir"]))
+    updated = {
+        **result,
+        "status": "complete" if merger.get("ok") else "merger_attention_required",
+        "merger_run_dir": merger.get("run_dir"),
+        "prior_merger_run_dirs": list(dict.fromkeys(previous)),
+    }
+    _write_json(result_path, updated)
+    return {"ok": bool(merger.get("ok")), **updated}
+
+
 def run_multi(
     manifest_path: Path,
     *,
@@ -381,12 +434,17 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--reconcile-recovered", action="store_true")
+    parser.add_argument("--resume-merger", action="store_true")
     args = parser.parse_args(argv)
     try:
+        if args.reconcile_recovered and args.resume_merger:
+            raise MultiError("choose exactly one recovery action")
         if args.reconcile_recovered:
             if args.dry_run:
                 raise MultiError("--reconcile-recovered cannot be combined with --dry-run")
             result = reconcile_recovered_lanes(args.manifest)
+        elif args.resume_merger:
+            result = resume_recovered_merger(args.manifest, dry_run=args.dry_run)
         else:
             result = run_multi(args.manifest, dry_run=args.dry_run)
     except Exception as exc:
