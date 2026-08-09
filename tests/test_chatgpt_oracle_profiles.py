@@ -60,11 +60,11 @@ def test_regular_reasoning_rejects_unsupported_level_without_downgrade(tmp_path:
     assert exc.value.evidence["supported"] == ["Very High", "High", "Medium"]
 
 
-def test_pro_is_oracle_attachment_only_and_manual_launches_nothing(tmp_path: Path) -> None:
+def test_pro_attachment_is_oracle_attachment_only_and_manual_launches_nothing(tmp_path: Path) -> None:
     profiles = load_profiles()
     mission = (tmp_path / "prompt.txt").resolve()
     packet = (tmp_path / "packet.zip").resolve()
-    pro = profiles.build_launch_contract("pro", mission_path=mission, attachment_paths=[mission, packet])
+    pro = profiles.build_launch_contract("pro-attachment", mission_path=mission, attachment_paths=[mission, packet])
     manual = profiles.build_launch_contract("manual")
     assert pro["route"] == "oracle-pro-attachment-only"
     assert pro["app_policy"] == "forbidden"
@@ -94,14 +94,33 @@ def test_regular_ui_effort_contracts_are_distinct_and_accept_korean_labels(tmp_p
     assert very_high["thinking_time"] == "extra-high"
 
 
-def test_pro_includes_mission_once_and_regular_rejects_attachments(tmp_path: Path) -> None:
+def test_pro_attachment_includes_mission_once_and_regular_rejects_attachments(tmp_path: Path) -> None:
     profiles = load_profiles()
     mission = (tmp_path / "prompt.txt").resolve()
-    pro = profiles.build_launch_contract("pro", mission_path=mission, attachment_paths=[])
+    pro = profiles.build_launch_contract("pro-attachment", mission_path=mission, attachment_paths=[])
     assert pro["attachments"] == [str(mission)]
     with pytest.raises(profiles.OracleProfileError) as exc:
         profiles.build_launch_contract("review", mission_path=mission, attachment_paths=[mission])
     assert exc.value.code == "REGULAR_ATTACHMENTS_FORBIDDEN"
+
+
+@pytest.mark.parametrize("mode", ["pro", "pro-readonly", "pro_readonly"])
+def test_pro_defaults_to_devspace_without_attachments_and_readonly_is_compatible(tmp_path: Path, mode: str) -> None:
+    profiles = load_profiles()
+    mission = (tmp_path / "mission.md").resolve()
+    contract = profiles.build_launch_contract(mode, mission_path=mission)
+
+    assert contract["route"] == "oracle-pro-devspace-readonly"
+    assert contract["app_name"] == "DevSpace"
+    assert contract["model"] == "gpt-5.6-sol"
+    assert contract["model_strategy"] == "select"
+    assert contract["thinking_time"] == "heavy"
+    assert contract["research"] is False
+    assert contract["attachments"] == []
+    assert contract["composer_prompt"].startswith(f"@DevSpace Read the read-only mission file: {mission}.")
+    with pytest.raises(profiles.OracleProfileError) as exc:
+        profiles.build_launch_contract(mode, mission_path=mission, attachment_paths=[mission])
+    assert exc.value.code == "PRO_READONLY_ATTACHMENTS_FORBIDDEN"
 
 
 def test_relative_mission_is_rejected(tmp_path: Path) -> None:

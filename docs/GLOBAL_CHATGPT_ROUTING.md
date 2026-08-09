@@ -16,16 +16,25 @@ Use this routing in the Codex global `AGENTS.md` after installing the package.
 - The regular composer contains only `@DevSpace` and an absolute UTF-8 mission
   path. It does not attach the task body and does not inspect or mutate ChatGPT
   app settings per question.
-- Pro also uses Oracle. It is attachment-only, selects the account-visible Pro
-  model, and uses no DevSpace or CodexPro app.
+- Qualified Pro also uses Oracle, `GPT-5.6 Sol` at the Pro effort, and the
+  manually registered DevSpace app in read-only mode. It binds the exact
+  project root and begins broad, adaptive discovery with `read('.')` directory
+  listing compatibility; it may inspect all decision-relevant project evidence
+  without a narrow per-run allowlist, but may not write, edit, invoke shell, or
+  run commands. One-time app qualification is sufficient: do not inspect app
+  settings or picker state per run.
+- Explicit `pro-attachment` is attachment-only and is available only for
+  immutable/external evidence or artifacts unreadable through DevSpace. It is
+  not a fallback from a qualified Pro DevSpace run.
 - Existing persisted agbrowse runs remain recovery-only. There is no new
   agbrowse submission path and no Oracle-to-agbrowse fallback.
 - Comprehensive stages author the next semantic mission and a bound hash
   receipt. Local Codex owns transport, immutable identity, host safety, and one
   final deterministic gate rather than rewriting web output.
-- An optional Oracle Pro stage returns one strict identity-bound JSON envelope;
-  the host materializes its output and next-mission strings byte-for-byte
-  because Pro does not use DevSpace.
+- An optional comprehensive Pro stage is read-only DevSpace by default. A
+  plan-authored explicit `pro-attachment` contract selects attachment-only;
+  either route returns one strict identity-bound JSON envelope whose output and
+  next-mission strings the host materializes byte-for-byte.
 - Genuine Web Multi-GPT uses distinct Oracle sessions. Windows lanes use
   independent throwaway copies of the signed-in Oracle profile, run in waves
   of at most five, and hand compact files to one merger.
@@ -33,9 +42,13 @@ Use this routing in the Codex global `AGENTS.md` after installing the package.
 ## Standalone Pro versus comprehensive
 
 `chatgpt-pro-browser` is the visible standalone Pro skill. It submits one
-attachment-only Oracle Pro session, saves the durable result, returns it to the
-calling Codex task, and stops. It never starts implementation or another web
-stage automatically.
+qualified, read-only DevSpace Pro session by default, saves the durable result,
+returns it to the calling Codex task, and stops. An explicit `pro-attachment`
+contract may be used only for its stated evidence boundary. It never starts
+implementation or a comprehensive review-to-implementation chain. Its required
+`WEB_MULTI_NEEDED` decision may start the ready-to-run advisory Web Multi stage
+after the exact Pro session is terminal; that advisory still returns to the
+calling Codex task rather than implementing.
 
 `chatgpt-pro-plan-handoff` owns comprehensive mode. Only that staged runner may
 place an optional Pro decision between plan and review and continue afterward

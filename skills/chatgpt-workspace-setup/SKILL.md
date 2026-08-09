@@ -39,6 +39,14 @@ second root list in the startup wrapper: DevSpace gives the environment
 variable precedence over the persisted config, so a stale wrapper silently
 removes newer projects after every reboot.
 
+Every new or managed DevSpace service launch must set
+`DEVSPACE_TOOL_MODE=full`. This retains the approved-root boundary while
+making read-only workspace discovery tools such as `grep`, `glob`, and `ls`
+available. Do not change ChatGPT connector settings to compensate for a tool
+mode issue. `doctor` reports the managed launch setting and any persisted
+`toolMode`; an explicitly non-`full` persisted mode requires service setup
+review, while a running process environment is not inferred from an HTTP probe.
+
 The only app information to enter manually in ChatGPT Developer Mode is:
 
 - Recommended app name: `DevSpace`

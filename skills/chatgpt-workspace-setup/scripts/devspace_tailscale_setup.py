@@ -24,6 +24,7 @@ from typing import Any, Callable, Sequence
 DEFAULT_PORT = 7676
 APP_NAME = "DevSpace"
 DEVSPACE_PACKAGE = "@waishnav/devspace@1.0.4"
+DEVSPACE_TOOL_MODE = "full"
 SECRET_PATTERN = re.compile(r"(?i)(password|token|secret|authorization)\s*([:=])\s*[^\s,;]+")
 HOSTNAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9.-]*\.ts\.net$", re.IGNORECASE)
 
@@ -138,6 +139,7 @@ def setup_plan(config: SetupConfig) -> dict[str, Any]:
         "allowed_roots": [str(root) for root in config.roots],
         "devspace_init": bash_argv(["npx", "--yes", DEVSPACE_PACKAGE, "init"]),
         "devspace_serve": bash_argv(["npx", "--yes", DEVSPACE_PACKAGE, "serve"]),
+        "managed_service_environment": {"DEVSPACE_TOOL_MODE": DEVSPACE_TOOL_MODE},
         "tailscale_funnel": [
             "tailscale",
             "funnel",
@@ -157,13 +159,25 @@ def run_checked(argv: Sequence[str], *, runner: Callable[..., Any] = subprocess.
     runner(list(argv), check=True, text=True, **windows_subprocess_kwargs())
 
 
-def launch_hidden(argv: Sequence[str], *, popen_factory: Callable[..., Any] = subprocess.Popen) -> Any:
+def devspace_service_environment(base: dict[str, str] | None = None) -> dict[str, str]:
+    environment = dict(os.environ if base is None else base)
+    environment["DEVSPACE_TOOL_MODE"] = DEVSPACE_TOOL_MODE
+    return environment
+
+
+def launch_hidden(
+    argv: Sequence[str],
+    *,
+    popen_factory: Callable[..., Any] = subprocess.Popen,
+    environment: dict[str, str] | None = None,
+) -> Any:
     return popen_factory(
         list(argv),
         stdin=subprocess.DEVNULL,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         shell=False,
+        env=environment,
         **windows_subprocess_kwargs(),
     )
 
@@ -188,6 +202,7 @@ def apply_setup(
     launch_hidden(
         bash_argv(["npx", "--yes", DEVSPACE_PACKAGE, "serve"]),
         popen_factory=popen_factory,
+        environment=devspace_service_environment(),
     )
     run_checked(
         devspace_compat_argv(confirm_restarted=True, local_port=config.local_port),
@@ -210,12 +225,19 @@ def http_probe(url: str, *, opener: Callable[..., Any] = urllib.request.urlopen)
         return {"ok": False, "error": type(error).__name__, "url": url}
 
 
-def persisted_allowed_roots(config_path: Path) -> tuple[Path, ...]:
+def persisted_config(config_path: Path) -> dict[str, Any]:
     try:
         payload = json.loads(config_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise SetupError("DEVSPACE_CONFIG_UNREADABLE") from error
-    values = payload.get("allowedRoots") if isinstance(payload, dict) else None
+    if not isinstance(payload, dict):
+        raise SetupError("DEVSPACE_CONFIG_UNREADABLE")
+    return payload
+
+
+def persisted_allowed_roots(config_path: Path) -> tuple[Path, ...]:
+    payload = persisted_config(config_path)
+    values = payload.get("allowedRoots")
     if not isinstance(values, list) or not values:
         raise SetupError("DEVSPACE_CONFIG_ALLOWED_ROOTS_MISSING")
     roots: list[Path] = []
@@ -225,6 +247,12 @@ def persisted_allowed_roots(config_path: Path) -> tuple[Path, ...]:
             raise SetupError("DEVSPACE_CONFIG_ALLOWED_ROOT_INVALID")
         roots.append(candidate.resolve())
     return tuple(roots)
+
+
+def persisted_tool_mode(config_path: Path) -> str | None:
+    payload = persisted_config(config_path)
+    value = payload.get("toolMode") if "toolMode" in payload else payload.get("tool_mode")
+    return str(value).casefold() if isinstance(value, str) else None
 
 
 def funnel_status(
@@ -267,10 +295,18 @@ def funnel_status(
 
 
 def doctor(config: SetupConfig, *, opener: Callable[..., Any] = urllib.request.urlopen, runner: Callable[..., Any] = subprocess.run, chatgpt_call_failed: bool = False, config_path: Path | None = None) -> dict[str, Any]:
+    tool_mode: dict[str, Any] = {
+        "required": DEVSPACE_TOOL_MODE,
+        "managed_launch": DEVSPACE_TOOL_MODE,
+        "configured": None,
+        "effective": None,
+        "effective_observable": False,
+    }
     local = http_probe(config.local_mcp_url, opener=opener)
     if not local.get("ok"):
         return {
             "local": local,
+            "tool_mode": tool_mode,
             "registration_url": config.registration_url,
             "recommended_app_name": APP_NAME,
             "next_action": "CHECK_DEVSPACE_LOCAL_SERVICE",
@@ -278,10 +314,12 @@ def doctor(config: SetupConfig, *, opener: Callable[..., Any] = urllib.request.u
     if config_path is not None:
         try:
             configured_roots = persisted_allowed_roots(config_path)
+            configured_tool_mode = persisted_tool_mode(config_path)
         except SetupError as error:
             return {
                 "local": local,
                 "config": {"ok": False, "error": str(error), "path": str(config_path)},
+                "tool_mode": tool_mode,
                 "registration_url": config.registration_url,
                 "recommended_app_name": APP_NAME,
                 "next_action": "CHECK_DEVSPACE_CONFIG",
@@ -296,15 +334,30 @@ def doctor(config: SetupConfig, *, opener: Callable[..., Any] = urllib.request.u
                     "configured_roots": [str(root) for root in configured_roots],
                     "missing_roots": [str(root) for root in missing],
                 },
+                "tool_mode": tool_mode,
                 "registration_url": config.registration_url,
                 "recommended_app_name": APP_NAME,
                 "next_action": "CHECK_DEVSPACE_ALLOWED_ROOTS",
+            }
+        tool_mode["configured"] = configured_tool_mode
+        # DevSpace gives its process environment precedence over this persisted
+        # value, and a generic HTTP probe cannot recover a running process
+        # environment. Therefore the effective mode stays explicitly unknown.
+        if configured_tool_mode is not None and configured_tool_mode != DEVSPACE_TOOL_MODE:
+            return {
+                "local": local,
+                "config": {"ok": True, "path": str(config_path), "configured_roots": [str(root) for root in configured_roots]},
+                "tool_mode": tool_mode,
+                "registration_url": config.registration_url,
+                "recommended_app_name": APP_NAME,
+                "next_action": "CHECK_DEVSPACE_TOOL_MODE",
             }
     funnel = funnel_status(config, runner=runner)
     if not funnel.get("ok"):
         return {
             "local": local,
             "funnel": funnel,
+            "tool_mode": tool_mode,
             "registration_url": config.registration_url,
             "recommended_app_name": APP_NAME,
             "next_action": "CHECK_TAILSCALE_FUNNEL",
@@ -316,6 +369,7 @@ def doctor(config: SetupConfig, *, opener: Callable[..., Any] = urllib.request.u
         "public": public,
         "registration_url": config.registration_url,
         "recommended_app_name": APP_NAME,
+        "tool_mode": tool_mode,
     }
     if public.get("ok") and chatgpt_call_failed:
         report["next_action"] = "MANUAL_CHATGPT_REGISTRATION_CHECK"

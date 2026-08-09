@@ -26,6 +26,7 @@ DEVSPACE_APP_NAME = "DevSpace"
 # separate model row.  Oracle 0.17.1 verifies that Pro effort independently.
 PRO_MODEL = "gpt-5.6-sol"
 PRO_COMPOSER_PROMPT = "Read the attached prompt/instructions and all attached files, then complete the task."
+PRO_READONLY_COMPOSER_PREFIX = "Read the read-only mission file"
 
 
 class OracleProfileError(ValueError):
@@ -56,13 +57,19 @@ _PROFILES = {
     "orchestrator": OracleModeProfile("orchestrator", "orchestrator", True, True),
     "deep-research": OracleModeProfile("deep-research", "deep-research", True, True, research=True),
     "manual": OracleModeProfile("manual", "manual", False, False),
-    "pro": OracleModeProfile("pro", "pro", True, False),
+    "pro": OracleModeProfile("pro", "pro", True, True),
+    "pro-attachment": OracleModeProfile("pro-attachment", "pro", True, False),
 }
 _ALIASES = {
     "deep_research": "deep-research",
     "deep research": "deep-research",
     "pro": "pro",
     "gpt-pro": "pro",
+    "pro-readonly": "pro",
+    "pro_readonly": "pro",
+    "pro readonly": "pro",
+    "pro_attachment": "pro-attachment",
+    "pro attachment": "pro-attachment",
 }
 
 
@@ -116,6 +123,16 @@ def composer_handoff(mission_path: str | Path) -> str:
     )
 
 
+def pro_readonly_composer_handoff(mission_path: str | Path) -> str:
+    """The qualified Pro read-only DevSpace handoff, with no attachments."""
+    mission = _absolute_mission_path(mission_path)
+    return (
+        f"@{DEVSPACE_APP_NAME} {PRO_READONLY_COMPOSER_PREFIX}: {mission}. "
+        "Use only the exact project root recorded there; read the mission and applicable AGENTS.md fully first. "
+        "Perform read-only work only; do not modify files, settings, accounts, or external state."
+    )
+
+
 def _attachment_paths(values: list[str | Path] | tuple[str | Path, ...] | None) -> list[Path]:
     result: list[Path] = []
     for value in values or ():
@@ -139,8 +156,9 @@ def build_launch_contract(
 ) -> dict[str, Any]:
     """Build an immutable, browser-agnostic launch contract for parent runners.
 
-    `manual` intentionally produces a non-launch contract. Pro uses the same
-    Oracle browser engine but has a distinct attachment-only transport.
+    `manual` intentionally produces a non-launch contract. The default Pro
+    route uses DevSpace; the explicit pro-attachment mode preserves the
+    attachment-only transport for frozen external evidence.
     """
     profile = resolve_profile(mode)
     result: dict[str, Any] = {
@@ -164,7 +182,7 @@ def build_launch_contract(
         })
         return result
     mission = _absolute_mission_path(mission_path)
-    if profile.mode == "pro":
+    if profile.mode == "pro-attachment":
         attachments = _attachment_paths(attachment_paths)
         if mission not in attachments:
             attachments.insert(0, mission)
@@ -183,6 +201,25 @@ def build_launch_contract(
             "thinking_time": "heavy",
             "mission_path": str(mission),
             "composer_prompt": PRO_COMPOSER_PROMPT,
+        })
+        return result
+    if profile.mode == "pro":
+        if attachment_paths:
+            raise OracleProfileError(
+                "PRO_READONLY_ATTACHMENTS_FORBIDDEN",
+                "Pro read-only DevSpace runs must not attach files",
+            )
+        result.update({
+            "route": "oracle-pro-devspace-readonly",
+            "app_policy": "prompt-mention-only",
+            "attachment_policy": "forbidden",
+            "app_name": DEVSPACE_APP_NAME,
+            "model": PRO_MODEL,
+            "model_strategy": "select",
+            "reasoning_level": "Pro",
+            "thinking_time": "heavy",
+            "mission_path": str(mission),
+            "composer_prompt": pro_readonly_composer_handoff(mission),
         })
         return result
     if attachment_paths:

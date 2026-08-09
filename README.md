@@ -13,7 +13,9 @@ Codex가 웹 ChatGPT에 계획·리서치·검토·코드 구현을 맡기고, �
   프로젝트의 파일 읽기·쓰기와 명령 실행
 
 일반 GPT 작업은 Oracle이 `@DevSpace`와 미션 파일 경로를 ChatGPT에
-전달합니다. Pro 작업은 DevSpace 없이 정확한 첨부 파일만 사용합니다.
+전달합니다. 자격을 갖춘 Pro 작업은 `GPT-5.6 Sol` Pro effort와 DevSpace를
+읽기 전용으로 사용합니다. 변경 불가능한 외부 증거나 DevSpace가 읽을 수 없는
+산출물에만 명시적 `pro-attachment`를 사용합니다.
 
 ## 이 도구로 할 수 있는 일
 
@@ -36,7 +38,7 @@ Codex가 UTF-8 미션 파일과 실행 manifest 작성
     ↓
 Oracle이 로그인된 ChatGPT 세션 실행
     ├─ 일반 GPT: @DevSpace + 미션 경로
-    └─ Pro: 미션 + 고정 해시 첨부 파일
+    └─ Pro: @DevSpace 읽기 전용(기본) 또는 명시적 고정 해시 첨부
     ↓
 웹 GPT가 프로젝트 탐색·계획·구현·테스트
     ↓
@@ -61,7 +63,7 @@ Codex가 해시·상태·최종 결정론적 테스트만 확인
 | Web Multi-GPT | Web Multi-GPT | 여러 관점의 독립 탐색·검증 | 독립 Oracle 세션 2~25개 + merger |
 | Local Multi-GPT | Local Multi-GPT | 로컬 병렬 자문·반례 탐색 | `gpt-5.6-luna` + `max` 고정, 읽기 전용 |
 | 종합모드 | comprehensive mode | 계획부터 구현·최종 게이트까지 자동 연결 | plan → optional Pro/Multi → review → implementation → gate |
-| Pro | `pro` / Pro | 독립적인 최종 판단·설계 검토 후 결과만 반환 | Oracle 첨부 전용, DevSpace 없음 |
+| Pro | `pro` / Pro | 독립적인 최종 판단·설계 검토 후 결과만 반환 | Oracle + DevSpace 읽기 전용(기본), 명시적 `pro-attachment` |
 
 지휘는 웹 제출 한 번으로 끝나는 실행 모드입니다. 종합모드는 지휘와 같은
 구현 단계를 포함하면서 계획·독립 검토·선택적 Pro/Web Multi·최종 게이트를
@@ -148,15 +150,17 @@ python "$env:USERPROFILE\.codex\bin\chatgpt_oracle_dispatch.py" `
 
 ## Pro 실행 예시
 
-Pro는 프로젝트 앱을 사용하지 않습니다. 미션과 필요한 증거 파일을 정확한
-해시로 고정해 첨부합니다.
+자격을 갖춘 Pro는 정확한 프로젝트 루트에서 DevSpace를 읽기 전용으로
+사용합니다. 프로젝트 탐색은 `read('.')` 디렉터리 목록 호환 경로에서 시작해
+질문에 따라 넓고 적응적으로 진행하며, 쓰기·편집·셸·명령 실행은 허용하지
+않습니다. DevSpace가 읽을 수 없는 변경 불가능한 외부 증거에만 명시적
+`pro-attachment` 계약으로 파일을 고정해 첨부합니다.
 
 ```powershell
 python "$env:USERPROFILE\.codex\bin\chatgpt_oracle_dispatch.py" `
   --mode pro `
   --project-root C:\project `
   --mission-path C:\project\pro.md `
-  --attachment C:\project\evidence.zip `
   --manifest-output C:\project\.ai-bridge\pro.json `
   --dry-run
 ```

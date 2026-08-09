@@ -101,7 +101,7 @@ def build_oracle_argv(config, layout, prompt: str) -> list[str]:
         "--prompt", prompt,
         "--write-output", str(layout.output_path),
     ]
-    if config.transport == "pro-attachment-only":
+    if STATE.is_attachment_transport(config.transport):
         attachment_args: list[str] = []
         for path in config.attachments:
             attachment_args.extend(["--file", str(path)])
@@ -110,7 +110,7 @@ def build_oracle_argv(config, layout, prompt: str) -> list[str]:
         ]
     if config.copy_profile is not None:
         command[command.index("--slug"):command.index("--slug")] = ["--copy-profile", str(config.copy_profile)]
-    if config.transport != "pro-attachment-only" and any(
+    if not STATE.is_pro_transport(config.transport) and any(
         item == "--file" or item.startswith("--file=") or item == "-f" for item in command
     ):
         raise OracleRunError("FILE_TRANSPORT_FORBIDDEN", "general GPT browser runs must not use --file")
@@ -127,7 +127,7 @@ ORACLE_0161_ATTACHMENT_MAX_BYTES = 1024 * 1024
 
 def validate_oracle_attachment_sizes(config) -> None:
     """Reject Pro attachments Oracle 0.17.1 cannot submit before any launch."""
-    if config.transport != "pro-attachment-only":
+    if not STATE.is_attachment_transport(config.transport):
         return
     oversized = [
         {"path": str(path), "size_bytes": path.stat().st_size, "limit_bytes": ORACLE_0161_ATTACHMENT_MAX_BYTES}
@@ -473,7 +473,7 @@ def pro_output_satisfies_required_schema(state: dict[str, Any], output_path: Pat
     ineligible for promotion. Both plain labels and labels wrapped in Markdown
     code ticks are accepted because the Pro response contract uses both forms.
     """
-    if str(state.get("transport") or "") != "pro-attachment-only":
+    if not STATE.is_pro_transport(str(state.get("transport") or "")):
         return True
     mission = state.get("mission") if isinstance(state.get("mission"), dict) else {}
     mission_path = Path(str(mission.get("transport_path") or mission.get("path") or ""))
@@ -627,7 +627,7 @@ def execute_run(
     try:
         version = resolve_oracle_version(config.oracle_command, run_factory=run_factory, platform_name=platform_name)
         compat_factory(version)
-        if config.transport == "devspace":
+        if STATE.is_devspace_transport(config.transport):
             devspace_compat = devspace_compat_factory()
             if devspace_compat.get("service_restart_required"):
                 raise OracleRunError(

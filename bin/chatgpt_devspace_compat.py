@@ -13,6 +13,11 @@ from typing import Any, Sequence
 SUPPORTED_VERSION = "1.0.4"
 CREATE_NO_WINDOW = 0x08000000
 PATCHES = {
+    "dist/server.js": {
+        "patch": "directory-read.patch",
+        "pristine": "0acc3636a5778b9463cb0d95c393c924b804af60a7b2a51790ed5f33a529e5fd",
+        "patched": "142007d1b0d07b59942adb7cb3f8db12514747027b83ffb458bcca0d83f24da1",
+    },
     "dist/workspaces.js": {
         "patch": "workspaces.patch",
         "pristine": "b4438d551f5ecccfa7942f8ec92f16fda1b0ab7b3256014c8983404acb0b9dcb",

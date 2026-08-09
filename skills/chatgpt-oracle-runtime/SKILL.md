@@ -1,13 +1,14 @@
 ---
 name: chatgpt-oracle-runtime
-description: "Current Oracle runtime path for new ChatGPT work: regular modes use the manually registered DevSpace app, Pro is attachment-only, and it includes recovery, comprehensive relay, and genuine multi-session Web Multi-GPT."
+description: "Current Oracle runtime path for new ChatGPT work: regular modes use DevSpace, qualified Pro uses read-only DevSpace, and explicit Pro attachments remain for bounded evidence."
 ---
 
 # ChatGPT Oracle Runtime
 
 This is the only active browser path for all new GPT work. CodexPro and
 agbrowse are frozen for exact legacy recovery only. Regular modes use DevSpace;
-Pro uses Oracle attachment transport without any app.
+qualified Pro uses the same app read-only, while `pro-attachment` uses Oracle
+attachment transport for its explicit evidence boundary.
 
 `chatgpt_oracle_dispatch.py` supports exactly `direct`, `plan`, `review`, `edit`,
 `orchestrator`, `deep-research`, `manual`, and `pro`. `manual` is a supported
@@ -19,8 +20,11 @@ path and a compact exact-workspace guard. The web GPT must use only the exact
 project root recorded in that mission, read the mission and applicable
 `AGENTS.md` completely first, and may retry that same root once after a timeout.
 It must not substitute a parent, child, active workspace, or shell boundary
-workaround. Pro selects the account-visible Pro model and sends one short instruction
-plus exact attachment files; it never mentions DevSpace.
+workaround. Qualified Pro selects `GPT-5.6 Sol` at the Pro effort and uses
+DevSpace read-only at the same exact root. It begins discovery with `read('.')`
+directory-list compatibility and may read decision-relevant material broadly,
+but never writes, edits, invokes shell, or runs commands. Explicit
+`pro-attachment` sends one short instruction plus exact attachment files.
 Regular routes select `GPT-5.6 Sol` with `heavy` and require Oracle
 evidence for visible `Extra High`. Never invent xhigh or silently downgrade.
 
@@ -31,7 +35,8 @@ Require schema `codex.chatgpt.oracle-run/v1` with:
 - `project_root`: absolute existing directory.
 - `mission_path`: absolute UTF-8 regular file inside the project.
 - `app_name`: one-line app name, without a leading `@`, for regular routes.
-- `task_kind: pro` plus one or more exact `attachments` for Pro.
+- `task_kind: pro`; qualified Pro uses `app_name: DevSpace`, while explicit
+  `pro-attachment` includes one or more exact `attachments`.
 - `mode`: `browser`.
 - Optional `run_root`, `oracle_command`, `oracle_args`, `thinking_time`,
   hash-validated `copy_profile`, and mutex timeout.

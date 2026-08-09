@@ -29,6 +29,11 @@ python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py setup 
 
 DevSpace prints an Owner password during initialization and stores it in its standard local configuration. Do not put that password in a script, manifest, issue, or repository.
 
+The managed service is launched with `DEVSPACE_TOOL_MODE=full`, which enables
+read-only workspace discovery (`grep`, `glob`, and `ls`) without expanding the
+approved roots. Keep the root list in DevSpace's configuration; the launch
+environment only selects the tool mode.
+
 ## Manual ChatGPT registration
 
 Enable Developer Mode in ChatGPT and manually create the connector:
@@ -45,5 +50,9 @@ python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py doctor
 ```
 
 Diagnosis checks local DevSpace `/mcp`, then `tailscale funnel status --json`, then the public `/mcp` endpoint. If the endpoint is healthy but a ChatGPT tool call fails, keep the server running and re-check the same manual connector URL; do not automate deletion or re-registration.
+
+It also reports the required managed tool mode (`full`) and any persisted
+`toolMode`. A configured non-`full` value is advisory failure because a
+manually started service may not inherit the managed launch environment.
 
 Tailscale Funnel makes the endpoint public. It requires Tailnet permissions and uses the device's stable MagicDNS name. Review Tailscale's policy and exposure rules before `--apply`.

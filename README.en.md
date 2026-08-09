@@ -14,8 +14,9 @@ It connects two upstream tools:
   run commands only inside project roots approved by the user.
 
 Regular GPT runs send one line containing `@DevSpace` and the absolute UTF-8
-mission-file path. Pro runs do not use DevSpace; they use exact, hash-frozen
-attachments through Oracle.
+mission-file path. Qualified Pro runs use `GPT-5.6 Sol` at the Pro effort with
+read-only DevSpace. Explicit `pro-attachment` is only for immutable external
+evidence or artifacts that DevSpace cannot read.
 
 ## What it provides
 
@@ -37,7 +38,7 @@ User request
     -> Codex writes a UTF-8 mission and manifest
     -> Oracle starts a signed-in ChatGPT session
        |-- regular GPT: @DevSpace + mission path
-       `-- Pro: mission + hash-frozen attachments
+       `-- Pro: read-only @DevSpace by default, or explicit hash-frozen attachments
     -> web GPT explores, plans, edits, and tests
     -> Oracle saves the answer as a local artifact
     -> Codex checks identity, hashes, and one deterministic final gate
@@ -59,7 +60,7 @@ Host state and ChatGPT output are stored outside DevSpace projects under
 | Web Multi-GPT | Web Multi-GPT | Independent parallel perspectives and merger | 2-25 Oracle sessions |
 | Local Multi-GPT | Local Multi-GPT | Local advisory synthesis and counterexample search | Fixed `gpt-5.6-luna` + `max`, read-only |
 | Comprehensive | comprehensive mode | Plan, optional Pro/Multi, review, implementation, gate | Staged Oracle workflow |
-| Pro | `pro` / Pro | Independent final judgment or design review; result only | Oracle attachments only |
+| Pro | `pro` / Pro | Independent final judgment or design review; result only | Oracle + read-only DevSpace by default; explicit `pro-attachment` |
 
 Orchestrator mode is a single web submission. Comprehensive mode contains an
 orchestrator-equivalent implementation stage plus planning, independent review,
@@ -148,15 +149,17 @@ Remove `--dry-run` only when the run is authorized.
 
 ## Pro example
 
-Pro uses no project app. It attaches the exact mission and evidence files with
-frozen hashes.
+Qualified Pro binds to the exact project root and uses DevSpace read-only. It
+starts adaptive, decision-relevant discovery with the `read('.')` directory-list
+compatibility path and may read broadly, but may not write, edit, invoke a
+shell, or run commands. Use an explicit `pro-attachment` contract only for
+immutable external evidence or artifacts that DevSpace cannot read.
 
 ```powershell
 python "$env:USERPROFILE\.codex\bin\chatgpt_oracle_dispatch.py" `
   --mode pro `
   --project-root C:\project `
   --mission-path C:\project\pro.md `
-  --attachment C:\project\evidence.zip `
   --manifest-output C:\project\.ai-bridge\pro.json `
   --dry-run
 ```

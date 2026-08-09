@@ -9,12 +9,13 @@
 
 ## Comprehensive-mode ownership
 
-- Every new ChatGPT submission uses Oracle. Regular GPT uses the manually registered DevSpace app; Pro uses Oracle attachment-only and never selects an app.
+- Every new ChatGPT submission uses Oracle. Regular GPT uses the manually registered DevSpace app. Qualified Pro uses `GPT-5.6 Sol` at the Pro effort through the same app in a read-only DevSpace route; explicit `pro-attachment` is reserved for immutable or external evidence that DevSpace cannot read and is never an automatic fallback.
 - New GPT comprehensive workflows use `codex.chatgpt.oracle-comprehensive/v1`. Existing CodexPro/agbrowse comprehensive v1-v4 state remains exact recovery-only.
 - The completing web GPT stage authors the next stage's semantic prompt. Local Codex may validate UTF-8, hashes, stage identity, immutable bindings, transport, recovery, and deterministic final tests, but must not rewrite the next prompt or take over expensive exploration/implementation.
 - A selected Web Multi advisory uses genuine independent Oracle sessions. Provider generation is limited to at most five concurrent children; larger accepted topologies run in capacity waves without reducing their logical lane count.
 - Comprehensive review owns plan repair and finalization. It fixes every locally resolvable defect inline, writes the corrected final plan and implementation mission, then returns PASS or PASS_WITH_NOTES. New work never loops review back to plan; legacy REVISE is terminal compatibility only, and FAIL requires a concrete external blocker.
 - Every regular Oracle stage is bound to one exact project root and one exact mission path. DevSpace may retry that same root once after listing registered workspaces, but must never substitute a parent, child, similarly named, active workspace, or shell boundary workaround.
+- A Pro DevSpace stage has the same exact-root binding. It may broadly and adaptively inspect decision-relevant project material, beginning with the `read('.')` directory-list compatibility path, but it must not write, edit, invoke a shell, or run commands. Once the one-time DevSpace qualification is complete, do not re-check app/settings state per run.
 - Transport and runner recovery retain the exact workflow/stage identity. They must not create a replacement workflow or reset the semantic revision budget.
 - CodexPro and agbrowse are frozen for new work. Their code may be invoked only to recover an exact persisted legacy run, never as an Oracle fallback.
 - Every new Oracle run must use a throwaway copy of the manually signed-in profile and an Oracle-owned hidden window. Never share the manual-login Chrome process across concurrent projects.

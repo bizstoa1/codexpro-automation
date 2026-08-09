@@ -48,6 +48,7 @@ def test_setup_plan_has_no_secrets_and_is_explicit_only(tmp_path: Path, monkeypa
     assert "token" not in text.lower()
     assert plan["registration_url"] == "https://device.tailnet.ts.net/mcp"
     assert plan["recommended_app_name"] == "DevSpace"
+    assert plan["managed_service_environment"] == {"DEVSPACE_TOOL_MODE": "full"}
     assert plan["devspace_init"][1:3] == [
         "-lc",
         "exec npx --yes @waishnav/devspace@1.0.4 init",
@@ -206,7 +207,7 @@ def test_setup_applies_hash_validated_devspace_compat_before_service_start(
     bash.write_text("", encoding="utf-8")
     monkeypatch.setenv("DEVSPACE_GIT_BASH", str(bash))
     calls: list[list[str]] = []
-    launched: list[list[str]] = []
+    launched: list[tuple[list[str], dict[str, str] | None]] = []
 
     def runner(argv, **kwargs):
         calls.append(list(argv))
@@ -217,7 +218,7 @@ def test_setup_applies_hash_validated_devspace_compat_before_service_start(
     module.apply_setup(
         current,
         runner=runner,
-        popen_factory=lambda argv, **kwargs: launched.append(list(argv)),
+        popen_factory=lambda argv, **kwargs: launched.append((list(argv), kwargs.get("env"))),
     )
 
     assert calls[1][1:3] == [
@@ -227,7 +228,64 @@ def test_setup_applies_hash_validated_devspace_compat_before_service_start(
     assert calls[2] == module.devspace_compat_argv()
     assert calls[3] == module.devspace_compat_argv(stop_exact_service=True)
     assert calls[4] == module.devspace_compat_argv(confirm_restarted=True)
-    assert launched and launched[0][1:3] == [
+    assert launched and launched[0][0][1:3] == [
         "-lc",
         "exec npx --yes @waishnav/devspace@1.0.4 serve",
     ]
+    assert launched[0][1]["DEVSPACE_TOOL_MODE"] == "full"
+
+
+def test_doctor_reports_full_mode_and_advises_on_explicit_nonfull_config(tmp_path: Path) -> None:
+    module, current = config(tmp_path)
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps({"allowedRoots": [str(current.roots[0])], "toolMode": "restricted"}),
+        encoding="utf-8",
+    )
+
+    class Response:
+        status = 200
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+
+    report = module.doctor(current, opener=lambda *args, **kwargs: Response(), config_path=config_path)
+    assert report["tool_mode"] == {
+        "required": "full",
+        "managed_launch": "full",
+        "configured": "restricted",
+        "effective": None,
+        "effective_observable": False,
+    }
+    assert report["next_action"] == "CHECK_DEVSPACE_TOOL_MODE"
+
+
+def test_doctor_reports_persisted_full_mode_without_guessing_process_environment(tmp_path: Path) -> None:
+    module, current = config(tmp_path)
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps({"allowedRoots": [str(current.roots[0])], "tool_mode": "full"}),
+        encoding="utf-8",
+    )
+
+    class Response:
+        status = 200
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+
+    report = module.doctor(
+        current,
+        opener=lambda *args, **kwargs: Response(),
+        config_path=config_path,
+        runner=lambda *args, **kwargs: SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps({"Web": {current.hostname + ":443": {"Proxy": f"http://127.0.0.1:{current.local_port}"}}}),
+            stderr="",
+        ),
+    )
+    assert report["tool_mode"]["configured"] == "full"
+    assert report["tool_mode"]["effective"] is None
+    assert report["tool_mode"]["effective_observable"] is False

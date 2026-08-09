@@ -103,6 +103,40 @@ def test_pro_manifest_is_attachment_only_and_hashes_exact_files(tmp_path: Path) 
     assert payload["attachments"][1]["sha256"] == state.sha256_file(packet.resolve())
 
 
+def test_pro_readonly_manifest_requires_devspace_and_stays_inside_project(tmp_path: Path) -> None:
+    state = load_state()
+    mission = tmp_path / "mission.md"
+    mission.write_text("read only", encoding="utf-8")
+    config = state.load_manifest(manifest(
+        tmp_path,
+        mission.resolve(),
+        transport="pro-devspace-readonly",
+        app_name="DevSpace",
+        model="gpt-5.6-sol",
+        model_strategy="select",
+        thinking_time="heavy",
+        research="off",
+        task_outcome_contract="legacy",
+    ))
+    assert state.is_pro_transport(config.transport)
+    assert state.is_devspace_transport(config.transport)
+    assert config.attachments == ()
+    assert state.composer_prompt(config).startswith(
+        f"@DevSpace Read the read-only mission file: {mission.resolve()}."
+    )
+    layout = state.create_layout(config, run_id="20260725T151414Z-a3aeba967d99")
+    assert state.state_payload(config, layout, status="prepared", resolved_version="oracle 0.17.1")["task_outcome"] == "not_applicable"
+
+    outside = (tmp_path.parent / "outside.md").resolve()
+    outside.write_text("outside", encoding="utf-8")
+    with pytest.raises(state.OracleStateError) as exc:
+        state.load_manifest(manifest(
+            tmp_path, outside, transport="pro-devspace-readonly", app_name="DevSpace",
+            model="gpt-5.6-sol", thinking_time="heavy", task_outcome_contract="legacy",
+        ))
+    assert exc.value.code == "MISSION_OUTSIDE_PROJECT"
+
+
 def test_pro_composer_identity_changes_with_project_or_attachment_bytes(tmp_path: Path) -> None:
     state = load_state()
     prompt = tmp_path / "prompt.txt"

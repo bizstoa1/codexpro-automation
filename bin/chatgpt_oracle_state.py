@@ -126,6 +126,24 @@ ORACLE_THINKING_TIME_PRE_SUBMIT_RE = re.compile(
 # parallel Web Multi lane, which is the exact failure this guard must avoid.
 PROFILE_COPY_DEPENDENCY = "rsync"
 PROFILE_COPY_NATIVE_PLATFORMS = ("nt",)
+PRO_TRANSPORTS = frozenset(("pro-attachment-only", "pro-devspace-readonly"))
+DEVSPACE_TRANSPORTS = frozenset(("devspace", "pro-devspace-readonly"))
+
+
+def is_pro_transport(transport: str) -> bool:
+    return str(transport or "").strip().casefold() in PRO_TRANSPORTS
+
+
+def is_devspace_transport(transport: str) -> bool:
+    return str(transport or "").strip().casefold() in DEVSPACE_TRANSPORTS
+
+
+def is_pro_readonly_transport(transport: str) -> bool:
+    return str(transport or "").strip().casefold() == "pro-devspace-readonly"
+
+
+def is_attachment_transport(transport: str) -> bool:
+    return str(transport or "").strip().casefold() == "pro-attachment-only"
 
 
 def profile_copy_is_supported(
@@ -319,10 +337,10 @@ def load_manifest(path: Path, *, platform_name: str | None = None) -> OracleConf
     if mode != "browser":
         raise OracleStateError("MODE_INVALID", "Oracle foundation runner supports mode=browser only")
     transport = str(payload.get("transport") or "devspace").strip().casefold()
-    if transport not in {"devspace", "pro-attachment-only"}:
-        raise OracleStateError("TRANSPORT_INVALID", "transport must be devspace or pro-attachment-only")
+    if transport not in {"devspace", *PRO_TRANSPORTS}:
+        raise OracleStateError("TRANSPORT_INVALID", "transport must be devspace, pro-attachment-only, or pro-devspace-readonly")
     app_name_raw = str(payload.get("app_name") or "").strip().lstrip("@").strip()
-    if transport == "devspace":
+    if is_devspace_transport(transport):
         if not is_within(project_root, mission_path):
             raise OracleStateError("MISSION_OUTSIDE_PROJECT", "mission_path must stay inside project_root")
         if not app_name_raw or APP_RE.fullmatch(app_name_raw) is None:
@@ -330,14 +348,14 @@ def load_manifest(path: Path, *, platform_name: str | None = None) -> OracleConf
         if app_name_raw != DEVSPACE_APP_NAME:
             raise OracleStateError(
                 "DEVSPACE_APP_REQUIRED",
-                f"new non-Pro Oracle runs require the exact app name {DEVSPACE_APP_NAME}",
+                f"DevSpace Oracle runs require the exact app name {DEVSPACE_APP_NAME}",
                 {"app_name": app_name_raw},
             )
         app_name: str | None = app_name_raw
         if payload.get("attachments"):
             raise OracleStateError("REGULAR_ATTACHMENTS_FORBIDDEN", "DevSpace runs must not attach files")
         attachments: tuple[Path, ...] = ()
-    else:
+    elif is_attachment_transport(transport):
         if app_name_raw:
             raise OracleStateError("PRO_APP_FORBIDDEN", "Pro attachment-only runs must not name an app")
         app_name = None
@@ -385,7 +403,7 @@ def load_manifest(path: Path, *, platform_name: str | None = None) -> OracleConf
             "THINKING_TIME_INVALID",
             "thinking_time must be light, standard, extended, extra-high, or heavy",
         )
-    if transport == "pro-attachment-only":
+    if is_pro_transport(transport):
         if model.casefold() != "gpt-5.6-sol":
             raise OracleStateError(
                 "PRO_MODEL_INVALID",
@@ -428,7 +446,7 @@ def load_manifest(path: Path, *, platform_name: str | None = None) -> OracleConf
     research = str(payload.get("research") or "off").strip().casefold()
     if research not in {"off", "deep"}:
         raise OracleStateError("RESEARCH_INVALID", "research must be off or deep")
-    if transport == "pro-attachment-only" and research != "off":
+    if is_pro_transport(transport) and research != "off":
         raise OracleStateError("PRO_RESEARCH_FORBIDDEN", "Pro attachment-only runs do not enable research mode")
     archive = str(payload.get("archive") or "auto").strip().casefold()
     if archive not in {"auto", "always", "never"}:
@@ -439,7 +457,7 @@ def load_manifest(path: Path, *, platform_name: str | None = None) -> OracleConf
             "TASK_OUTCOME_CONTRACT_INVALID",
             "task_outcome_contract must be legacy or v1",
         )
-    if transport == "pro-attachment-only" and task_outcome_contract != "legacy":
+    if is_pro_transport(transport) and task_outcome_contract != "legacy":
         raise OracleStateError(
             "PRO_TASK_OUTCOME_CONTRACT_FORBIDDEN",
             "Pro attachment-only output is not wrapped in the DevSpace task outcome contract",
@@ -482,7 +500,7 @@ def load_manifest(path: Path, *, platform_name: str | None = None) -> OracleConf
 
 
 def composer_prompt(config: OracleConfig, mission_path: Path | None = None) -> str:
-    if config.transport == "pro-attachment-only":
+    if is_attachment_transport(config.transport):
         identity_material = "\0".join((
             str(config.project_root).casefold(),
             config.mission_sha256,
@@ -494,6 +512,12 @@ def composer_prompt(config: OracleConfig, mission_path: Path | None = None) -> s
             f"Task identity: oracle-pro-{identity}."
         )
     effective_path = config.mission_path if mission_path is None else mission_path
+    if is_pro_readonly_transport(config.transport):
+        return (
+            f"@{config.app_name} Read the read-only mission file: {effective_path}. "
+            "Use only the exact project root recorded there; read the mission and applicable AGENTS.md fully first. "
+            "Perform read-only work only; do not modify files, settings, accounts, or external state."
+        )
     # Keep the Windows npx.cmd prompt in one argument line. A literal newline
     # truncates the prompt after the app mention before Oracle receives it.
     return (
@@ -553,7 +577,7 @@ def state_payload(config: OracleConfig, layout: RunLayout, *, status: str, resol
         ),
         "transport_status": "prepared",
         "task_outcome_contract": config.task_outcome_contract,
-        "task_outcome": "not_applicable" if config.transport == "pro-attachment-only" else "pending",
+        "task_outcome": "not_applicable" if is_pro_transport(config.transport) else "pending",
         "task_outcome_reason": None,
         "mission": {
             "path": str(config.mission_path),
@@ -1445,7 +1469,7 @@ def proven_pre_submit_host_failure(state_path: Path) -> dict[str, Any] | None:
         return None
     normalized_error = stderr_text.lstrip()
     if (
-        str(state.get("transport") or "") == "pro-attachment-only"
+        is_attachment_transport(str(state.get("transport") or ""))
         and "The following files exceed the 1 MB limit:" in normalized_error
         and attachment_limit_banner_only
     ):
@@ -1899,7 +1923,7 @@ TASK_OUTCOME_RE = re.compile(
 
 
 def classify_task_outcome(path: Path, *, contract: str, transport: str) -> str:
-    if transport == "pro-attachment-only":
+    if is_pro_transport(transport):
         return "not_applicable"
     try:
         text = path.read_text(encoding="utf-8", errors="strict")

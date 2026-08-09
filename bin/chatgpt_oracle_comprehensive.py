@@ -313,7 +313,9 @@ def _stage_mission(
     if stage == "plan":
         protocol += (
             "\n[PRO_ATTACHMENT_AUTHORING_CONTRACT]\n"
-            "If and only if next_stage=pro requires evidence files, the authored next mission must contain exactly "
+            "Use the default Pro DevSpace route unless frozen external evidence is unavailable or inappropriate "
+            "through the live exact root. If and only if next_stage=pro requires such evidence files, the authored "
+            "next mission must contain exactly "
             "one closed [PRO_ATTACHMENT_CONTRACT] block. Its body must be one JSON object with "
             f"schema={PRO_ATTACHMENT_SCHEMA} and an attachments array. Each attachment entry contains an absolute "
             "path and may contain its lowercase SHA-256. Paths must name regular non-symlink files inside "
@@ -396,6 +398,7 @@ def _oracle_manifest(
     stage: str,
     pro_attachments: Iterable[Path] = (),
 ) -> Path:
+    pro_attachments = tuple(pro_attachments)
     path = stage_dir / "oracle.json"
     payload: dict[str, Any] = {
         "schema": RUNNER.STATE.SCHEMA,
@@ -413,8 +416,12 @@ def _oracle_manifest(
         "run_id": run_id,
     }
     if stage == "pro":
-        payload["transport"] = "pro-attachment-only"
-        payload["attachments"] = [str(mission), *(str(item) for item in pro_attachments)]
+        if pro_attachments:
+            payload["transport"] = "pro-attachment-only"
+            payload["attachments"] = [str(mission), *(str(item) for item in pro_attachments)]
+        else:
+            payload["transport"] = "pro-devspace-readonly"
+            payload["app_name"] = config["app_name"]
     else:
         payload["transport"] = "devspace"
         payload["app_name"] = config["app_name"]

@@ -195,3 +195,42 @@ def test_bounded_workspace_patch_skips_transient_trees_and_batches_discovery() -
     assert '".venv"' in patch
     assert "const batchSize = 24" in patch
     assert "await Promise.all(batch.map" in patch
+
+
+def test_directory_read_patch_routes_directories_without_widening_read_access() -> None:
+    compat = load_compat()
+    patch = (
+        MODULE_PATH.parent
+        / "devspace-compat"
+        / compat.SUPPORTED_VERSION
+        / "directory-read.patch"
+    ).read_text(encoding="utf-8")
+
+    assert compat.PATCHES["dist/server.js"] == {
+        "patch": "directory-read.patch",
+        "pristine": "0acc3636a5778b9463cb0d95c393c924b804af60a7b2a51790ed5f33a529e5fd",
+        "patched": "142007d1b0d07b59942adb7cb3f8db12514747027b83ffb458bcca0d83f24da1",
+    }
+    assert "const readPath = workspaces.resolveReadPath(workspace, input.path);" in patch
+    assert "isDirectory = (await stat(readPath.absolutePath)).isDirectory();" in patch
+    assert "? await listDirectoryTool({ path: readPath.absolutePath }, {" in patch
+    assert "+                root: workspace.root," in patch
+    assert ": await readFileTool({ ...input, path: readPath.absolutePath }, {" in patch
+    assert "+                readRoots: readPath.readRoots," in patch
+
+
+def test_directory_read_patch_unknown_upstream_hash_fails_closed(tmp_path: Path) -> None:
+    compat = load_compat()
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "package.json").write_text(json.dumps({"version": "1.0.4"}), encoding="utf-8")
+    server = package / "dist" / "server.js"
+    server.parent.mkdir()
+    server.write_text("unknown upstream bytes\\n", encoding="utf-8")
+    compat.PATCHES = {"dist/server.js": compat.PATCHES["dist/server.js"]}
+
+    with pytest.raises(compat.DevSpaceCompatError) as mismatch:
+        compat.ensure_devspace_compatibility(package_root=package)
+
+    assert mismatch.value.code == "DEVSPACE_FILE_HASH_MISMATCH"
+    assert mismatch.value.evidence["path"] == str(server)

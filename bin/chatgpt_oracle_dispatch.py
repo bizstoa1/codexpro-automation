@@ -51,18 +51,22 @@ def compile_manifest(
         "mission_path": contract["mission_path"],
         "mode": "browser",
         "task_kind": contract["task_kind"],
-        "transport": "pro-attachment-only" if contract["mode"] == "pro" else "devspace",
+        "transport": {
+            "oracle-pro-attachment-only": "pro-attachment-only",
+            "oracle-pro-devspace-readonly": "pro-devspace-readonly",
+            "oracle-devspace": "devspace",
+        }[contract["route"]],
         "model": contract.get("model") or "gpt-5.6",
         "model_strategy": "select",
         "thinking_time": contract["thinking_time"],
         "research": "deep" if contract["research"] else "off",
         "archive": "auto",
     }
-    if contract["mode"] == "pro":
+    if contract["route"] == "oracle-pro-attachment-only":
         manifest["attachments"] = contract["attachments"]
     else:
         manifest["app_name"] = "DevSpace"
-        manifest["task_outcome_contract"] = "v1"
+        manifest["task_outcome_contract"] = "legacy" if contract["route"] == "oracle-pro-devspace-readonly" else "v1"
     target.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     result["oracle_manifest_path"] = str(target)
     return result

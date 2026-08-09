@@ -77,7 +77,7 @@ def test_regular_medium_is_forwarded_as_the_visible_medium_tier(tmp_path: Path) 
     assert value["thinking_time"] == "standard"
 
 
-def test_pro_compiles_attachment_only_oracle_and_manual_never_launches(tmp_path: Path) -> None:
+def test_pro_attachment_compiles_attachment_only_oracle_and_manual_never_launches(tmp_path: Path) -> None:
     module = load()
     prompt = tmp_path / "prompt.txt"
     packet = tmp_path / "packet.zip"
@@ -85,7 +85,7 @@ def test_pro_compiles_attachment_only_oracle_and_manual_never_launches(tmp_path:
     packet.write_bytes(b"PK\x03\x04packet")
     pro_target = tmp_path / "pro.json"
     pro = module.compile_manifest(
-        mode="pro",
+        mode="pro-attachment",
         project_root=tmp_path,
         mission_path=prompt,
         output_path=pro_target,
@@ -110,6 +110,28 @@ def test_pro_compiles_attachment_only_oracle_and_manual_never_launches(tmp_path:
     assert not manual_target.exists()
 
 
+def test_pro_defaults_to_devspace_without_attachments(tmp_path: Path) -> None:
+    module = load()
+    mission = tmp_path / "mission.md"
+    mission.write_text("read only", encoding="utf-8")
+    target = tmp_path / "pro-readonly.json"
+
+    result = module.compile_manifest(
+        mode="pro", project_root=tmp_path, mission_path=mission, output_path=target
+    )
+
+    value = json.loads(target.read_text(encoding="utf-8"))
+    assert result["contract"]["route"] == "oracle-pro-devspace-readonly"
+    assert value["transport"] == "pro-devspace-readonly"
+    assert value["app_name"] == "DevSpace"
+    assert value["model"] == "gpt-5.6-sol"
+    assert value["model_strategy"] == "select"
+    assert value["thinking_time"] == "heavy"
+    assert value["research"] == "off"
+    assert value["task_outcome_contract"] == "legacy"
+    assert "attachments" not in value
+
+
 def test_pro_cli_dry_run_validates_compiled_manifest_without_submission(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
@@ -122,7 +144,7 @@ def test_pro_cli_dry_run_validates_compiled_manifest_without_submission(
     monkeypatch.setenv("CODEX_ORACLE_STATE_ROOT", str(tmp_path.parent / "host-state-pro-dry-run"))
 
     exit_code = module.main([
-        "--mode", "pro",
+        "--mode", "pro-attachment",
         "--project-root", str(tmp_path),
         "--mission-path", str(prompt),
         "--attachment", str(packet),

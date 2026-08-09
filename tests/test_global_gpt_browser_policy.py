@@ -27,53 +27,31 @@ def test_new_regular_modes_route_only_to_oracle_devspace() -> None:
     assert "app picker" not in value.casefold()
 
 
-def test_pro_is_oracle_attachment_only_and_never_uses_devspace_or_codexpro() -> None:
-    value = text(PRO)
-    assert "attachment" in value.casefold()
-    assert "Oracle is the only backend for a new Pro run" in value
-    assert "must never invoke DevSpace or CodexPro" not in value
-    assert "There is no new agbrowse, CodexPro, DevSpace" in value
-    handoff = text(HANDOFF)
-    assert "Pro is attachment-only through `chatgpt-pro-browser` and Oracle" in handoff
-    assert "never uses\nDevSpace or CodexPro" in handoff
-
-
-def test_pro_requires_maximum_useful_project_specific_judgment_context() -> None:
+def test_qualified_pro_uses_read_only_devspace_and_attachments_are_explicit() -> None:
     value = text(PRO)
     flat = " ".join(value.split())
-    assert "project-specific, judgment-complete" in flat
-    assert "maximum-useful-context packet" in flat
-    assert "universal default for every project and every Pro consultation" in flat
-    assert "requires no project-specific opt-in" in flat
-    assert "Fill the verified effective Oracle/Pro attachment and model-context budget" in flat
-    assert "up to the practical maximum" in flat
-    assert "effective attachment/context budget used for the run" in flat
-    assert "included bytes or tokens when measurable" in flat
-    assert "remaining capacity could not improve the decision" in flat
-    assert "Do not silently stop at a customary file count or convenience bundle size" in flat
-    assert "using the domain-appropriate equivalent" in flat
-    assert "all non-duplicative, project-specific, decision-relevant project evidence" in flat
-    assert "governing rules and exact question" in flat
-    assert "canonical current state and measured primary evidence" in flat
-    assert "conflicts, failures, controls, and prior decisions" in flat
-    assert "source or implementation feasibility" in flat
-    assert "compact supporting detail" in flat
-    assert "excluded or truncated artifact" in flat
-    assert "coverage boundary, priority, and expected decision impact" in flat
-    assert "complete applicable `AGENTS.md`/project-rule chain" in flat
-    assert "killed, rejected, blocked, or near-duplicate routes" in flat
-    assert "exact prior answer" in flat
-    assert "evidence index" in flat
-    assert "known omissions" in flat
-    assert "databases/WAL files" in flat
-    assert "credentials, secrets, cookies, browser/profile state" in flat
-    assert "volatile logs, caches, and unrelated bulk" in flat
-    assert "Preflight fails closed" in flat
-    assert "build_project_context_packet.py build" in flat
-    assert "build_project_context_packet.py validate" in flat
-    assert "explicit evidence allowlist" in flat
-    assert "local proven/configured transport envelope" in flat
-    assert "not vendor or model limits" in flat
+    assert "Oracle is the only backend for a new Pro run" in flat
+    assert "manually registered DevSpace app in read-only mode" in flat
+    assert "exact absolute project root" in flat
+    assert "Read-only is absolute" in flat
+    assert "`pro-attachment` is attachment-only through Oracle" in flat
+    assert "immutable/external evidence or artifacts that DevSpace cannot read" in flat
+    assert "never an automatic fallback from qualified Pro DevSpace" in flat
+    assert "There is no new agbrowse,\nCodexPro" in value
+    handoff = text(HANDOFF)
+    assert "read-only DevSpace Pro by default" in handoff
+    assert "`pro-attachment` remains an explicit attachment-only" in handoff
+
+
+def test_qualified_pro_permits_broad_adaptive_read_only_project_context() -> None:
+    value = text(PRO)
+    flat = " ".join(value.split())
+    assert "begins with the `read('.')` directory-list compatibility call" in flat
+    assert "discover and read broadly and adaptively within that exact root" in flat
+    assert "A narrow preselected evidence allowlist is not required" in flat
+    assert "applicable `AGENTS.md` chain completely" in flat
+    assert "current Git state, project rules, mission artifacts" in flat
+    assert "must not write or edit files, invoke a shell, or run commands" in flat
 
 
 def test_pro_requires_an_evidence_based_web_multi_decision_and_auto_handoff() -> None:
@@ -149,6 +127,7 @@ def test_install_inventory_contains_new_active_runtime_and_keeps_legacy_recovery
         "bin/chatgpt_oracle_dispatch.py",
         "bin/chatgpt_oracle_multi.py",
         "bin/chatgpt_oracle_comprehensive.py",
+        "bin/devspace-compat/1.0.4/directory-read.patch",
         "skills/chatgpt-workspace-setup/SKILL.md",
     ):
         assert path in include
@@ -156,7 +135,8 @@ def test_install_inventory_contains_new_active_runtime_and_keeps_legacy_recovery
     assert manifest["routing"] == {
         "new_work_engine": "oracle",
         "regular_workspace_transport": "devspace",
-        "pro_transport": "oracle-attachment-only",
+        "pro_transport": "oracle-devspace-readonly",
+        "pro_attachment_transport": "oracle-attachment-only-explicit",
         "agbrowse": "persisted-run-recovery-only",
         "codexpro": "persisted-run-recovery-only",
     }
@@ -187,7 +167,7 @@ def test_english_readme_maps_modes_to_the_same_oracle_routes() -> None:
     assert "`deep-research` / deep research" in value
     assert "comprehensive mode" in value
     assert "Web Multi-GPT" in value
-    assert "Oracle attachments only" in value
+    assert "Oracle + read-only DevSpace by default; explicit `pro-attachment`" in value
     assert "never resubmits the task" in value
 
 
@@ -206,7 +186,7 @@ def test_agent_metadata_exposes_oracle_active_routes() -> None:
     pro = text(ROOT / "skills" / "chatgpt-pro-browser" / "agents" / "openai.yaml")
     assert "Oracle and DevSpace" in thinking
     assert "parallel Oracle GPT sessions" in multi
-    assert "one-shot attachment-only Pro review through Oracle" in pro
+    assert "read-only DevSpace" in pro
     assert "allow_implicit_invocation: true" in pro
 
 

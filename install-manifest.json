@@ -11,6 +11,7 @@
     "bin/chatgpt_git_isolation.py",
     "bin/chatgpt_oracle_run.py",
     "bin/chatgpt_devspace_compat.py",
+    "bin/devspace-compat/1.0.4/directory-read.patch",
     "bin/devspace-compat/1.0.4/workspaces.patch",
     "bin/chatgpt_oracle_compat.py",
     "bin/oracle-compat/0.17.1/profileCopy.windows-native.patch",
@@ -99,7 +100,8 @@
   "routing": {
     "new_work_engine": "oracle",
     "regular_workspace_transport": "devspace",
-    "pro_transport": "oracle-attachment-only",
+    "pro_transport": "oracle-devspace-readonly",
+    "pro_attachment_transport": "oracle-attachment-only-explicit",
     "agbrowse": "persisted-run-recovery-only",
     "codexpro": "persisted-run-recovery-only"
   },

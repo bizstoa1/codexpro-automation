@@ -60,6 +60,20 @@ def pro_manifest(tmp_path: Path, **extra) -> Path:
     )
 
 
+def pro_readonly_manifest(tmp_path: Path, **extra) -> Path:
+    return manifest(
+        tmp_path,
+        transport="pro-devspace-readonly",
+        app_name="DevSpace",
+        model="gpt-5.6-sol",
+        model_strategy="select",
+        thinking_time="heavy",
+        research="off",
+        task_outcome_contract="legacy",
+        **extra,
+    )
+
+
 def version_runner(command, **kwargs):
     return subprocess.CompletedProcess(command, 0, stdout="oracle 0.13.0\n", stderr="")
 
@@ -419,6 +433,31 @@ def test_pro_dry_run_uses_oracle_attachments_and_no_app_mention(tmp_path: Path) 
     assert prompt.endswith(".")
     assert "@DevSpace" not in prompt
     assert all(item["sha256"] for item in result["attachments"])
+
+
+def test_pro_readonly_dry_run_uses_devspace_preflight_without_file_transport(tmp_path: Path) -> None:
+    runner = load_runner()
+    preflight_calls = []
+    captured = {}
+    result = runner.execute_run(
+        pro_readonly_manifest(tmp_path),
+        run_factory=version_0171_runner,
+        popen_factory=popen_for(0, b"read-only answer\n", captured, []),
+        compat_factory=lambda version: {"ok": True, "version": version},
+        devspace_compat_factory=lambda: preflight_calls.append(True) or {
+            "ok": True, "changed": [], "service_restart_required": False,
+        },
+    )
+
+    argv = captured["command"]
+    prompt = argv[argv.index("--prompt") + 1]
+    assert result["result"]["transport"] == "pro-devspace-readonly"
+    assert "--browser-attachments" not in argv
+    assert "--file" not in argv
+    assert argv[argv.index("--model") + 1] == "gpt-5.6-sol"
+    assert argv[argv.index("--browser-thinking-time") + 1] == "heavy"
+    assert prompt.startswith(f"@DevSpace Read the read-only mission file: {tmp_path / 'mission.md'}.")
+    assert preflight_calls == [True]
 
 
 def test_pro_attachment_limit_is_exactly_one_mib_and_blocks_before_oracle_launch(tmp_path: Path) -> None:
