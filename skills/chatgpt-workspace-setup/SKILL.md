@@ -32,6 +32,13 @@ that skips transient `.pytest-*` and cache trees. If it reports
 `service_restart_required=true`, restart DevSpace before any Oracle
 submission. Unknown versions or hashes fail closed.
 
+On Windows, any Startup shortcut or service wrapper must read
+`%USERPROFILE%\.devspace\config.json` at every launch and derive
+`DEVSPACE_ALLOWED_ROOTS` from its current `allowedRoots`. Never hardcode a
+second root list in the startup wrapper: DevSpace gives the environment
+variable precedence over the persisted config, so a stale wrapper silently
+removes newer projects after every reboot.
+
 The only app information to enter manually in ChatGPT Developer Mode is:
 
 - Recommended app name: `DevSpace`

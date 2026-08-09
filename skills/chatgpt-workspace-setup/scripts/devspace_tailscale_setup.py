@@ -210,6 +210,23 @@ def http_probe(url: str, *, opener: Callable[..., Any] = urllib.request.urlopen)
         return {"ok": False, "error": type(error).__name__, "url": url}
 
 
+def persisted_allowed_roots(config_path: Path) -> tuple[Path, ...]:
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise SetupError("DEVSPACE_CONFIG_UNREADABLE") from error
+    values = payload.get("allowedRoots") if isinstance(payload, dict) else None
+    if not isinstance(values, list) or not values:
+        raise SetupError("DEVSPACE_CONFIG_ALLOWED_ROOTS_MISSING")
+    roots: list[Path] = []
+    for value in values:
+        candidate = Path(str(value)).expanduser()
+        if not candidate.is_absolute():
+            raise SetupError("DEVSPACE_CONFIG_ALLOWED_ROOT_INVALID")
+        roots.append(candidate.resolve())
+    return tuple(roots)
+
+
 def funnel_status(
     config: SetupConfig | None = None,
     *,
@@ -249,7 +266,7 @@ def funnel_status(
         return {"ok": False, "error": "TAILSCALE_STATUS_JSON_INVALID"}
 
 
-def doctor(config: SetupConfig, *, opener: Callable[..., Any] = urllib.request.urlopen, runner: Callable[..., Any] = subprocess.run, chatgpt_call_failed: bool = False) -> dict[str, Any]:
+def doctor(config: SetupConfig, *, opener: Callable[..., Any] = urllib.request.urlopen, runner: Callable[..., Any] = subprocess.run, chatgpt_call_failed: bool = False, config_path: Path | None = None) -> dict[str, Any]:
     local = http_probe(config.local_mcp_url, opener=opener)
     if not local.get("ok"):
         return {
@@ -258,6 +275,31 @@ def doctor(config: SetupConfig, *, opener: Callable[..., Any] = urllib.request.u
             "recommended_app_name": APP_NAME,
             "next_action": "CHECK_DEVSPACE_LOCAL_SERVICE",
         }
+    if config_path is not None:
+        try:
+            configured_roots = persisted_allowed_roots(config_path)
+        except SetupError as error:
+            return {
+                "local": local,
+                "config": {"ok": False, "error": str(error), "path": str(config_path)},
+                "registration_url": config.registration_url,
+                "recommended_app_name": APP_NAME,
+                "next_action": "CHECK_DEVSPACE_CONFIG",
+            }
+        missing = [root for root in config.roots if root not in configured_roots]
+        if missing:
+            return {
+                "local": local,
+                "config": {
+                    "ok": False,
+                    "path": str(config_path),
+                    "configured_roots": [str(root) for root in configured_roots],
+                    "missing_roots": [str(root) for root in missing],
+                },
+                "registration_url": config.registration_url,
+                "recommended_app_name": APP_NAME,
+                "next_action": "CHECK_DEVSPACE_ALLOWED_ROOTS",
+            }
     funnel = funnel_status(config, runner=runner)
     if not funnel.get("ok"):
         return {
@@ -313,7 +355,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.apply:
                 apply_setup(config)
             return 0
-        print(json.dumps(doctor(config, chatgpt_call_failed=args.chatgpt_call_failed), ensure_ascii=False, indent=2))
+        print(json.dumps(doctor(
+            config,
+            chatgpt_call_failed=args.chatgpt_call_failed,
+            config_path=Path.home() / ".devspace" / "config.json",
+        ), ensure_ascii=False, indent=2))
         return 0
     except SetupError as error:
         print(json.dumps({"ok": False, "error": str(error)}), file=sys.stderr)

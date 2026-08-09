@@ -97,6 +97,30 @@ def test_doctor_returns_local_failure_before_funnel_or_public(tmp_path: Path) ->
     assert report["next_action"] == "CHECK_DEVSPACE_LOCAL_SERVICE"
 
 
+def test_doctor_reports_persisted_allowed_root_mismatch(tmp_path: Path) -> None:
+    module, current = config(tmp_path)
+    config_path = tmp_path / "config.json"
+    other = tmp_path / "other"
+    other.mkdir()
+    config_path.write_text(json.dumps({"allowedRoots": [str(other.resolve())]}), encoding="utf-8")
+
+    class Response:
+        status = 401
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+
+    report = module.doctor(
+        current,
+        opener=lambda *args, **kwargs: Response(),
+        config_path=config_path,
+    )
+
+    assert report["next_action"] == "CHECK_DEVSPACE_ALLOWED_ROOTS"
+    assert report["config"]["missing_roots"] == [str(current.roots[0])]
+
+
 def test_module_has_no_chatgpt_ui_or_browser_automation() -> None:
     source = MODULE_PATH.read_text(encoding="utf-8").lower()
     for forbidden in (
