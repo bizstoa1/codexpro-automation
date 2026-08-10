@@ -233,9 +233,10 @@ def test_temp_codex_home_install_and_rollback_is_exact_inverse() -> None:
         assert not created.exists()
         assert not installed_pro_skill.exists()
         assert not installed_pro_metadata.exists()
-        assert '"status":  "COMPLETE"' in rolled_back.stdout
+        assert json.loads(rolled_back.stdout)['status'] == 'COMPLETE'
 
 
+@pytest.mark.skipif(os.name != 'nt', reason='mocked npm.cmd dependency inverse is Windows-only')
 def test_normal_install_dependency_receipt_rolls_back_mocked_npm_and_contract_exactly() -> None:
     """The normal (non-skip) path must own update.ps1's exact inverse evidence."""
     with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as mock_bin:
@@ -294,6 +295,7 @@ def test_dependency_inverse_conflict_is_non_complete_and_preserves_current_depen
     assert 'dependency_rollback_incomplete' in rollback
 
 
+@pytest.mark.skipif(os.name != 'nt', reason='mocked npm.cmd dependency inverse is Windows-only')
 def test_dependency_inverse_rejects_registry_integrity_mismatch_after_mocked_install() -> None:
     """A successful npm exit is insufficient: the recorded prior integrity must still match."""
     with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as mock_bin:
