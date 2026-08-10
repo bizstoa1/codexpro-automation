@@ -457,10 +457,15 @@ def load_manifest(path: Path, *, platform_name: str | None = None) -> OracleConf
             "TASK_OUTCOME_CONTRACT_INVALID",
             "task_outcome_contract must be legacy or v1",
         )
-    if is_pro_transport(transport) and task_outcome_contract != "legacy":
+    if is_attachment_transport(transport) and task_outcome_contract != "legacy":
         raise OracleStateError(
             "PRO_TASK_OUTCOME_CONTRACT_FORBIDDEN",
             "Pro attachment-only output is not wrapped in the DevSpace task outcome contract",
+        )
+    if is_pro_readonly_transport(transport) and task_outcome_contract != "v1":
+        raise OracleStateError(
+            "PRO_DEVSPACE_TASK_OUTCOME_CONTRACT_REQUIRED",
+            "Pro DevSpace output requires the v1 task outcome contract",
         )
     parallel_parent_raw = str(payload.get("parallel_parent_id") or "").strip().casefold()
     parallel_parent_id = parallel_parent_raw or None
@@ -516,7 +521,9 @@ def composer_prompt(config: OracleConfig, mission_path: Path | None = None) -> s
         return (
             f"@{config.app_name} Read the read-only mission file: {effective_path}. "
             "Use only the exact project root recorded there; read the mission and applicable AGENTS.md fully first. "
-            "Perform read-only work only; do not modify files, settings, accounts, or external state."
+            "Perform read-only work only; do not modify files, settings, accounts, or external state. "
+            "End the final response with exactly one of TASK_OUTCOME: EXECUTED, TASK_OUTCOME: NOT_EXECUTED, or "
+            "TASK_OUTCOME: BLOCKED."
         )
     # Keep the Windows npx.cmd prompt in one argument line. A literal newline
     # truncates the prompt after the app mention before Oracle receives it.
@@ -577,7 +584,7 @@ def state_payload(config: OracleConfig, layout: RunLayout, *, status: str, resol
         ),
         "transport_status": "prepared",
         "task_outcome_contract": config.task_outcome_contract,
-        "task_outcome": "not_applicable" if is_pro_transport(config.transport) else "pending",
+        "task_outcome": "not_applicable" if is_attachment_transport(config.transport) else "pending",
         "task_outcome_reason": None,
         "mission": {
             "path": str(config.mission_path),
@@ -1923,7 +1930,7 @@ TASK_OUTCOME_RE = re.compile(
 
 
 def classify_task_outcome(path: Path, *, contract: str, transport: str) -> str:
-    if is_pro_transport(transport):
+    if is_attachment_transport(transport):
         return "not_applicable"
     try:
         text = path.read_text(encoding="utf-8", errors="strict")

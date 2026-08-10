@@ -93,8 +93,16 @@ attachments; `pro-attachment` never invokes DevSpace.
 
 Completion requires the requested Pro model/effort evidence, exit zero, fresh
 nonempty host-only `output.md`, immutable run identity, and a refreshed
-transcript. A nonzero exit after submission is `attention_required`, not proof
-that the web session failed.
+transcript. The final nonempty line must also be
+`TASK_OUTCOME: EXECUTED|NOT_EXECUTED|BLOCKED`. A terminal answer that reports
+zero callable DevSpace tools or says the mission/root could not be read is
+`NOT_EXECUTED`, never successful Pro work. When that exact terminal run is
+durably captured, it releases same-project ownership and permits at most one
+fresh retry with the same mission bytes and SHA-256. If the retry has the same
+tool-exposure failure, stop with `attention_required`; do not loop, manipulate
+ChatGPT app settings, or switch to attachments automatically. A nonzero exit
+after submission is `attention_required`, not proof that the web session
+failed.
 
 ## Recovery
 

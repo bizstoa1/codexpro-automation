@@ -422,9 +422,11 @@ def _oracle_manifest(
         else:
             payload["transport"] = "pro-devspace-readonly"
             payload["app_name"] = config["app_name"]
+            payload["task_outcome_contract"] = "v1"
     else:
         payload["transport"] = "devspace"
         payload["app_name"] = config["app_name"]
+        payload["task_outcome_contract"] = "v1"
     _write(path, payload)
     return path
 

@@ -116,7 +116,7 @@ def test_pro_readonly_manifest_requires_devspace_and_stays_inside_project(tmp_pa
         model_strategy="select",
         thinking_time="heavy",
         research="off",
-        task_outcome_contract="legacy",
+        task_outcome_contract="v1",
     ))
     assert state.is_pro_transport(config.transport)
     assert state.is_devspace_transport(config.transport)
@@ -124,17 +124,25 @@ def test_pro_readonly_manifest_requires_devspace_and_stays_inside_project(tmp_pa
     assert state.composer_prompt(config).startswith(
         f"@DevSpace Read the read-only mission file: {mission.resolve()}."
     )
+    assert state.composer_prompt(config).endswith("TASK_OUTCOME: BLOCKED.")
     layout = state.create_layout(config, run_id="20260725T151414Z-a3aeba967d99")
-    assert state.state_payload(config, layout, status="prepared", resolved_version="oracle 0.17.1")["task_outcome"] == "not_applicable"
+    assert state.state_payload(config, layout, status="prepared", resolved_version="oracle 0.17.1")["task_outcome"] == "pending"
 
     outside = (tmp_path.parent / "outside.md").resolve()
     outside.write_text("outside", encoding="utf-8")
     with pytest.raises(state.OracleStateError) as exc:
         state.load_manifest(manifest(
             tmp_path, outside, transport="pro-devspace-readonly", app_name="DevSpace",
-            model="gpt-5.6-sol", thinking_time="heavy", task_outcome_contract="legacy",
+            model="gpt-5.6-sol", thinking_time="heavy", task_outcome_contract="v1",
         ))
     assert exc.value.code == "MISSION_OUTSIDE_PROJECT"
+
+    with pytest.raises(state.OracleStateError) as exc:
+        state.load_manifest(manifest(
+            tmp_path, mission.resolve(), transport="pro-devspace-readonly", app_name="DevSpace",
+            model="gpt-5.6-sol", thinking_time="heavy", task_outcome_contract="legacy",
+        ))
+    assert exc.value.code == "PRO_DEVSPACE_TASK_OUTCOME_CONTRACT_REQUIRED"
 
 
 def test_pro_composer_identity_changes_with_project_or_attachment_bytes(tmp_path: Path) -> None:

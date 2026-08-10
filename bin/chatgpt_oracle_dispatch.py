@@ -66,7 +66,7 @@ def compile_manifest(
         manifest["attachments"] = contract["attachments"]
     else:
         manifest["app_name"] = "DevSpace"
-        manifest["task_outcome_contract"] = "legacy" if contract["route"] == "oracle-pro-devspace-readonly" else "v1"
+        manifest["task_outcome_contract"] = "v1"
     target.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     result["oracle_manifest_path"] = str(target)
     return result

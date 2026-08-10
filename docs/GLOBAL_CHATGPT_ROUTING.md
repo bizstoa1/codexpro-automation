@@ -23,6 +23,12 @@ Use this routing in the Codex global `AGENTS.md` after installing the package.
   without a narrow per-run allowlist, but may not write, edit, invoke shell, or
   run commands. One-time app qualification is sufficient: do not inspect app
   settings or picker state per run.
+- Qualified Pro output uses the v1 task-outcome marker. Exit zero and a durable
+  answer do not count as success when DevSpace exposed no callable tools or the
+  exact mission/root was unread. A durably terminal `NOT_EXECUTED` run may
+  release its project lock for one fresh retry with identical mission bytes;
+  repeated tool absence is `attention_required`, not an automatic app-settings
+  repair or attachment fallback.
 - Explicit `pro-attachment` is attachment-only and is available only for
   immutable/external evidence or artifacts unreadable through DevSpace. It is
   not a fallback from a qualified Pro DevSpace run.

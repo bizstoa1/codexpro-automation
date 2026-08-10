@@ -54,6 +54,16 @@ def test_qualified_pro_permits_broad_adaptive_read_only_project_context() -> Non
     assert "must not write or edit files, invoke a shell, or run commands" in flat
 
 
+def test_qualified_pro_fails_closed_when_devspace_tools_are_not_exposed() -> None:
+    value = text(PRO)
+    flat = " ".join(value.split())
+    assert "TASK_OUTCOME: EXECUTED|NOT_EXECUTED|BLOCKED" in flat
+    assert "zero callable DevSpace tools" in flat
+    assert "`NOT_EXECUTED`, never successful Pro work" in flat
+    assert "at most one fresh retry with the same mission bytes and SHA-256" in flat
+    assert "do not loop, manipulate ChatGPT app settings" in flat
+
+
 def test_pro_requires_an_evidence_based_web_multi_decision_and_auto_handoff() -> None:
     value = text(PRO)
     assert "WEB_MULTI_NEEDED: YES|NO" in value

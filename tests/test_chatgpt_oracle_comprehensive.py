@@ -128,6 +128,7 @@ def test_pro_stage_runs_oracle_attachment_only_and_materializes_bound_receipt(tm
         stages.append(stage)
         if stage == "pro":
             assert payload["transport"] == "pro-devspace-readonly"
+            assert payload["task_outcome_contract"] == "v1"
             assert payload["model"] == "gpt-5.6-sol"
             assert payload["app_name"] == "DevSpace"
             assert "attachments" not in payload
@@ -1477,6 +1478,7 @@ def test_regular_manifest_never_attaches_pro_packets_and_default_pro_uses_devspa
         config, mission, tmp_path / "legacy-pro", "d" * 32, stage="pro"
     ).read_text(encoding="utf-8"))
     assert default_pro["transport"] == "pro-devspace-readonly"
+    assert default_pro["task_outcome_contract"] == "v1"
     assert default_pro["app_name"] == config["app_name"]
     assert "attachments" not in default_pro
 

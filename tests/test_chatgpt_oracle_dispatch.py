@@ -128,7 +128,7 @@ def test_pro_defaults_to_devspace_without_attachments(tmp_path: Path) -> None:
     assert value["model_strategy"] == "select"
     assert value["thinking_time"] == "heavy"
     assert value["research"] == "off"
-    assert value["task_outcome_contract"] == "legacy"
+    assert value["task_outcome_contract"] == "v1"
     assert "attachments" not in value
 
 

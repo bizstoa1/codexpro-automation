@@ -69,7 +69,7 @@ def pro_readonly_manifest(tmp_path: Path, **extra) -> Path:
         model_strategy="select",
         thinking_time="heavy",
         research="off",
-        task_outcome_contract="legacy",
+        task_outcome_contract="v1",
         **extra,
     )
 
@@ -545,6 +545,31 @@ def test_v1_task_outcome_separates_transport_success_from_execution(
     assert not_executed["result"]["task_outcome"] == "not_executed"
     assert not_executed["result"]["session_authority"] == "terminal"
     assert not_executed["result"]["terminal_harvested"] is True
+
+
+def test_pro_devspace_terminal_no_tool_output_is_not_success(tmp_path: Path) -> None:
+    runner = load_runner()
+    result = execute_run(
+        runner,
+        pro_readonly_manifest(tmp_path),
+        run_factory=version_runner,
+        popen_factory=popen_for(
+            0,
+            (
+                b"DevSpace namespace exists but exposes zero callable functions; "
+                b"the mission and root were not read.\nTASK_OUTCOME: NOT_EXECUTED\n"
+            ),
+            {},
+            [],
+        ),
+    )
+
+    assert result["ok"] is False
+    assert result["result"]["status"] == "attention_required"
+    assert result["result"]["transport_status"] == "complete"
+    assert result["result"]["task_outcome"] == "not_executed"
+    assert result["result"]["session_authority"] == "terminal"
+    assert result["result"]["terminal_harvested"] is True
 
 
 def test_v1_missing_task_outcome_marker_never_claims_execution(tmp_path: Path) -> None:
