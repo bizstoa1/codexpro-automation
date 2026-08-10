@@ -14,6 +14,7 @@ import re
 import shlex
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -185,8 +186,10 @@ def launch_hidden(
 def apply_setup(
     config: SetupConfig,
     *,
+    opener: Callable[..., Any] = urllib.request.urlopen,
     runner: Callable[..., Any] = subprocess.run,
     popen_factory: Callable[..., Any] = subprocess.Popen,
+    sleeper: Callable[[float], None] = time.sleep,
 ) -> None:
     # Init remains DevSpace's own interactive prompt so it can safely retain its
     # Owner credential.  The root list/public origin are displayed before this call.
@@ -208,10 +211,53 @@ def apply_setup(
         devspace_compat_argv(confirm_restarted=True, local_port=config.local_port),
         runner=runner,
     )
-    run_checked(
-        ["tailscale", "funnel", "--bg", f"--https={config.public_port}", f"http://127.0.0.1:{config.local_port}"],
-        runner=runner,
-    )
+    ensure_public_route(config, opener=opener, runner=runner, sleeper=sleeper)
+
+
+def wait_for_local_service(
+    config: SetupConfig,
+    *,
+    opener: Callable[..., Any] = urllib.request.urlopen,
+    sleeper: Callable[[float], None] = time.sleep,
+    attempts: int = 15,
+    delay_seconds: float = 1.0,
+) -> dict[str, Any]:
+    """Wait for the exact loopback MCP endpoint without accepting a port-only signal."""
+    last: dict[str, Any] = {"ok": False, "error": "DEVSPACE_LOCAL_SERVICE_NOT_READY"}
+    for index in range(max(1, attempts)):
+        last = http_probe(config.local_mcp_url, opener=opener)
+        if last.get("ok"):
+            return last
+        if index + 1 < attempts:
+            sleeper(delay_seconds)
+    raise SetupError("DEVSPACE_LOCAL_SERVICE_NOT_READY")
+
+
+def ensure_public_route(
+    config: SetupConfig,
+    *,
+    opener: Callable[..., Any] = urllib.request.urlopen,
+    runner: Callable[..., Any] = subprocess.run,
+    sleeper: Callable[[float], None] = time.sleep,
+) -> dict[str, Any]:
+    """Idempotently restore the exact Funnel mapping after service or network restart."""
+    local = wait_for_local_service(config, opener=opener, sleeper=sleeper)
+    current = funnel_status(config, runner=runner, allow_absent=True)
+    if current.get("mapping") == "conflict":
+        raise SetupError("TAILSCALE_FUNNEL_PORT_IN_USE")
+    changed = current.get("mapping") != "match"
+    if changed:
+        run_checked(
+            ["tailscale", "funnel", "--bg", f"--https={config.public_port}", f"http://127.0.0.1:{config.local_port}"],
+            runner=runner,
+        )
+    final = funnel_status(config, runner=runner)
+    if not final.get("ok"):
+        raise SetupError("TAILSCALE_FUNNEL_RESTORE_FAILED")
+    public = http_probe(config.registration_url, opener=opener)
+    if not public.get("ok"):
+        raise SetupError("DEVSPACE_PUBLIC_ENDPOINT_NOT_READY")
+    return {"ok": True, "changed": changed, "local": local, "funnel": final, "public": public}
 
 
 def http_probe(url: str, *, opener: Callable[..., Any] = urllib.request.urlopen) -> dict[str, Any]:
@@ -384,7 +430,7 @@ def doctor(config: SetupConfig, *, opener: Callable[..., Any] = urllib.request.u
 def parser() -> argparse.ArgumentParser:
     value = argparse.ArgumentParser(description=__doc__)
     sub = value.add_subparsers(dest="command", required=True)
-    for name in ("setup", "doctor"):
+    for name in ("setup", "doctor", "ensure"):
         command = sub.add_parser(name)
         command.add_argument("--root", action="append", default=[], help="Narrow allowed DevSpace root; repeat as needed")
         command.add_argument("--hostname", required=True, help="Tailscale MagicDNS hostname")
@@ -408,6 +454,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(json.dumps(plan, ensure_ascii=False, indent=2))
             if args.apply:
                 apply_setup(config)
+            return 0
+        if args.command == "ensure":
+            print(json.dumps(ensure_public_route(config), ensure_ascii=False, indent=2))
             return 0
         print(json.dumps(doctor(
             config,

@@ -51,6 +51,21 @@ python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py doctor
 
 Diagnosis checks local DevSpace `/mcp`, then `tailscale funnel status --json`, then the public `/mcp` endpoint. If the endpoint is healthy but a ChatGPT tool call fails, keep the server running and re-check the same manual connector URL; do not automate deletion or re-registration.
 
+## Idempotent service/Funnel recovery
+
+After a DevSpace or Tailscale restart, restore only the already-approved public
+route with `ensure`. It first proves that the local MCP endpoint is healthy,
+then reuses a matching Funnel or recreates the missing exact mapping. A port
+listener alone is not accepted as DevSpace health, and a conflicting Funnel is
+never overwritten.
+
+```powershell
+python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py ensure --root C:\projects\one --hostname your-device.your-tailnet.ts.net
+```
+
+Run this command from the hidden startup wrapper after DevSpace becomes
+healthy. It does not touch ChatGPT settings or app registration.
+
 It also reports the required managed tool mode (`full`) and any persisted
 `toolMode`. A configured non-`full` value is advisory failure because a
 manually started service may not inherit the managed launch environment.

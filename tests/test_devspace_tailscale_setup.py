@@ -208,17 +208,32 @@ def test_setup_applies_hash_validated_devspace_compat_before_service_start(
     monkeypatch.setenv("DEVSPACE_GIT_BASH", str(bash))
     calls: list[list[str]] = []
     launched: list[tuple[list[str], dict[str, str] | None]] = []
+    funnel_reads = 0
+
+    class Response:
+        status = 401
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
 
     def runner(argv, **kwargs):
+        nonlocal funnel_reads
         calls.append(list(argv))
         if argv == ["tailscale", "funnel", "status", "--json"]:
-            return SimpleNamespace(returncode=0, stdout=json.dumps({"Web": {}}), stderr="")
+            funnel_reads += 1
+            web = {} if funnel_reads < 3 else {
+                current.hostname + ":443": {"Proxy": f"http://127.0.0.1:{current.local_port}"}
+            }
+            return SimpleNamespace(returncode=0, stdout=json.dumps({"Web": web}), stderr="")
         return SimpleNamespace(returncode=0, stdout="", stderr="")
 
     module.apply_setup(
         current,
+        opener=lambda *args, **kwargs: Response(),
         runner=runner,
         popen_factory=lambda argv, **kwargs: launched.append((list(argv), kwargs.get("env"))),
+        sleeper=lambda _: None,
     )
 
     assert calls[1][1:3] == [
@@ -233,6 +248,79 @@ def test_setup_applies_hash_validated_devspace_compat_before_service_start(
         "exec npx --yes @waishnav/devspace@1.0.4 serve",
     ]
     assert launched[0][1]["DEVSPACE_TOOL_MODE"] == "full"
+
+
+def test_ensure_public_route_restores_missing_mapping_after_exact_local_health(tmp_path: Path) -> None:
+    module, current = config(tmp_path)
+    calls: list[list[str]] = []
+    status_reads = iter((
+        {"Web": {}},
+        {"Web": {current.hostname + ":443": {"Proxy": f"http://127.0.0.1:{current.local_port}"}}},
+    ))
+
+    class Response:
+        status = 401
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+
+    def runner(argv, **kwargs):
+        calls.append(list(argv))
+        if argv == ["tailscale", "funnel", "status", "--json"]:
+            return SimpleNamespace(returncode=0, stdout=json.dumps(next(status_reads)), stderr="")
+        assert argv == [
+            "tailscale", "funnel", "--bg", "--https=443",
+            f"http://127.0.0.1:{current.local_port}",
+        ]
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    report = module.ensure_public_route(current, opener=lambda *args, **kwargs: Response(), runner=runner)
+    assert report["ok"] is True
+    assert report["changed"] is True
+    assert calls.count(["tailscale", "funnel", "status", "--json"]) == 2
+
+
+def test_ensure_public_route_is_idempotent_when_mapping_matches(tmp_path: Path) -> None:
+    module, current = config(tmp_path)
+    calls: list[list[str]] = []
+
+    class Response:
+        status = 200
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+
+    def runner(argv, **kwargs):
+        calls.append(list(argv))
+        return SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps({"Web": {current.hostname + ":443": {"Proxy": f"http://127.0.0.1:{current.local_port}"}}}),
+            stderr="",
+        )
+
+    report = module.ensure_public_route(current, opener=lambda *args, **kwargs: Response(), runner=runner)
+    assert report["changed"] is False
+    assert calls == [
+        ["tailscale", "funnel", "status", "--json"],
+        ["tailscale", "funnel", "status", "--json"],
+    ]
+
+
+def test_wait_for_local_service_rejects_port_without_mcp_health(tmp_path: Path) -> None:
+    module, current = config(tmp_path)
+    sleeps: list[float] = []
+
+    with pytest.raises(module.SetupError, match="DEVSPACE_LOCAL_SERVICE_NOT_READY"):
+        module.wait_for_local_service(
+            current,
+            opener=lambda *args, **kwargs: (_ for _ in ()).throw(OSError("not MCP")),
+            sleeper=sleeps.append,
+            attempts=3,
+            delay_seconds=0.25,
+        )
+    assert sleeps == [0.25, 0.25]
 
 
 def test_doctor_reports_full_mode_and_advises_on_explicit_nonfull_config(tmp_path: Path) -> None:

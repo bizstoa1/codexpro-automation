@@ -64,3 +64,14 @@ python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py doctor
 ```
 
 If the public endpoint is healthy but a ChatGPT call still fails, report the same registration URL and stop. Do not re-register the app automatically.
+
+For an explicitly requested service/Funnel repair, use the idempotent `ensure`
+command after DevSpace starts:
+
+```powershell
+python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py ensure --root C:\projects\one --hostname your-device.your-tailnet.ts.net
+```
+
+`ensure` requires the actual local MCP endpoint to respond before it reasserts
+the exact Funnel mapping. It refuses a conflicting mapping and never changes
+ChatGPT settings or app registration.
