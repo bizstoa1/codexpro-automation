@@ -48,7 +48,10 @@ def test_setup_plan_has_no_secrets_and_is_explicit_only(tmp_path: Path, monkeypa
     assert "token" not in text.lower()
     assert plan["registration_url"] == "https://device.tailnet.ts.net/mcp"
     assert plan["recommended_app_name"] == "DevSpace"
-    assert plan["managed_service_environment"] == {"DEVSPACE_TOOL_MODE": "full"}
+    assert plan["managed_service_environment"] == {
+        "DEVSPACE_TOOL_MODE": "full",
+        "DEVSPACE_OAUTH_SCOPES": "devspace,offline_access",
+    }
     assert plan["devspace_init"][1:3] == [
         "-lc",
         "exec npx --yes @waishnav/devspace@1.0.4 init",
@@ -248,6 +251,7 @@ def test_setup_applies_hash_validated_devspace_compat_before_service_start(
         "exec npx --yes @waishnav/devspace@1.0.4 serve",
     ]
     assert launched[0][1]["DEVSPACE_TOOL_MODE"] == "full"
+    assert launched[0][1]["DEVSPACE_OAUTH_SCOPES"] == "devspace,offline_access"
 
 
 def test_ensure_public_route_restores_missing_mapping_after_exact_local_health(tmp_path: Path) -> None:

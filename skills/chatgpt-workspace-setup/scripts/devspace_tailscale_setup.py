@@ -26,6 +26,7 @@ DEFAULT_PORT = 7676
 APP_NAME = "DevSpace"
 DEVSPACE_PACKAGE = "@waishnav/devspace@1.0.4"
 DEVSPACE_TOOL_MODE = "full"
+DEVSPACE_OAUTH_SCOPES = "devspace,offline_access"
 SECRET_PATTERN = re.compile(r"(?i)(password|token|secret|authorization)\s*([:=])\s*[^\s,;]+")
 HOSTNAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9.-]*\.ts\.net$", re.IGNORECASE)
 
@@ -140,7 +141,10 @@ def setup_plan(config: SetupConfig) -> dict[str, Any]:
         "allowed_roots": [str(root) for root in config.roots],
         "devspace_init": bash_argv(["npx", "--yes", DEVSPACE_PACKAGE, "init"]),
         "devspace_serve": bash_argv(["npx", "--yes", DEVSPACE_PACKAGE, "serve"]),
-        "managed_service_environment": {"DEVSPACE_TOOL_MODE": DEVSPACE_TOOL_MODE},
+        "managed_service_environment": {
+            "DEVSPACE_TOOL_MODE": DEVSPACE_TOOL_MODE,
+            "DEVSPACE_OAUTH_SCOPES": DEVSPACE_OAUTH_SCOPES,
+        },
         "tailscale_funnel": [
             "tailscale",
             "funnel",
@@ -163,6 +167,7 @@ def run_checked(argv: Sequence[str], *, runner: Callable[..., Any] = subprocess.
 def devspace_service_environment(base: dict[str, str] | None = None) -> dict[str, str]:
     environment = dict(os.environ if base is None else base)
     environment["DEVSPACE_TOOL_MODE"] = DEVSPACE_TOOL_MODE
+    environment["DEVSPACE_OAUTH_SCOPES"] = DEVSPACE_OAUTH_SCOPES
     return environment
 
 

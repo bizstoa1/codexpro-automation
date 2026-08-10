@@ -47,6 +47,12 @@ mode issue. `doctor` reports the managed launch setting and any persisted
 `toolMode`; an explicitly non-`full` persisted mode requires service setup
 review, while a running process environment is not inferred from an HTTP probe.
 
+Managed launches also set
+`DEVSPACE_OAUTH_SCOPES=devspace,offline_access`. DevSpace already issues refresh
+tokens; advertising `offline_access` lets ChatGPT request and renew them. If an
+older app registration was created before this metadata was exposed, the user
+must reconnect or recreate that app once. Never automate that settings action.
+
 The only app information to enter manually in ChatGPT Developer Mode is:
 
 - Recommended app name: `DevSpace`

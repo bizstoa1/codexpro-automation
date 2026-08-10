@@ -34,6 +34,12 @@ read-only workspace discovery (`grep`, `glob`, and `ls`) without expanding the
 approved roots. Keep the root list in DevSpace's configuration; the launch
 environment only selects the tool mode.
 
+The managed service also advertises `offline_access` together with the
+`devspace` OAuth scope so ChatGPT can renew its authorization instead of losing
+the connector after the one-hour access token expires. After upgrading an
+existing setup from metadata that omitted `offline_access`, recreate or
+reconnect the app once so ChatGPT reads the corrected OAuth metadata.
+
 ## Manual ChatGPT registration
 
 Enable Developer Mode in ChatGPT and manually create the connector:
