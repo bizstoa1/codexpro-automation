@@ -365,9 +365,9 @@ def test_regular_runs_raise_the_answer_timeout_above_the_upstream_default(
     argv = result["argv"]
     assert argv.count("--browser-timeout") == 1
     assert argv[argv.index("--browser-timeout") + 1] == runner.STATE.DEFAULT_BROWSER_ANSWER_TIMEOUT
-    assert runner.STATE.DEFAULT_BROWSER_ANSWER_TIMEOUT == "90m"
-    assert runner.STATE.DEFAULT_BROWSER_ANSWER_CEILING_MINUTES == 90
-    assert result["host_watchdog_timeout_seconds"] == 5430
+    assert runner.STATE.DEFAULT_BROWSER_ANSWER_TIMEOUT == "70m"
+    assert runner.STATE.DEFAULT_BROWSER_ANSWER_CEILING_MINUTES == 70
+    assert result["host_watchdog_timeout_seconds"] == 4230
 
 
 def test_explicit_answer_timeout_is_honored_without_duplication(tmp_path: Path) -> None:
@@ -408,8 +408,8 @@ def test_pro_uses_the_bounded_original_session_answer_wait(tmp_path: Path) -> No
     result = execute_run(runner, pro_manifest(tmp_path), dry_run=True)
 
     assert result["argv"].count("--browser-timeout") == 1
-    assert result["argv"][result["argv"].index("--browser-timeout") + 1] == "90m"
-    assert result["host_watchdog_timeout_seconds"] == 5430
+    assert result["argv"][result["argv"].index("--browser-timeout") + 1] == "70m"
+    assert result["host_watchdog_timeout_seconds"] == 4230
 
 
 def test_pro_dry_run_uses_oracle_attachments_and_no_app_mention(tmp_path: Path) -> None:

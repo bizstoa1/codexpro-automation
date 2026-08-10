@@ -2,12 +2,17 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import tempfile
+
+import pytest
 
 ROOT = Path(__file__).parents[1]
 
 
 def run_powershell(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    if shutil.which("powershell") is None:
+        pytest.skip("PowerShell lifecycle compatibility runs on Windows")
     return subprocess.run(
         ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', *args],
         text=True,

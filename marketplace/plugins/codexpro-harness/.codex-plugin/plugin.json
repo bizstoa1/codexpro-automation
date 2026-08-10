@@ -1,0 +1,14 @@
+{
+  "name": "codexpro-harness",
+  "version": "1.0.0",
+  "description": "Exact-session 75/80-minute checkpoint and resume hooks for CodexPro Automation.",
+  "author": {"name": "ventianima-lab"},
+  "license": "MIT",
+  "skills": "./skills/",
+  "hooks": ["./hooks/hooks.json"],
+  "interface": {
+    "displayName": "CodexPro Harness",
+    "shortDescription": "Durable checkpoint and exact resume",
+    "category": "Developer Tools"
+  }
+}

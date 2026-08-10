@@ -78,13 +78,19 @@ def build_oracle_argv(config, layout, prompt: str) -> list[str]:
     # value.  Oracle's upstream default can cut a submitted Pro response while
     # ChatGPT is still visibly working, so every new Oracle lane gets the same
     # explicit, bounded original-session budget.
+    answer_budget_seconds = int(getattr(config, "web_answer_budget_seconds", 4200))
+    answer_timeout_value = (
+        STATE.DEFAULT_BROWSER_ANSWER_TIMEOUT
+        if answer_budget_seconds == 4200
+        else f"{answer_budget_seconds}s"
+    )
     answer_timeout_args = (
         []
         if any(
             item == "--browser-timeout" or item.startswith("--browser-timeout=")
             for item in config.oracle_args
         )
-        else ["--browser-timeout", STATE.DEFAULT_BROWSER_ANSWER_TIMEOUT]
+        else ["--browser-timeout", answer_timeout_value]
     )
     command = [
         *config.oracle_command,

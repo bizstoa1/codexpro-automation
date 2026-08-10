@@ -156,7 +156,7 @@ if (!$Python -or !(Test-Path -LiteralPath $Contract)) {
   warnings = $Warnings
   commands = $Commands
   agbrowse = @{selected_version=$SelectedVersion; contract=$Contract; update_receipt=$UpdateReceiptPath}
-  oracle = @{package='@steipete/oracle';tested_version='0.16.1';resolution='npx at explicit run time'}
+  oracle = @{package='@steipete/oracle';tested_version='0.17.1';resolution='npx at explicit run time'}
   devspace = @{package='@waishnav/devspace';tested_version='1.0.4';setup='explicit setup skill only'}
   codexpro = @{
     installation = 'external'

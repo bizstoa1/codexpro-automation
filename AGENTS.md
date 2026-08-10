@@ -9,6 +9,18 @@
 
 ## Comprehensive-mode ownership
 
+- macOS new-work support uses the portable Python lifecycle, POSIX identity,
+  DevSpace/Tailscale Funnel, and `com.ventianima.codexpro-automation.*`
+  LaunchAgents. It must never reuse, overwrite, or stop `com.openclaw.codexpro*`
+  services or mutate `~/.codexpro`.
+- Harness episodes use a 4,200-second web answer budget, 4,500-second soft
+  checkpoint, and 4,800-second handoff boundary. A live or uncertain Oracle
+  slug always owns the mission; recovery may harvest that exact session but
+  must not resubmit it.
+- OMO and Codex native subagents may run at most five heavy lanes in one phase.
+  Local-subagent and Oracle-web phases do not overlap, so the combined limit is
+  also five. Concurrent writers require distinct worktrees.
+
 - Every new ChatGPT submission uses Oracle. Regular GPT uses the manually registered DevSpace app. Qualified Pro uses `GPT-5.6 Sol` at the Pro effort through the same app in a read-only DevSpace route; explicit `pro-attachment` is reserved for immutable or external evidence that DevSpace cannot read and is never an automatic fallback.
 - New GPT comprehensive workflows use `codex.chatgpt.oracle-comprehensive/v1`. Existing CodexPro/agbrowse comprehensive v1-v4 state remains exact recovery-only.
 - The completing web GPT stage authors the next stage's semantic prompt. Local Codex may validate UTF-8, hashes, stage identity, immutable bindings, transport, recovery, and deterministic final tests, but must not rewrite the next prompt or take over expensive exploration/implementation.

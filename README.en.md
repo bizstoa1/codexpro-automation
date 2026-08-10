@@ -2,7 +2,7 @@
 
 English | [한국어](README.md)
 
-A Windows automation toolkit that delegates planning, research, review, code
+A Windows and macOS automation toolkit that delegates planning, research, review, code
 changes, and testing to web ChatGPT while keeping local Codex work focused on
 transport, recovery, identity, hashes, and the final deterministic gate.
 
@@ -30,6 +30,8 @@ evidence or artifacts that DevSpace cannot read.
 - Isolated browser profiles so different projects can run concurrently.
 - Automatic archive lifecycle for conversations owned by Oracle.
 - Install receipts, backups, rollback, and uninstall support.
+- OMO `ultrawork` todos with a GJC-style brownfield interview gate.
+- A 75-minute checkpoint and exact 80-minute handoff without duplicate submission.
 
 ## How it works
 
@@ -45,7 +47,8 @@ User request
 ```
 
 Host state and ChatGPT output are stored outside DevSpace projects under
-`%USERPROFILE%\.codex\state\chatgpt-oracle`.
+`%USERPROFILE%\.codex\state\chatgpt-oracle` on Windows and
+`~/.codex/state/chatgpt-oracle` on macOS.
 
 ## Modes and English invocation names
 
@@ -80,10 +83,10 @@ ChatGPT web sessions through Oracle and merges their results.
 
 ## Requirements
 
-- Windows 11
+- Windows 11 or macOS 12 or later (Apple Silicon supported)
 - Python
 - Node.js 22.19 or later and earlier than 27
-- Git for Windows / Git Bash
+- Git for Windows / Git Bash on Windows; `lsof` and `launchd` on macOS
 - Tailscale
 - An Oracle browser profile signed in to ChatGPT
 - One manually registered DevSpace app in ChatGPT Developer Mode
@@ -103,6 +106,20 @@ cd codexpro-automation
 
 The installer backs up replaced files and writes durable install receipts under
 `%USERPROFILE%\.codex\receipts`.
+
+On macOS, use the shared Python lifecycle:
+
+```bash
+git clone https://github.com/ventianima-lab/codexpro-automation.git
+cd codexpro-automation
+python3 install.py --dry-run
+python3 install.py
+python3 doctor.py
+```
+
+Receipts are stored under `~/.codex/receipts`. `python3 rollback.py` and
+`python3 uninstall.py` perform an exact, receipt-backed inverse. See the
+[macOS Ultrawork guide](docs/MACOS_ULTRAWORK.md) for OMO and launchd setup.
 
 ## One-time DevSpace setup
 
@@ -127,6 +144,14 @@ Mode, manually register one app:
 After owner approval, the automation does not inspect or manipulate ChatGPT
 settings, app lists, permissions, deletion, or picker UI per task. Adding a new
 project only changes the DevSpace allowed roots.
+
+On macOS, omit `--hostname` to discover the signed-in Tailscale MagicDNS name.
+Preview the exact, single approved root before applying it:
+
+```bash
+python3 skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py setup \
+  --root "$PWD" --public-port 8443 --dry-run
+```
 
 See [DevSpace and Tailscale setup](docs/DEVSPACE_TAILSCALE_SETUP.md) for the
 complete procedure.
@@ -169,8 +194,11 @@ python "$env:USERPROFILE\.codex\bin\chatgpt_oracle_dispatch.py" `
 - One active or uncertain Oracle workflow is allowed per normalized project.
 - Different projects can run concurrently through isolated profiles.
 - Web Multi-GPT runs child sessions in waves of at most five.
-- Heavy non-Pro work receives about 90 minutes initially and another 90 minutes
-  for exact recovery, for an effective ceiling of roughly 180 minutes.
+- New web work is split into checkpointable episodes of no more than 70 minutes.
+- At 75 minutes the harness prevents new fan-out and writes durable state; at
+  80 minutes it evaluates an exact handoff.
+- A live Oracle run is recovered by its existing slug and conversation URL. It
+  is never submitted to a new session.
 - A browser or local-process exit is not proof that the web task failed.
 - Recovery uses only the persisted Oracle slug and exact conversation URL. It
   never resubmits the task.
@@ -200,6 +228,7 @@ already persisted legacy run.
 
 - [Global ChatGPT routing and mode selection](docs/GLOBAL_CHATGPT_ROUTING.md)
 - [DevSpace and Tailscale setup](docs/DEVSPACE_TAILSCALE_SETUP.md)
+- [macOS Ultrawork and 75/80-minute recovery](docs/MACOS_ULTRAWORK.md)
 - [Technical changelog](docs/CHANGELOG.md)
 - [Frozen legacy recovery assets](docs/FROZEN_LEGACY.md)
 - [Release checklist](docs/RELEASE_CHECKLIST.md)
