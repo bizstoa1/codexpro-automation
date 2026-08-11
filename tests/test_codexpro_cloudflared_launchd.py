@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import plistlib
 import subprocess
 import sys
@@ -88,7 +89,8 @@ def test_install_writes_private_config_and_managed_launchagent(tmp_path: Path) -
     config = Path(result["config"])
     plist_path = Path(result["plist"])
     assert config.parent == codex_home / "state" / "codexpro-cloudflare"
-    assert config.stat().st_mode & 0o777 == 0o600
+    if os.name == "posix":
+        assert config.stat().st_mode & 0o777 == 0o600
     assert plistlib.loads(plist_path.read_bytes())["CodexProManaged"] is True
     assert result["loaded"] is False
 
