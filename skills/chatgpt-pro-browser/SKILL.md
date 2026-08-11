@@ -102,7 +102,11 @@ attachments; `pro-attachment` never invokes DevSpace.
 Completion requires the requested Pro model/effort evidence, exit zero, fresh
 nonempty host-only `output.md`, immutable run identity, and a refreshed
 transcript. The final nonempty line must also be
-`TASK_OUTCOME: EXECUTED|NOT_EXECUTED|BLOCKED`. A terminal answer that reports
+`TASK_OUTCOME: EXECUTED|NOT_EXECUTED|BLOCKED`; every citation, footnote, and
+Markdown reference definition belongs before it. For bounded compatibility
+with provider-rendered answers, the classifier also accepts exactly one marker
+followed solely by single-line HTTP(S) Markdown reference definitions. Ordinary
+trailing prose or another marker remains `unknown`. A terminal answer that reports
 zero callable DevSpace tools or says the mission/root could not be read is
 `NOT_EXECUTED`, never successful Pro work. When that exact terminal run is
 durably captured, it releases same-project ownership and permits at most one

@@ -70,6 +70,10 @@ and—when `task_outcome_contract` is `v1`—a final
 `TASK_OUTCOME: EXECUTED` marker. `TASK_OUTCOME: NOT_EXECUTED` and
 `TASK_OUTCOME: BLOCKED` preserve terminal transport evidence but return
 attention-required; transport success alone never claims project execution.
+Prompts require citations and Markdown reference definitions before the marker.
+For provider-rendered compatibility, only one exact marker followed solely by
+single-line HTTP(S) Markdown reference definitions is also classifiable; any
+ordinary trailing prose or conflicting marker remains `unknown`.
 A nonzero Oracle exit after launch, including a browser response timeout, is
 `attention_required` rather than proof that the web session failed. It retains
 same-project ownership and permits only exact-slug `live` or `harvest`

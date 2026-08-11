@@ -560,8 +560,9 @@ def composer_prompt(config: OracleConfig, mission_path: Path | None = None) -> s
             f"@{config.app_name} Read the read-only mission file: {effective_path}. "
             "Use only the exact project root recorded there; read the mission and applicable AGENTS.md fully first. "
             "Perform read-only work only; do not modify files, settings, accounts, or external state. "
+            "Put every citation, footnote, and Markdown reference definition before the outcome marker. "
             "End the final response with exactly one of TASK_OUTCOME: EXECUTED, TASK_OUTCOME: NOT_EXECUTED, or "
-            "TASK_OUTCOME: BLOCKED."
+            "TASK_OUTCOME: BLOCKED as the final nonempty line; append nothing after it."
         )
     # Keep the Windows npx.cmd prompt in one argument line. A literal newline
     # truncates the prompt after the app mention before Oracle receives it.
@@ -571,8 +572,9 @@ def composer_prompt(config: OracleConfig, mission_path: Path | None = None) -> s
         "작업공간 열기가 시간 초과되면 동일한 정확한 루트만 한 번 재시도하며 상위·하위·현재 활성 "
         "작업공간이나 셸 경계 우회로 대체하지 마세요."
         + (
-            " 마지막 줄에 실제 작업 수행 결과를 TASK_OUTCOME: EXECUTED, "
-            "TASK_OUTCOME: NOT_EXECUTED, TASK_OUTCOME: BLOCKED 중 하나로 정확히 기록하세요."
+            " 모든 인용, 각주, Markdown 참조 정의를 결과 마커 앞에 배치하세요. 마지막 비어 있지 않은 줄에 "
+            "실제 작업 수행 결과를 TASK_OUTCOME: EXECUTED, TASK_OUTCOME: NOT_EXECUTED, "
+            "TASK_OUTCOME: BLOCKED 중 하나로 정확히 기록하고 그 뒤에는 아무것도 추가하지 마세요."
             if config.task_outcome_contract == "v1"
             else ""
         )
@@ -2119,6 +2121,20 @@ TASK_OUTCOME_RE = re.compile(
     re.IGNORECASE,
 )
 
+MARKDOWN_HTTP_REFERENCE_DEFINITION_RE = re.compile(
+    r"\[[^\]\r\n]+\]:[ \t]+(?:<https?://[^>\s]+>|https?://\S+)"
+    r"(?:[ \t]+(?:\"[^\"\r\n]*\"|'[^'\r\n]*'|\([^\)\r\n]*\)))?[ \t]*",
+    re.IGNORECASE,
+)
+
+
+def _only_bounded_reference_definitions(lines: list[str]) -> bool:
+    return all(
+        not line.strip()
+        or MARKDOWN_HTTP_REFERENCE_DEFINITION_RE.fullmatch(line.strip()) is not None
+        for line in lines
+    )
+
 
 def classify_task_outcome(path: Path, *, contract: str, transport: str) -> str:
     if is_attachment_transport(transport):
@@ -2127,10 +2143,22 @@ def classify_task_outcome(path: Path, *, contract: str, transport: str) -> str:
         text = path.read_text(encoding="utf-8", errors="strict")
     except (OSError, UnicodeDecodeError):
         return "unknown"
-    final_line = next((line.strip() for line in reversed(text.splitlines()) if line.strip()), "")
-    marker = TASK_OUTCOME_RE.fullmatch(final_line)
-    if marker:
-        return marker.group(1).casefold()
+    # The v1 marker is normally the final nonempty line. Some provider renderers
+    # move Markdown link definitions below it. Accept only that bounded,
+    # non-semantic appendix: one marker in the entire artifact followed solely
+    # by single-line HTTP(S) reference definitions and blank lines.
+    if len(TASK_OUTCOME_RE.findall(text)) != 1:
+        return "unknown" if contract == "v1" else "legacy_unclassified"
+    lines = text.splitlines()
+    marker_lines = [
+        (index, marker)
+        for index, line in enumerate(lines)
+        if (marker := TASK_OUTCOME_RE.fullmatch(line.strip())) is not None
+    ]
+    if len(marker_lines) == 1:
+        index, marker = marker_lines[0]
+        if _only_bounded_reference_definitions(lines[index + 1 :]):
+            return marker.group(1).casefold()
     return "unknown" if contract == "v1" else "legacy_unclassified"
 
 

@@ -9,6 +9,9 @@ from pathlib import Path
 import pytest
 
 STATE_PATH = Path(__file__).resolve().parents[1] / "bin" / "chatgpt_oracle_state.py"
+REFERENCE_FOOTER_FIXTURE = (
+    Path(__file__).resolve().parent / "fixtures" / "oracle-task-outcome-reference-footer.md"
+)
 
 
 def load_state():
@@ -19,6 +22,42 @@ def load_state():
     sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def test_v1_task_outcome_accepts_exact_provider_reference_footer(tmp_path: Path) -> None:
+    state = load_state()
+    output = tmp_path / "output.md"
+    output.write_bytes(REFERENCE_FOOTER_FIXTURE.read_bytes())
+
+    assert state.classify_task_outcome(
+        output,
+        contract="v1",
+        transport="pro-devspace-readonly",
+    ) == "executed"
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    [
+        "Actually no files were changed.\n",
+        "[note]: this is ordinary prose, not a URL\n",
+        "TASK_OUTCOME: BLOCKED\n",
+    ],
+)
+def test_v1_task_outcome_reference_footer_stays_fail_closed(
+    tmp_path: Path,
+    suffix: str,
+) -> None:
+    state = load_state()
+    output = tmp_path / "output.md"
+    fixture = REFERENCE_FOOTER_FIXTURE.read_text(encoding="utf-8")
+    output.write_text(f"{fixture}{suffix}", encoding="utf-8")
+
+    assert state.classify_task_outcome(
+        output,
+        contract="v1",
+        transport="pro-devspace-readonly",
+    ) == "unknown"
 
 
 def manifest(tmp_path: Path, mission_path: Path | str, **extra) -> Path:
@@ -124,7 +163,9 @@ def test_pro_readonly_manifest_requires_devspace_and_stays_inside_project(tmp_pa
     assert state.composer_prompt(config).startswith(
         f"@DevSpace Read the read-only mission file: {mission.resolve()}."
     )
-    assert state.composer_prompt(config).endswith("TASK_OUTCOME: BLOCKED.")
+    prompt = state.composer_prompt(config)
+    assert "Put every citation, footnote, and Markdown reference definition before" in prompt
+    assert prompt.endswith("as the final nonempty line; append nothing after it.")
     layout = state.create_layout(config, run_id="20260725T151414Z-a3aeba967d99")
     assert state.state_payload(config, layout, status="prepared", resolved_version="oracle 0.17.1")["task_outcome"] == "pending"
 
