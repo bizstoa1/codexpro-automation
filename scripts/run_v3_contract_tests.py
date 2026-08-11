@@ -355,12 +355,17 @@ def cleanup_contract_root(path: Path, *, expected_parent: Path, attempts: int = 
 
     for attempt in range(max(1, attempts)):
         try:
-            for candidate in resolved.rglob("*"):
-                try:
-                    os.chmod(candidate, stat.S_IREAD | stat.S_IWRITE)
-                except OSError:
-                    pass
-            shutil.rmtree(resolved, onerror=clear_readonly)
+            if os.name == "nt":
+                for candidate in resolved.rglob("*"):
+                    try:
+                        os.chmod(candidate, stat.S_IREAD | stat.S_IWRITE)
+                    except OSError:
+                        pass
+                shutil.rmtree(resolved, onerror=clear_readonly)
+            else:
+                # POSIX directories require the execute bit for traversal.
+                # Windows-style chmod(0600) would make cleanup fail on macOS.
+                shutil.rmtree(resolved)
             return
         except FileNotFoundError:
             return
