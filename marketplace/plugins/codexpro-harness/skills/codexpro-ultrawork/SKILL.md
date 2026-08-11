@@ -3,7 +3,7 @@ name: codexpro-ultrawork
 description: Route an OMO ultrawork goal between bounded local Codex subagents and genuine independent Oracle web sessions while preserving exact-session ownership and the 75/80-minute handoff.
 ---
 
-# CodexPro Ultrawork Router
+# Codex Web GPT Ultrawork Router
 
 Use this skill after OMO's `ultrawork` or `ulw` trigger when the goal benefits
 from independent web sessions, local subagents, or durable episode recovery.

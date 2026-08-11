@@ -158,3 +158,16 @@ def test_release_workflow_runs_focused_and_full_contract_checks() -> None:
     assert 'scripts/run_v4_contract_tests.py --full' in workflow
     assert 'windows-latest' in workflow
     assert 'macos-14' in workflow
+
+
+def test_rebrand_keeps_legacy_plugin_id_but_updates_human_facing_names() -> None:
+    plugin = json.loads(
+        (ROOT / 'marketplace/plugins/codexpro-harness/.codex-plugin/plugin.json').read_text(encoding='utf-8')
+    )
+    hooks = (ROOT / 'marketplace/plugins/codexpro-harness/hooks/hooks.json').read_text(encoding='utf-8')
+    skill = (ROOT / 'marketplace/plugins/codexpro-harness/skills/codexpro-ultrawork/SKILL.md').read_text(encoding='utf-8')
+    assert plugin['name'] == 'codexpro-harness'
+    assert plugin['interface']['displayName'] == 'Codex Web GPT Harness'
+    assert 'CodexPro' not in plugin['description']
+    assert 'CodexPro' not in hooks
+    assert '# Codex Web GPT Ultrawork Router' in skill
