@@ -1,4 +1,4 @@
-# CodexPro Automation Repository Rules
+# Codex Web GPT Automation Repository Rules
 
 ## GPT Automation Change Persistence
 

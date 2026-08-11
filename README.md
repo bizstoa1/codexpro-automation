@@ -1,4 +1,4 @@
-# Codex Web GPT Orchestrator
+# Codex Web GPT Automation
 
 한국어 | [English](README.en.md)
 
@@ -88,7 +88,7 @@ Oracle이 여러 독립 ChatGPT 웹 세션을 실행한 뒤 결과를 병합합�
 - Python
 - Node.js 22.19 이상, 27 미만
 - Windows는 Git for Windows / Git Bash, macOS는 `rsync`, `lsof`, `launchd`
-- Tailscale
+- 고정 HTTPS 터널(Tailscale Funnel 권장; Cloudflare named tunnel, ngrok 고정 도메인, custom proxy 가능)
 - 브라우저에서 ChatGPT에 로그인된 Oracle 프로필
 - ChatGPT Developer Mode에 최초 한 번 수동 등록한 DevSpace 앱
 
@@ -98,8 +98,8 @@ Oracle이 여러 독립 ChatGPT 웹 세션을 실행한 뒤 결과를 병합합�
 ## 설치
 
 ```powershell
-git clone https://github.com/ventianima-lab/codexpro-automation.git
-cd codexpro-automation
+git clone https://github.com/ventianima-lab/codex-web-gpt-automation.git
+cd codex-web-gpt-automation
 .\install.ps1 -WhatIf
 .\install.ps1
 ```
@@ -110,8 +110,8 @@ cd codexpro-automation
 macOS에서는 공통 Python lifecycle을 사용합니다.
 
 ```bash
-git clone https://github.com/ventianima-lab/codexpro-automation.git
-cd codexpro-automation
+git clone https://github.com/ventianima-lab/codex-web-gpt-automation.git
+cd codex-web-gpt-automation
 python3 install.py --dry-run
 python3 install.py
 python3 doctor.py
@@ -121,7 +121,13 @@ python3 doctor.py
 `python3 uninstall.py`로 exact inverse를 수행합니다. OMO·launchd·Tailscale
 설정은 [macOS Ultrawork 가이드](docs/MACOS_ULTRAWORK.md)를 따릅니다.
 
-## DevSpace 최초 연결
+## 최초 설치와 DevSpace 연결
+
+설치 → 고정 공개 URL → DevSpace Owner 암호 → 재부팅 복구 → Oracle 전용
+브라우저 로그인 → ChatGPT 앱 `codex` 등록 순서를 하나로 정리한
+[최초 설치 가이드](docs/FIRST_INSTALL.md)를 먼저 따르세요. Tailscale은 자동
+복구까지 검증된 권장 경로이며 Cloudflare named tunnel, ngrok 고정 도메인,
+custom HTTPS proxy도 고정 주소와 OS 시작 서비스를 준비하면 사용할 수 있습니다.
 
 DevSpace 앱은 프로젝트마다 설치하는 것이 아닙니다. 앱 하나에 허용할
 프로젝트 루트를 여러 번 `--root`로 지정합니다.
@@ -137,7 +143,7 @@ python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py setup 
 내용을 확인한 뒤 `--dry-run`을 `--apply`로 바꿉니다. ChatGPT Developer
 Mode에는 다음 앱 하나만 수동으로 등록합니다.
 
-- 이름: `DevSpace`
+- 이름: `codex`
 - URL: `https://your-device.your-tailnet.ts.net/mcp`
 
 앱 표시 이름을 다르게 등록할 때는 같은 이름을 전역 라우팅에도 지정합니다.
@@ -148,7 +154,9 @@ Mode에는 다음 앱 하나만 수동으로 등록합니다.
 {"app_name": "codex"}
 ```
 
-기본값은 `DevSpace`이며, 앱 이름은 `@` 없이 한 줄로 저장합니다.
+기존 설치 호환 기본값은 `DevSpace`이며, 새 설치는 가이드의
+`python onboard.py configure-app-name`으로 `codex`를 명시합니다. 앱 이름은
+`@` 없이 한 줄로 저장합니다.
 
 Owner 승인을 완료한 뒤에는 매 작업마다 앱 목록·권한·URL을 다시 확인하거나
 앱을 재등록하지 않습니다. 새 프로젝트는 DevSpace 허용 루트에만 추가합니다.
@@ -235,6 +243,7 @@ python "$env:USERPROFILE\.codex\bin\chatgpt_oracle_run.py" recover `
 ## 문서
 
 - [전역 ChatGPT 라우팅과 모드 선택](docs/GLOBAL_CHATGPT_ROUTING.md)
+- [Codex Web GPT Automation 최초 설치](docs/FIRST_INSTALL.md)
 - [DevSpace + Tailscale 최초 설정](docs/DEVSPACE_TAILSCALE_SETUP.md)
 - [macOS Ultrawork·75/80분 재개](docs/MACOS_ULTRAWORK.md)
 - [기술 변경 기록](docs/CHANGELOG.md)

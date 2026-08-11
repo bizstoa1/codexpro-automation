@@ -23,7 +23,7 @@ from typing import Any, Callable, Sequence
 
 
 DEFAULT_PORT = 7676
-APP_NAME = "DevSpace"
+APP_NAME = "codex"
 DEVSPACE_PACKAGE = "@waishnav/devspace@1.0.4"
 DEVSPACE_TOOL_MODE = "full"
 DEVSPACE_OAUTH_SCOPES = "devspace,offline_access"

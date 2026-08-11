@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Portable, receipt-backed lifecycle management for CodexPro Automation."""
+"""Portable, receipt-backed lifecycle for Codex Web GPT Automation.
+
+The codexpro-* module, receipt, and schema identifiers are stable compatibility
+IDs retained for exact rollback and recovery of older installations.
+"""
 
 from __future__ import annotations
 
@@ -18,7 +22,17 @@ from typing import Any, Iterable
 
 RECEIPT_SCHEMA = "codexpro.install-receipt/v3"
 WAL_SCHEMA = "codexpro.install-wal/v1"
-SUPPORTED_ROOTS = {"bin", "skills", "mcp_servers", "scripts", "contracts", "tests", "plugins", "marketplace"}
+SUPPORTED_ROOTS = {
+    "bin",
+    "skills",
+    "mcp_servers",
+    "scripts",
+    "contracts",
+    "docs",
+    "tests",
+    "plugins",
+    "marketplace",
+}
 
 
 class LifecycleError(RuntimeError):

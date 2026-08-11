@@ -5,6 +5,22 @@ README는 현재 제품의 목적과 사용법만 설명합니다. 구현 변경
 
 ## 현재 릴리스
 
+### 1.8.0 — Codex Web GPT Automation
+
+- 공개 제품명과 저장소명을 Pro 전용으로 오해되지 않는
+  `Codex Web GPT Automation` / `codex-web-gpt-automation`으로 변경했습니다.
+  기존 `codexpro-*` 상태, 영수증, 스키마와 복구 파일은 하위 호환 ID로
+  유지합니다.
+- 설치부터 고정 HTTPS endpoint, DevSpace Owner 승인, 재부팅 복구, Oracle
+  전용 브라우저 로그인, ChatGPT 앱 `codex` 등록까지 순서가 고정된 최초 설치
+  가이드와 fail-closed onboarding 점검기를 추가했습니다.
+- Tailscale Funnel을 자동화·재부팅 검증 경로로 유지하면서 Cloudflare named
+  tunnel, ngrok 고정 도메인, custom HTTPS proxy의 안전한 합류 지점을
+  문서화했습니다. 임시 URL은 완료 상태로 인정하지 않습니다.
+- Oracle 0.17.1 manual-login profile 미초기화가 제출 전에 발생한 경우의 안전한
+  잠금 정산과, `TASK_OUTCOME` 뒤의 제한된 Markdown reference footer 분류를
+  회귀 테스트로 고정했습니다.
+
 ### 1.7.0 — macOS Ultrawork
 
 - macOS arm64에서 공통 Python `install/update/doctor/rollback/uninstall` lifecycle과
@@ -22,7 +38,8 @@ README는 현재 제품의 목적과 사용법만 설명합니다. 구현 변경
 
 - 일반 GPT, 계획, 검토, 수정, 지휘, 심층 리서치, 종합모드와 Web
   Multi-GPT를 Oracle + DevSpace로 통일했습니다.
-- Pro는 Oracle 첨부 전용이며 DevSpace를 사용하지 않습니다.
+- Pro는 기본적으로 Oracle + 읽기 전용 DevSpace를 사용하며, 명시적인
+  `pro-attachment`만 고정 외부 증거에 사용합니다.
 - CodexPro와 agbrowse 신규 제출 경로는 동결했습니다.
 
 ### Windows 브라우저 실행 격리

@@ -47,7 +47,7 @@ def test_setup_plan_has_no_secrets_and_is_explicit_only(tmp_path: Path, monkeypa
     assert "password" not in text.lower()
     assert "token" not in text.lower()
     assert plan["registration_url"] == "https://device.tailnet.ts.net/mcp"
-    assert plan["recommended_app_name"] == "DevSpace"
+    assert plan["recommended_app_name"] == "codex"
     assert plan["managed_service_environment"] == {
         "DEVSPACE_TOOL_MODE": "full",
         "DEVSPACE_OAUTH_SCOPES": "devspace,offline_access",

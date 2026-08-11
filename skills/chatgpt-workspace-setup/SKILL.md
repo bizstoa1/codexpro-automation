@@ -1,11 +1,11 @@
 ---
 name: chatgpt-workspace-setup
-description: Part of the current Oracle path, perform the one-time, user-authorized DevSpace and Tailscale Funnel setup or read-only diagnosis for ChatGPT workspace access. Never use this during ordinary GPT runs and never automate ChatGPT settings or app selection.
+description: Part of the current Oracle path, perform the one-time, user-authorized DevSpace and stable HTTPS tunnel setup or read-only diagnosis for ChatGPT workspace access. Tailscale Funnel is the managed route. Never use this during ordinary GPT runs and never automate ChatGPT settings or app selection.
 ---
 
 # ChatGPT Workspace Setup
 
-Use this skill only for a first connection, an explicitly requested DevSpace/Tailscale repair, or a read-only endpoint diagnosis. Ordinary ChatGPT modes must not call it.
+Use this skill only for a first connection, an explicitly requested DevSpace/tunnel repair, or a read-only endpoint diagnosis. Ordinary ChatGPT modes must not call it. Follow `docs/FIRST_INSTALL.md` for the complete ordered installation; this helper directly manages only the Tailscale Funnel route.
 
 ## One-time setup
 
@@ -61,7 +61,7 @@ must reconnect or recreate that app once. Never automate that settings action.
 
 The only app information to enter manually in ChatGPT Developer Mode is:
 
-- Recommended app name: `DevSpace`
+- Recommended app name: `codex`
 - URL: `https://<hostname>/mcp`
 - Complete the first Owner-password approval page that DevSpace presents.
 

@@ -57,6 +57,8 @@ def test_manifest_covers_runtime_and_schemas() -> None:
         'bin/codexpro_macos_launchd.py',
         'bin/codexpro_posix_process.py',
         'bin/codexpro_project_cloudflare_bootstrap.ps1',
+        'bin/codex_web_gpt_onboarding.py',
+        'docs/FIRST_INSTALL.md',
         'skills/chatgpt-pro-browser/SKILL.md',
         'skills/chatgpt-pro-browser/agents/openai.yaml',
         'skills/chatgpt-pro-browser/scripts/build_project_context_packet.py',
@@ -85,6 +87,7 @@ def test_manifest_covers_runtime_and_schemas() -> None:
         'marketplace/',
         'install.py',
         'doctor.py',
+        'onboard.py',
     } <= package_files
 
 
@@ -129,8 +132,8 @@ def test_package_is_publishable_and_lockfile_matches() -> None:
     assert package['name'] == lock['name'] == lock['packages']['']['name']
     assert package['version'] == lock['version'] == lock['packages']['']['version']
     assert package['license'] == lock['packages']['']['license'] == 'MIT'
-    assert package['repository']['url'] == 'git+https://github.com/ventianima-lab/codexpro-automation.git'
-    assert package['homepage'].startswith('https://github.com/ventianima-lab/codexpro-automation')
+    assert package['repository']['url'] == 'git+https://github.com/ventianima-lab/codex-web-gpt-automation.git'
+    assert package['homepage'].startswith('https://github.com/ventianima-lab/codex-web-gpt-automation')
     assert {
         'bin/chatgpt_agbrowse_bridge.py',
         'skills/chatgpt-thinking-browser/SKILL.md',

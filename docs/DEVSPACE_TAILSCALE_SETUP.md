@@ -49,13 +49,14 @@ reconnect the app once so ChatGPT reads the corrected OAuth metadata.
 
 Enable Developer Mode in ChatGPT and manually create the connector:
 
-- Name: `DevSpace`
+- Name: `codex`
 - MCP URL: `https://your-device.your-tailnet.ts.net/mcp`
 
 To use a different display name, store the identical name in
 `%USERPROFILE%\.codex\chatgpt-workspace.json`, for example
-`{"app_name":"codex"}`. New Oracle manifests then mention that registered app;
-the default remains `DevSpace`.
+`{"app_name":"codex"}`. New Oracle manifests then mention that registered app.
+The `DevSpace` default remains only for compatibility with older installs that
+do not yet have this explicit config.
 
 Approve the initial Owner-password page when DevSpace asks. This tooling never opens settings, creates/deletes apps, picks permissions, inspects app lists, or selects an app in the composer.
 

@@ -1,4 +1,4 @@
-# Codex Web GPT Orchestrator
+# Codex Web GPT Automation
 
 English | [한국어](README.md)
 
@@ -87,7 +87,8 @@ ChatGPT web sessions through Oracle and merges their results.
 - Python
 - Node.js 22.19 or later and earlier than 27
 - Git for Windows / Git Bash on Windows; `lsof` and `launchd` on macOS
-- Tailscale
+- A stable HTTPS tunnel (Tailscale Funnel recommended; Cloudflare named tunnel,
+  ngrok static domain, or a custom proxy are supported paths)
 - An Oracle browser profile signed in to ChatGPT
 - One manually registered DevSpace app in ChatGPT Developer Mode
 
@@ -98,8 +99,8 @@ match.
 ## Install
 
 ```powershell
-git clone https://github.com/ventianima-lab/codexpro-automation.git
-cd codexpro-automation
+git clone https://github.com/ventianima-lab/codex-web-gpt-automation.git
+cd codex-web-gpt-automation
 .\install.ps1 -WhatIf
 .\install.ps1
 ```
@@ -110,8 +111,8 @@ The installer backs up replaced files and writes durable install receipts under
 On macOS, use the shared Python lifecycle:
 
 ```bash
-git clone https://github.com/ventianima-lab/codexpro-automation.git
-cd codexpro-automation
+git clone https://github.com/ventianima-lab/codex-web-gpt-automation.git
+cd codex-web-gpt-automation
 python3 install.py --dry-run
 python3 install.py
 python3 doctor.py
@@ -121,7 +122,14 @@ Receipts are stored under `~/.codex/receipts`. `python3 rollback.py` and
 `python3 uninstall.py` perform an exact, receipt-backed inverse. See the
 [macOS Ultrawork guide](docs/MACOS_ULTRAWORK.md) for OMO and launchd setup.
 
-## One-time DevSpace setup
+## First install and one-time DevSpace setup
+
+Follow the [ordered first-install guide](docs/FIRST_INSTALL.md): lifecycle install,
+stable public URL, DevSpace Owner password, reboot recovery, dedicated Oracle
+browser login, and finally manual ChatGPT registration under the name `codex`.
+Tailscale is the automated and reboot-tested route. A Cloudflare named tunnel,
+ngrok static domain, or custom HTTPS proxy is usable when its stable URL and OS
+startup service are already managed.
 
 You do not install one ChatGPT app per project. Register one DevSpace app and
 add each permitted project as another `--root` argument.
@@ -137,7 +145,7 @@ python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py setup 
 Review the output, then replace `--dry-run` with `--apply`. In ChatGPT Developer
 Mode, manually register one app:
 
-- Name: `DevSpace`
+- Name: `codex`
 - URL: `https://your-device.your-tailnet.ts.net/mcp`
 
 After owner approval, the automation does not inspect or manipulate ChatGPT
@@ -226,6 +234,7 @@ already persisted legacy run.
 ## Documentation
 
 - [Global ChatGPT routing and mode selection](docs/GLOBAL_CHATGPT_ROUTING.md)
+- [Ordered first install and onboarding](docs/FIRST_INSTALL.md)
 - [DevSpace and Tailscale setup](docs/DEVSPACE_TAILSCALE_SETUP.md)
 - [macOS Ultrawork and 75/80-minute recovery](docs/MACOS_ULTRAWORK.md)
 - [Technical changelog](docs/CHANGELOG.md)

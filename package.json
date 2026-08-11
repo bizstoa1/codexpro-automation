@@ -1,16 +1,16 @@
 {
-  "name": "codexpro-automation",
-  "version": "1.7.0",
+  "name": "codex-web-gpt-automation",
+  "version": "1.8.0",
   "private": false,
   "description": "Windows and macOS orchestrator for Oracle, DevSpace, OMO ultrawork, and exact 75/80-minute recovery",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ventianima-lab/codexpro-automation.git"
+    "url": "git+https://github.com/ventianima-lab/codex-web-gpt-automation.git"
   },
-  "homepage": "https://github.com/ventianima-lab/codexpro-automation#readme",
+  "homepage": "https://github.com/ventianima-lab/codex-web-gpt-automation#readme",
   "bugs": {
-    "url": "https://github.com/ventianima-lab/codexpro-automation/issues"
+    "url": "https://github.com/ventianima-lab/codex-web-gpt-automation/issues"
   },
   "keywords": [
     "codex",
@@ -25,6 +25,8 @@
   ],
   "files": [
     "README.en.md",
+    "onboard.py",
+    "bin/codex_web_gpt_onboarding.py",
     "bin/chatgpt_agbrowse_bridge.py",
     "bin/chatgpt_agbrowse_composer.py",
     "bin/chatgpt_agbrowse_contract.py",

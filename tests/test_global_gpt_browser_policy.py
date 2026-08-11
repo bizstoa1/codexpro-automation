@@ -168,6 +168,8 @@ def test_readme_declares_manual_one_time_registration_not_ui_automation() -> Non
     assert "최초 한 번 수동 등록" in value
     assert "ChatGPT 설정·앱 목록·권한·삭제·선택 UI를 자동화하지 않습니다" in value
     assert "실행 신원으로 정확히 복구" in value
+    assert "최초 설치 가이드" in value
+    assert "ChatGPT 앱 `codex` 등록" in value
 
 
 def test_english_readme_maps_modes_to_the_same_oracle_routes() -> None:

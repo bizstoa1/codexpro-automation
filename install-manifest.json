@@ -1,6 +1,6 @@
 {
   "schema": "codexpro.install-manifest/v1",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "include": [
     "bin/chatgpt_agbrowse_bridge.py",
     "bin/chatgpt_agbrowse_composer.py",
@@ -46,6 +46,7 @@
     "bin/chatgpt_parallel_implementation_runtime.py",
     "bin/chatgpt_prompt_profiles.py",
     "bin/chatgpt_workspace_config.py",
+    "bin/codex_web_gpt_onboarding.py",
     "bin/chatgpt_web_multi_runtime.py",
     "bin/chatgpt_web_multi_upstream.py",
     "bin/codexpro_agbrowse_app.py",
@@ -98,6 +99,7 @@
     "scripts/run_golden_path_smoke.py",
     "scripts/start_devspace_bootstrap.ps1",
     "scripts/run_harness_canary.py",
+    "docs/FIRST_INSTALL.md",
     "contracts/install/*.json",
     "contracts/gjc-interview-v1.schema.json",
     "marketplace/.agents/plugins/marketplace.json",
