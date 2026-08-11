@@ -132,7 +132,7 @@ def test_restart_confirmation_rejects_old_or_foreign_listener(
 def test_stop_service_requires_exact_devspace_identity() -> None:
     compat = load_compat()
     stopped: list[int] = []
-    package = Path("C:/tested/devspace")
+    package = Path("C:/tested/node_modules/@waishnav/devspace")
     result = compat.stop_exact_devspace_service(
         service_probe=lambda port: {
             "pid": 44,
@@ -144,6 +144,20 @@ def test_stop_service_requires_exact_devspace_identity() -> None:
     )
     assert result["stopped"] is True
     assert stopped == [44]
+
+    npx_result = compat.stop_exact_devspace_service(
+        service_probe=lambda port: {
+            "pid": 45,
+            "command_line": (
+                r'"node" "C:\tested\node_modules\.bin\\..\@waishnav\devspace\dist\cli.js" serve'
+            ),
+            "started_at_unix_ns": 1,
+        },
+        stopper=stopped.append,
+        package_roots=[package],
+    )
+    assert npx_result["stopped"] is True
+    assert stopped == [44, 45]
 
     with pytest.raises(compat.DevSpaceCompatError) as foreign:
         compat.stop_exact_devspace_service(
@@ -208,8 +222,8 @@ def test_directory_read_patch_routes_directories_without_widening_read_access() 
 
     assert compat.PATCHES["dist/server.js"] == {
         "patch": "directory-read.patch",
-        "pristine": "0acc3636a5778b9463cb0d95c393c924b804af60a7b2a51790ed5f33a529e5fd",
-        "patched": "142007d1b0d07b59942adb7cb3f8db12514747027b83ffb458bcca0d83f24da1",
+        "pristine": "c49c1c607b42e040cdf0b15d5a4a93cfef9ddb8147d492a3cfa2a8c3889dab24",
+        "patched": "d5d9b08c482b282f3390f415d69d460f4ee844046962a4013f11612cbb6b52e0",
     }
     assert "const readPath = workspaces.resolveReadPath(workspace, input.path);" in patch
     assert "isDirectory = (await stat(readPath.absolutePath)).isDirectory();" in patch
