@@ -12,6 +12,11 @@ import pytest
 MODULE_PATH = Path(__file__).resolve().parents[1] / "bin" / "chatgpt_oracle_profiles.py"
 
 
+@pytest.fixture(autouse=True)
+def default_workspace_app(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CODEX_CHATGPT_APP_NAME", "DevSpace")
+
+
 def load_profiles():
     name = "chatgpt_oracle_profiles_test"
     spec = importlib.util.spec_from_file_location(name, MODULE_PATH)

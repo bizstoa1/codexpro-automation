@@ -77,6 +77,24 @@ python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py ensure
 Run this command from the hidden startup wrapper after DevSpace becomes
 healthy. It does not touch ChatGPT settings or app registration.
 
+For login-time recovery, use `recover` from a hidden per-user startup entry.
+Unlike `ensure`, it starts the exact hash-validated DevSpace service when the
+local MCP endpoint is unavailable, then verifies or restores the same Funnel:
+
+```powershell
+python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py recover --root C:\projects\one --hostname your-device.your-tailnet.ts.net
+```
+
+The command is idempotent, never overwrites a conflicting Funnel mapping, and
+does not contain or print the DevSpace Owner credential.
+
+The shipped `scripts/start_devspace_bootstrap.ps1` wrapper reads the non-secret
+host, root, port, and Python path from
+`%CODEX_HOME%\config\codexpro-devspace-bootstrap.json`, retries while the
+Tailscale service is still settling after login, and writes monthly logs under
+`%CODEX_HOME%\logs\codexpro-devspace`. Register that wrapper as a hidden
+per-user login command; do not place the Owner credential in its config.
+
 It also reports the required managed tool mode (`full`) and any persisted
 `toolMode`. A configured non-`full` value is advisory failure because a
 manually started service may not inherit the managed launch environment.

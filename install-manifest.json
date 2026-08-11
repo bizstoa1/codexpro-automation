@@ -1,6 +1,6 @@
 {
   "schema": "codexpro.install-manifest/v1",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "include": [
     "bin/chatgpt_agbrowse_bridge.py",
     "bin/chatgpt_agbrowse_composer.py",
@@ -90,6 +90,7 @@
     "scripts/run_v4_contract_tests.py",
     "scripts/run_fast_gate.py",
     "scripts/run_golden_path_smoke.py",
+    "scripts/start_devspace_bootstrap.ps1",
     "contracts/install/*.json",
     "tests/fixtures/planner-v7-app-trace-quiescent-incident.json",
     "tests/fixtures/planner-v8-app-trace-quiescent-incident.json",

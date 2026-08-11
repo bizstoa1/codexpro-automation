@@ -5,8 +5,15 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 
 PATH = Path(__file__).resolve().parents[1] / "bin" / "chatgpt_oracle_dispatch.py"
+
+
+@pytest.fixture(autouse=True)
+def default_workspace_app(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CODEX_CHATGPT_APP_NAME", "DevSpace")
 
 
 def load():

@@ -201,6 +201,57 @@ def test_windows_launch_is_hidden() -> None:
     assert kwargs["creationflags"] & module.subprocess.CREATE_NO_WINDOW
 
 
+def test_recover_starts_missing_service_then_restores_exact_funnel(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module, current = config(tmp_path)
+    bash = tmp_path / "bash.exe"
+    bash.write_text("", encoding="utf-8")
+    monkeypatch.setenv("DEVSPACE_GIT_BASH", str(bash))
+    probes = 0
+    calls: list[list[str]] = []
+    launches: list[list[str]] = []
+
+    class Response:
+        status = 401
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+
+    def opener(request, timeout):
+        nonlocal probes
+        probes += 1
+        if probes == 1:
+            raise OSError("service is down")
+        return Response()
+
+    def runner(argv, **kwargs):
+        calls.append(list(argv))
+        if argv[:4] == ["tailscale", "funnel", "status", "--json"]:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps({"Web": {current.hostname + ":443": {"Proxy": f"http://127.0.0.1:{current.local_port}"}}}),
+                stderr="",
+            )
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    report = module.recover_service(
+        current,
+        opener=opener,
+        runner=runner,
+        popen_factory=lambda argv, **kwargs: launches.append(list(argv)),
+        sleeper=lambda _: None,
+    )
+
+    assert report["ok"] is True
+    assert report["service_started"] is True
+    assert len(launches) == 1
+    assert any("--stop-exact-service" in call for call in calls)
+    assert any("--confirm-service-restarted" in call for call in calls)
+
+
 def test_setup_applies_hash_validated_devspace_compat_before_service_start(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

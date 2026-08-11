@@ -219,13 +219,43 @@ def apply_setup(
     ensure_public_route(config, opener=opener, runner=runner, sleeper=sleeper)
 
 
+def recover_service(
+    config: SetupConfig,
+    *,
+    opener: Callable[..., Any] = urllib.request.urlopen,
+    runner: Callable[..., Any] = subprocess.run,
+    popen_factory: Callable[..., Any] = subprocess.Popen,
+    sleeper: Callable[[float], None] = time.sleep,
+) -> dict[str, Any]:
+    """Idempotently restore the managed DevSpace service and its exact Funnel."""
+    local = http_probe(config.local_mcp_url, opener=opener)
+    service_started = not local.get("ok")
+    if service_started:
+        run_checked(devspace_compat_argv(), runner=runner)
+        run_checked(
+            devspace_compat_argv(stop_exact_service=True, local_port=config.local_port),
+            runner=runner,
+        )
+        launch_hidden(
+            bash_argv(["npx", "--yes", DEVSPACE_PACKAGE, "serve"]),
+            popen_factory=popen_factory,
+            environment=devspace_service_environment(),
+        )
+        run_checked(
+            devspace_compat_argv(confirm_restarted=True, local_port=config.local_port),
+            runner=runner,
+        )
+    result = ensure_public_route(config, opener=opener, runner=runner, sleeper=sleeper)
+    return {**result, "service_started": service_started}
+
+
 def wait_for_local_service(
     config: SetupConfig,
     *,
     opener: Callable[..., Any] = urllib.request.urlopen,
     sleeper: Callable[[float], None] = time.sleep,
-    attempts: int = 15,
-    delay_seconds: float = 1.0,
+    attempts: int = 60,
+    delay_seconds: float = 2.0,
 ) -> dict[str, Any]:
     """Wait for the exact loopback MCP endpoint without accepting a port-only signal."""
     last: dict[str, Any] = {"ok": False, "error": "DEVSPACE_LOCAL_SERVICE_NOT_READY"}
@@ -435,7 +465,7 @@ def doctor(config: SetupConfig, *, opener: Callable[..., Any] = urllib.request.u
 def parser() -> argparse.ArgumentParser:
     value = argparse.ArgumentParser(description=__doc__)
     sub = value.add_subparsers(dest="command", required=True)
-    for name in ("setup", "doctor", "ensure"):
+    for name in ("setup", "doctor", "ensure", "recover"):
         command = sub.add_parser(name)
         command.add_argument("--root", action="append", default=[], help="Narrow allowed DevSpace root; repeat as needed")
         command.add_argument("--hostname", required=True, help="Tailscale MagicDNS hostname")
@@ -462,6 +492,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if args.command == "ensure":
             print(json.dumps(ensure_public_route(config), ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "recover":
+            print(json.dumps(recover_service(config), ensure_ascii=False, indent=2))
             return 0
         print(json.dumps(doctor(
             config,

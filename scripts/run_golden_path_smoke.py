@@ -71,7 +71,7 @@ def run_smoke(*, bin_root: Path) -> dict[str, Any]:
 
         config = state.load_manifest(manifest_path)
         record("manifest_loads", True, {"transport": config.transport, "app_name": config.app_name})
-        record("devspace_transport_selected", config.transport == "devspace" and config.app_name == "DevSpace")
+        record("devspace_transport_selected", config.transport == "devspace" and bool(config.app_name))
 
         prompt = state.composer_prompt(config) if hasattr(state, "composer_prompt") else None
         if prompt is None:
@@ -79,7 +79,7 @@ def run_smoke(*, bin_root: Path) -> dict[str, Any]:
             prompt = f"@{payload['app_name']} {payload['mission_path']}"
         record(
             "prompt_is_one_line_with_app_mention",
-            "\n" not in prompt and "@DevSpace" in prompt and str(mission.resolve()) in prompt,
+            "\n" not in prompt and f"@{config.app_name}" in prompt and str(mission.resolve()) in prompt,
         )
 
         preview = runner.execute_run(manifest_path, dry_run=True)

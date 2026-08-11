@@ -114,9 +114,9 @@ if (Test-Path -LiteralPath $UpdateReceiptPath) {
   }
 }
 
-if (!$Python -or !(Test-Path -LiteralPath $Contract)) {
+if (($Agbrowse -or $UpdateReceipt) -and (!$Python -or !(Test-Path -LiteralPath $Contract))) {
   $Issues += @{code='CONTRACT_UNVERIFIED'; detail='Python or contract manifest unavailable'}
-} else {
+} elseif ($Agbrowse -or $UpdateReceipt) {
   if ($UpdateReceipt -and (Get-Sha256 $Contract) -ne [string]$UpdateReceipt.contract_sha256) {
     $Issues += @{code='CONTRACT_RECEIPT_HASH_MISMATCH'; contract=$Contract}
   } else {

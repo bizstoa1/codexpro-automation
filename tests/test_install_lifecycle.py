@@ -147,6 +147,7 @@ def test_doctor_accepts_current_v3_install_receipt_schema() -> None:
 
         assert 'RECEIPT_INVALID' not in result.stdout
         assert 'unsupported install receipt schema' not in result.stdout
+        assert 'CONTRACT_UNVERIFIED' not in result.stdout
 
 
 def test_failed_dependency_preflight_leaves_existing_managed_file_byte_identical() -> None:
