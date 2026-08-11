@@ -131,6 +131,13 @@ Tailscale is the automated and reboot-tested route. A Cloudflare named tunnel,
 ngrok static domain, or custom HTTPS proxy is usable when its stable URL and OS
 startup service are already managed.
 
+As an optional recommended step,
+`bin/codex_global_agents_setup.py` atomically preserves and merges the user's
+global configuration: a Sol High primary, cost-bounded Terra/Luna subagents,
+two concurrent workers by policy, and a hard cap of three. It does not enable
+the unstable `multi_agent_v2` feature. Restart Codex after applying it so new
+tasks load the role registry.
+
 You do not install one ChatGPT app per project. Register one DevSpace app and
 add each permitted project as another `--root` argument.
 

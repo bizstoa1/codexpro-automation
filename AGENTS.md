@@ -17,9 +17,11 @@
   checkpoint, and 4,800-second handoff boundary. A live or uncertain Oracle
   slug always owns the mission; recovery may harvest that exact session but
   must not resubmit it.
-- OMO and Codex native subagents may run at most five heavy lanes in one phase.
-  Local-subagent and Oracle-web phases do not overlap, so the combined limit is
-  also five. Concurrent writers require distinct worktrees.
+- Do not blanket-fan-out Codex native subagents. Normal operation starts with
+  at most two concurrent workers and the global hard cap is three spawned
+  threads. Concurrent writers require explicit, non-overlapping file lists or
+  distinct worktrees. Oracle Web Multi remains separately bounded to five
+  provider sessions, and local-subagent and Oracle-web phases do not overlap.
 
 - Every new ChatGPT submission uses Oracle. Regular GPT uses the manually registered DevSpace app. Qualified Pro uses `GPT-5.6 Sol` at the Pro effort through the same app in a read-only DevSpace route; explicit `pro-attachment` is reserved for immutable or external evidence that DevSpace cannot read and is never an automatic fallback.
 - New GPT comprehensive workflows use `codex.chatgpt.oracle-comprehensive/v1`. Existing CodexPro/agbrowse comprehensive v1-v4 state remains exact recovery-only.

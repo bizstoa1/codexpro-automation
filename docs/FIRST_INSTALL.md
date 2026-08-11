@@ -42,6 +42,27 @@ python install.py
 python doctor.py
 ```
 
+### Optional recommended Codex native subagents
+
+Install the cost-bounded global defaults only after the lifecycle install. The
+command re-reads the current `~/.codex/config.toml`, preserves unrelated
+settings and the existing global `AGENTS.md`, creates a timestamped backup and
+receipt, and then installs three standalone roles.
+
+```powershell
+python "$env:USERPROFILE\.codex\bin\codex_global_agents_setup.py"
+python "$env:USERPROFILE\.codex\bin\codex_global_agents_setup.py" --apply
+python "$env:USERPROFILE\.codex\bin\codex_global_agents_setup.py" --doctor
+```
+
+The main agent is GPT-5.6 Sol at high reasoning. The normal subagent default is
+GPT-5.6 Terra at medium reasoning, with a hard cap of three spawned threads and
+a policy default of two concurrent workers. `scout` is Luna medium/read-only,
+`implementer` is Terra high and accepts only an explicit file list, and
+`verifier` is Terra high/read-only. This setup does not enable the unstable
+`multi_agent_v2` feature. Restart Codex after applying it so a new task loads
+the global configuration and role registry.
+
 macOS:
 
 ```bash

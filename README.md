@@ -129,6 +129,11 @@ python3 doctor.py
 복구까지 검증된 권장 경로이며 Cloudflare named tunnel, ngrok 고정 도메인,
 custom HTTPS proxy도 고정 주소와 OS 시작 서비스를 준비하면 사용할 수 있습니다.
 
+선택 권장 단계로 `bin/codex_global_agents_setup.py`가 기존 전역 설정을 보존한
+채 Sol High 지휘관, 비용 제한형 Terra/Luna 서브에이전트, 기본 동시 작업자 2명
+(하드 상한 3명) 정책을 원자적으로 병합합니다. 불안정한 `multi_agent_v2`는 켜지
+않으며, 적용 후 Codex를 재시작해야 새 작업에서 역할 목록을 다시 읽습니다.
+
 DevSpace 앱은 프로젝트마다 설치하는 것이 아닙니다. 앱 하나에 허용할
 프로젝트 루트를 여러 번 `--root`로 지정합니다.
 

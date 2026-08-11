@@ -27,6 +27,7 @@
     "README.en.md",
     "onboard.py",
     "bin/codex_web_gpt_onboarding.py",
+    "bin/codex_global_agents_setup.py",
     "bin/chatgpt_agbrowse_bridge.py",
     "bin/chatgpt_agbrowse_composer.py",
     "bin/chatgpt_agbrowse_contract.py",
