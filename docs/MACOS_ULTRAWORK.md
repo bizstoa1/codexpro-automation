@@ -44,6 +44,32 @@ Mode 등록과 Owner 승인은 수동으로 완료한다. URL은 doctor가 출�
 `https://<magic-dns>/mcp`다. 표준 HTTPS 443을 사용하므로 ChatGPT OAuth
 메타데이터 수집 경로에도 별도 포트가 붙지 않는다.
 
+### Cloudflare Named Tunnel 대체 경로
+
+OpenAI 쪽에서 Tailscale Funnel 엣지 연결이 반복적으로 시간 초과하면, 기존
+터널이나 `com.openclaw.*` 서비스를 재사용하지 말고 DevSpace 전용 터널을
+만든다.
+
+```bash
+cloudflared tunnel create codexpro-devspace-macos
+cloudflared tunnel route dns <tunnel-uuid> devspace.example.com
+
+python3 "$HOME/.codex/bin/codexpro_cloudflared_launchd.py" install \
+  --project-root "/absolute/path/to/codexpro-automation" \
+  --cloudflared "/opt/homebrew/bin/cloudflared" \
+  --hostname "devspace.example.com" \
+  --tunnel-id "<tunnel-uuid>" \
+  --credentials-file "$HOME/.cloudflared/<tunnel-uuid>.json" \
+  --load
+python3 "$HOME/.codex/bin/codexpro_cloudflared_launchd.py" doctor
+```
+
+DevSpace의 `publicBaseUrl`은 `https://devspace.example.com`과 정확히 같아야
+한다. 전환 뒤 `/healthz`, OAuth authorization-server metadata, protected
+resource metadata, 인증 없는 `/mcp`의 401 challenge를 확인한다. ChatGPT
+Developer Mode 앱 등록과 Owner 승인은 사용자가 새 URL로 다시 수행한다.
+Cloudflare Access나 대화형 WAF challenge를 이 hostname 앞에 추가하지 않는다.
+
 ## launchd
 
 ```bash
@@ -55,6 +81,10 @@ python3 "$HOME/.codex/bin/codexpro_macos_launchd.py" doctor
 DevSpace는 실패 시 재시작되고, Funnel 상태는 5분마다 확인되며, 하네스
 감독기는 60초마다 실행된다. 제거는 동일 CLI의 `uninstall`로 이 프로젝트가
 소유한 세 plist만 대상으로 한다.
+
+Cloudflare 대체 경로의 plist는 별도 label
+`com.ventianima.codexpro-automation.cloudflared-devspace`로 관리되며 기존 세
+plist와 기존 Cloudflare 터널을 수정하지 않는다.
 
 압축 clock canary는 `python3 scripts/run_harness_canary.py`로 실행한다. 배포 전
 실제 85분 증거가 필요하면 같은 명령에 `--real-time`을 추가하며, 이 경로도

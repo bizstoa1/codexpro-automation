@@ -152,6 +152,11 @@ python3 skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py setup
   --root "$PWD" --dry-run
 ```
 
+Tailscale Funnel의 공개 엣지가 OpenAI 연결 제한을 반복해서 넘기는 환경은
+별도 Cloudflare Named Tunnel을 사용할 수 있습니다. 기존 터널과 서비스를
+재사용하지 않는 절차는 [macOS Ultrawork 가이드](docs/MACOS_ULTRAWORK.md#cloudflare-named-tunnel-대체-경로)를
+따릅니다.
+
 자세한 과정은
 [DevSpace + Tailscale 설정](docs/DEVSPACE_TAILSCALE_SETUP.md)을
 참고하세요.

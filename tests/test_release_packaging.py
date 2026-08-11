@@ -53,6 +53,7 @@ def test_manifest_covers_runtime_and_schemas() -> None:
         'bin/codexpro_agbrowse_app.py',
         'bin/codexpro_fixed_runtime_watchdog.py',
         'bin/codexpro_harness.py',
+        'bin/codexpro_cloudflared_launchd.py',
         'bin/codexpro_lifecycle.py',
         'bin/codexpro_macos_launchd.py',
         'bin/codexpro_posix_process.py',
