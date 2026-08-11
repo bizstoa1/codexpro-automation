@@ -346,6 +346,11 @@ def cleanup_contract_root(path: Path, *, expected_parent: Path, attempts: int = 
             os.chmod(target, stat.S_IWRITE)
             function(target)
         except OSError:
+            # Python 3.11's shutil callback receives sys.exc_info(), while
+            # newer onexc receives the exception directly.  The release
+            # matrix intentionally stays on 3.11, so preserve both shapes.
+            if isinstance(error, tuple) and len(error) > 1:
+                raise error[1]
             raise error
 
     for attempt in range(max(1, attempts)):
@@ -355,7 +360,7 @@ def cleanup_contract_root(path: Path, *, expected_parent: Path, attempts: int = 
                     os.chmod(candidate, stat.S_IREAD | stat.S_IWRITE)
                 except OSError:
                     pass
-            shutil.rmtree(resolved, onexc=clear_readonly)
+            shutil.rmtree(resolved, onerror=clear_readonly)
             return
         except FileNotFoundError:
             return
