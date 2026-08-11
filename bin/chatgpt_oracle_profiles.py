@@ -8,6 +8,7 @@ the Oracle runner may send after the one-time DevSpace setup has been completed.
 """
 
 import argparse
+import importlib.util
 import json
 import sys
 from dataclasses import asdict, dataclass
@@ -21,7 +22,15 @@ REGULAR_THINKING_TIME = {
     "High": "extended",
     "Medium": "standard",
 }
-DEVSPACE_APP_NAME = "DevSpace"
+_CONFIG_SPEC = importlib.util.spec_from_file_location(
+    "chatgpt_oracle_profiles_workspace_config",
+    Path(__file__).resolve().parent / "chatgpt_workspace_config.py",
+)
+if _CONFIG_SPEC is None or _CONFIG_SPEC.loader is None:
+    raise RuntimeError("workspace app config module unavailable")
+WORKSPACE_CONFIG = importlib.util.module_from_spec(_CONFIG_SPEC)
+_CONFIG_SPEC.loader.exec_module(WORKSPACE_CONFIG)
+DEVSPACE_APP_NAME = WORKSPACE_CONFIG.DEFAULT_APP_NAME
 # Current ChatGPT exposes Pro as the maximum effort for GPT-5.6 Sol, not as a
 # separate model row.  Oracle 0.17.1 verifies that Pro effort independently.
 PRO_MODEL = "gpt-5.6-sol"
@@ -112,22 +121,22 @@ def _resolve_reasoning(requested: str | None) -> str:
     )
 
 
-def composer_handoff(mission_path: str | Path) -> str:
+def composer_handoff(mission_path: str | Path, app_name: str | None = None) -> str:
     """The only regular-GPT composer text: app mention plus the absolute mission."""
     mission = _absolute_mission_path(mission_path)
     return (
-        f"@{DEVSPACE_APP_NAME} Read and execute the mission file: {mission}. "
+        f"@{WORKSPACE_CONFIG.normalize_app_name(app_name or WORKSPACE_CONFIG.configured_app_name())} Read and execute the mission file: {mission}. "
         "Use only the exact project root recorded there; read the mission and applicable AGENTS.md fully first. "
         "If workspace opening times out, retry that same exact root once; never substitute a parent, child, active "
         "workspace, or shell boundary workaround."
     )
 
 
-def pro_readonly_composer_handoff(mission_path: str | Path) -> str:
+def pro_readonly_composer_handoff(mission_path: str | Path, app_name: str | None = None) -> str:
     """The qualified Pro read-only DevSpace handoff, with no attachments."""
     mission = _absolute_mission_path(mission_path)
     return (
-        f"@{DEVSPACE_APP_NAME} {PRO_READONLY_COMPOSER_PREFIX}: {mission}. "
+        f"@{WORKSPACE_CONFIG.normalize_app_name(app_name or WORKSPACE_CONFIG.configured_app_name())} {PRO_READONLY_COMPOSER_PREFIX}: {mission}. "
         "Use only the exact project root recorded there; read the mission and applicable AGENTS.md fully first. "
         "Perform read-only work only; do not modify files, settings, accounts, or external state."
     )
@@ -153,6 +162,7 @@ def build_launch_contract(
     mission_path: str | Path | None = None,
     reasoning_level: str | None = None,
     attachment_paths: list[str | Path] | tuple[str | Path, ...] | None = None,
+    app_name: str | None = None,
 ) -> dict[str, Any]:
     """Build an immutable, browser-agnostic launch contract for parent runners.
 
@@ -161,6 +171,9 @@ def build_launch_contract(
     attachment-only transport for frozen external evidence.
     """
     profile = resolve_profile(mode)
+    resolved_app_name = WORKSPACE_CONFIG.normalize_app_name(
+        app_name or WORKSPACE_CONFIG.configured_app_name()
+    )
     result: dict[str, Any] = {
         "schema": "codex.chatgpt.oracle-mode-profile/v1",
         "mode": profile.mode,
@@ -213,13 +226,13 @@ def build_launch_contract(
             "route": "oracle-pro-devspace-readonly",
             "app_policy": "prompt-mention-only",
             "attachment_policy": "forbidden",
-            "app_name": DEVSPACE_APP_NAME,
+            "app_name": resolved_app_name,
             "model": PRO_MODEL,
             "model_strategy": "select",
             "reasoning_level": "Pro",
             "thinking_time": "heavy",
             "mission_path": str(mission),
-            "composer_prompt": pro_readonly_composer_handoff(mission),
+            "composer_prompt": pro_readonly_composer_handoff(mission, resolved_app_name),
         })
         return result
     if attachment_paths:
@@ -231,14 +244,14 @@ def build_launch_contract(
     result.update({
         "route": "oracle-devspace",
         "app_policy": "prompt-mention-only",
-        "app_name": DEVSPACE_APP_NAME,
+        "app_name": resolved_app_name,
         "reasoning_level": reasoning,
         # Oracle 0.17.1 keeps `extra-high` distinct from the separate Pro
         # effort. Keep this in the mode contract so dispatch cannot silently
         # turn a requested High run into Extra High or Pro.
         "thinking_time": REGULAR_THINKING_TIME[reasoning],
         "mission_path": str(mission),
-        "composer_prompt": composer_handoff(mission),
+        "composer_prompt": composer_handoff(mission, resolved_app_name),
     })
     return result
 
@@ -250,6 +263,7 @@ def _main(argv: list[str] | None = None) -> int:
     parser.add_argument("--mission-path")
     parser.add_argument("--reasoning-level")
     parser.add_argument("--attachment", action="append", default=[])
+    parser.add_argument("--app-name")
     args = parser.parse_args(argv)
     try:
         if args.command == "list":
@@ -264,6 +278,7 @@ def _main(argv: list[str] | None = None) -> int:
                     mission_path=args.mission_path,
                     reasoning_level=args.reasoning_level,
                     attachment_paths=args.attachment,
+                    app_name=args.app_name,
                 ),
             }
     except OracleProfileError as exc:

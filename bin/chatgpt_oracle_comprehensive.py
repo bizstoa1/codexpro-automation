@@ -64,6 +64,7 @@ def _load(name: str, path: Path):
 
 RUNNER = _load("oracle_comprehensive_runner", BIN / "chatgpt_oracle_run.py")
 MULTI = _load("oracle_comprehensive_multi", BIN / "chatgpt_oracle_multi.py")
+WORKSPACE_CONFIG = _load("oracle_comprehensive_workspace_config", BIN / "chatgpt_workspace_config.py")
 
 
 class WorkflowError(RuntimeError):
@@ -131,9 +132,12 @@ def load_manifest(path: Path) -> dict[str, Any]:
     workflow_id = str(value.get("workflow_id") or "").strip()
     if not workflow_id or not all(character in "0123456789abcdef-" for character in workflow_id.casefold()):
         raise WorkflowError("workflow_id must be stable hex/UUID text")
-    app_name = str(value.get("app_name") or "DevSpace").strip()
-    if app_name != "DevSpace":
-        raise WorkflowError("app_name must be exactly DevSpace")
+    try:
+        app_name = WORKSPACE_CONFIG.normalize_app_name(
+            value.get("app_name") or WORKSPACE_CONFIG.configured_app_name()
+        )
+    except ValueError as exc:
+        raise WorkflowError(str(exc)) from exc
     return {
         **value,
         "project_root": root,

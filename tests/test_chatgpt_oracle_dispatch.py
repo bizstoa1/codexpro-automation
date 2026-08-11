@@ -57,6 +57,25 @@ def test_regular_high_is_forwarded_as_the_visible_high_tier(tmp_path: Path) -> N
     assert value["thinking_time"] == "extended"
 
 
+def test_configured_app_name_is_forwarded_to_manifest_and_composer(tmp_path: Path) -> None:
+    module = load()
+    mission = tmp_path / "mission.md"
+    mission.write_text("work", encoding="utf-8")
+    target = tmp_path / "custom-app.json"
+
+    result = module.compile_manifest(
+        mode="direct",
+        project_root=tmp_path,
+        mission_path=mission,
+        output_path=target,
+        app_name="codex",
+    )
+
+    value = json.loads(target.read_text(encoding="utf-8"))
+    assert value["app_name"] == "codex"
+    assert result["contract"]["composer_prompt"].startswith("@codex ")
+
+
 def test_regular_medium_is_forwarded_as_the_visible_medium_tier(tmp_path: Path) -> None:
     module = load()
     mission = tmp_path / "mission.md"

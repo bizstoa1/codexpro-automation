@@ -18,7 +18,6 @@ from pathlib import Path
 from typing import Any, Sequence
 
 SCHEMA = "codex.chatgpt.oracle-run/v1"
-DEVSPACE_APP_NAME = "DevSpace"
 STATE_SCHEMA = "codex.chatgpt.oracle-run-state/v1"
 STATUSES = {"prepared", "running", "complete", "failed", "attention_required", "abandoned"}
 # One bounded lifecycle vocabulary.  The stored `status` values above remain the
@@ -345,12 +344,6 @@ def load_manifest(path: Path, *, platform_name: str | None = None) -> OracleConf
             raise OracleStateError("MISSION_OUTSIDE_PROJECT", "mission_path must stay inside project_root")
         if not app_name_raw or APP_RE.fullmatch(app_name_raw) is None:
             raise OracleStateError("APP_NAME_INVALID", "app_name must be one nonempty line")
-        if app_name_raw != DEVSPACE_APP_NAME:
-            raise OracleStateError(
-                "DEVSPACE_APP_REQUIRED",
-                f"DevSpace Oracle runs require the exact app name {DEVSPACE_APP_NAME}",
-                {"app_name": app_name_raw},
-            )
         app_name: str | None = app_name_raw
         if payload.get("attachments"):
             raise OracleStateError("REGULAR_ATTACHMENTS_FORBIDDEN", "DevSpace runs must not attach files")

@@ -1,6 +1,6 @@
 {
   "schema": "codexpro.install-manifest/v1",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "include": [
     "bin/chatgpt_agbrowse_bridge.py",
     "bin/chatgpt_agbrowse_composer.py",
@@ -43,6 +43,7 @@
     "bin/chatgpt_goal_supervisor.py",
     "bin/chatgpt_parallel_implementation_runtime.py",
     "bin/chatgpt_prompt_profiles.py",
+    "bin/chatgpt_workspace_config.py",
     "bin/chatgpt_web_multi_runtime.py",
     "bin/chatgpt_web_multi_upstream.py",
     "bin/codexpro_agbrowse_app.py",

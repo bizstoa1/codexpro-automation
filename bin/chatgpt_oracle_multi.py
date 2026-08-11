@@ -32,6 +32,7 @@ def _load(name: str, path: Path):
 
 RUNNER = _load("chatgpt_oracle_multi_runner", BIN / "chatgpt_oracle_run.py")
 STATE = RUNNER.STATE
+WORKSPACE_CONFIG = _load("chatgpt_oracle_multi_workspace_config", BIN / "chatgpt_workspace_config.py")
 
 
 class MultiError(RuntimeError):
@@ -123,9 +124,12 @@ def load_manifest(path: Path) -> dict[str, Any]:
     concurrency = int(value.get("max_concurrency", 5))
     if not 1 <= concurrency <= 5:
         raise MultiError("max_concurrency must be within 1..5")
-    app_name = str(value.get("app_name") or "DevSpace").strip()
-    if app_name != "DevSpace":
-        raise MultiError("app_name must be exactly DevSpace")
+    try:
+        app_name = WORKSPACE_CONFIG.normalize_app_name(
+            value.get("app_name") or WORKSPACE_CONFIG.configured_app_name()
+        )
+    except ValueError as exc:
+        raise MultiError(str(exc)) from exc
     return {
         **value,
         "project_root": root,

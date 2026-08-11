@@ -124,6 +124,16 @@ Mode에는 다음 앱 하나만 수동으로 등록합니다.
 - 이름: `DevSpace`
 - URL: `https://your-device.your-tailnet.ts.net:8443/mcp`
 
+앱 표시 이름을 다르게 등록할 때는 같은 이름을 전역 라우팅에도 지정합니다.
+
+`%USERPROFILE%\.codex\chatgpt-workspace.json`:
+
+```json
+{"app_name": "codex"}
+```
+
+기본값은 `DevSpace`이며, 앱 이름은 `@` 없이 한 줄로 저장합니다.
+
 Owner 승인을 완료한 뒤에는 매 작업마다 앱 목록·권한·URL을 다시 확인하거나
 앱을 재등록하지 않습니다. 새 프로젝트는 DevSpace 허용 루트에만 추가합니다.
 ChatGPT 설정·앱 목록·권한·삭제·선택 UI를 자동화하지 않습니다.

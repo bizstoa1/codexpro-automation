@@ -204,15 +204,13 @@ def test_pro_manifest_fails_closed_without_exact_contract(tmp_path: Path, extra:
     assert exc.value.code == code
 
 
-def test_regular_manifest_requires_exact_devspace_app(tmp_path: Path) -> None:
+def test_regular_manifest_accepts_configured_workspace_app(tmp_path: Path) -> None:
     state = load_state()
     mission = tmp_path / "mission.md"
     mission.write_text("work", encoding="utf-8")
 
-    with pytest.raises(state.OracleStateError) as exc:
-        state.load_manifest(manifest(tmp_path, mission.resolve(), app_name="OtherWorkspace"))
-
-    assert exc.value.code == "DEVSPACE_APP_REQUIRED"
+    config = state.load_manifest(manifest(tmp_path, mission.resolve(), app_name="OtherWorkspace"))
+    assert config.app_name == "OtherWorkspace"
 
 
 def test_layout_uses_oracle_exact_ten_character_session_suffix(tmp_path: Path) -> None:

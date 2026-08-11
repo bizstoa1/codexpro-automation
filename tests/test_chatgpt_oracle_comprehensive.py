@@ -40,15 +40,14 @@ def manifest(tmp_path: Path) -> Path:
     return path
 
 
-def test_manifest_rejects_non_devspace_app_before_workflow_creation(tmp_path: Path) -> None:
+def test_manifest_accepts_configured_workspace_app_before_workflow_creation(tmp_path: Path) -> None:
     module = load()
     path = manifest(tmp_path)
     payload = json.loads(path.read_text(encoding="utf-8"))
     payload["app_name"] = "OtherWorkspace"
     path.write_text(json.dumps(payload), encoding="utf-8")
 
-    with pytest.raises(module.WorkflowError, match="exactly DevSpace"):
-        module.load_manifest(path)
+    assert module.load_manifest(path)["app_name"] == "OtherWorkspace"
 
 
 def test_web_authored_relay_reaches_complete_without_host_semantic_rewrite(tmp_path: Path) -> None:
