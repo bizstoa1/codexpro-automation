@@ -136,6 +136,10 @@ def execute_run(runner, *args, **kwargs):
         "devspace_compat_factory",
         lambda: {"ok": True, "changed": [], "service_restart_required": False},
     )
+    kwargs.setdefault(
+        "devspace_qualification_factory",
+        lambda root: {"qualified": True, "project_root": str(root)},
+    )
     return runner.execute_run(*args, **kwargs)
 
 
@@ -411,9 +415,9 @@ def test_regular_runs_raise_the_answer_timeout_above_the_upstream_default(
     argv = result["argv"]
     assert argv.count("--browser-timeout") == 1
     assert argv[argv.index("--browser-timeout") + 1] == runner.STATE.DEFAULT_BROWSER_ANSWER_TIMEOUT
-    assert runner.STATE.DEFAULT_BROWSER_ANSWER_TIMEOUT == "90m"
-    assert runner.STATE.DEFAULT_BROWSER_ANSWER_CEILING_MINUTES == 90
-    assert result["host_watchdog_timeout_seconds"] == 5430
+    assert runner.STATE.DEFAULT_BROWSER_ANSWER_TIMEOUT == "70m"
+    assert runner.STATE.DEFAULT_BROWSER_ANSWER_CEILING_MINUTES == 70
+    assert result["host_watchdog_timeout_seconds"] == 4230
 
 
 def test_explicit_answer_timeout_is_honored_without_duplication(tmp_path: Path) -> None:
@@ -454,8 +458,8 @@ def test_pro_uses_the_bounded_original_session_answer_wait(tmp_path: Path) -> No
     result = execute_run(runner, pro_manifest(tmp_path), dry_run=True)
 
     assert result["argv"].count("--browser-timeout") == 1
-    assert result["argv"][result["argv"].index("--browser-timeout") + 1] == "90m"
-    assert result["host_watchdog_timeout_seconds"] == 5430
+    assert result["argv"][result["argv"].index("--browser-timeout") + 1] == "70m"
+    assert result["host_watchdog_timeout_seconds"] == 4230
 
 
 def test_pro_dry_run_uses_oracle_attachments_and_no_app_mention(tmp_path: Path) -> None:
@@ -493,6 +497,7 @@ def test_pro_readonly_dry_run_uses_devspace_preflight_without_file_transport(tmp
         devspace_compat_factory=lambda: preflight_calls.append(True) or {
             "ok": True, "changed": [], "service_restart_required": False,
         },
+        devspace_qualification_factory=lambda root: {"qualified": True, "project_root": str(root)},
     )
 
     argv = captured["command"]
@@ -504,6 +509,39 @@ def test_pro_readonly_dry_run_uses_devspace_preflight_without_file_transport(tmp
     assert argv[argv.index("--browser-thinking-time") + 1] == "heavy"
     assert prompt.startswith(f"@DevSpace Read the read-only mission file: {tmp_path / 'mission.md'}.")
     assert preflight_calls == [True]
+
+
+def test_d_coin_missing_exact_root_blocks_before_oracle_or_run_creation(tmp_path: Path) -> None:
+    runner = load_runner()
+    calls: list[str] = []
+
+    def missing_root(_root: Path):
+        calls.append("qualification")
+        raise runner.DEVSPACE_PREFLIGHT.DevSpacePreflightError(
+            "DEVSPACE_EXACT_ROOT_UNAVAILABLE",
+            "the exact project root is not registered in DevSpace allowedRoots",
+            {
+                "missing_root": r"D:\Coin",
+                "registration_url": "https://device.tailnet.ts.net/mcp",
+                "next_action": "REGISTER_EXACT_DEVSPACE_ROOT_BEFORE_ORACLE_SUBMISSION",
+            },
+        )
+
+    with pytest.raises(runner.OracleRunError) as exc:
+        runner.execute_run(
+            pro_readonly_manifest(tmp_path, run_id="5" * 32),
+            run_factory=lambda *args, **kwargs: calls.append("version"),
+            popen_factory=lambda *args, **kwargs: calls.append("oracle"),
+            compat_factory=lambda *args, **kwargs: calls.append("compat"),
+            devspace_compat_factory=lambda: calls.append("devspace-compat"),
+            devspace_qualification_factory=missing_root,
+        )
+
+    assert exc.value.code == "DEVSPACE_EXACT_ROOT_UNAVAILABLE"
+    assert exc.value.evidence["missing_root"] == r"D:\Coin"
+    assert exc.value.evidence["registration_url"].endswith("/mcp")
+    assert calls == ["qualification"]
+    assert not (tmp_path.parent / f"{tmp_path.name}-host-state" / "runs").exists()
 
 
 def test_pro_attachment_limit_is_exactly_one_mib_and_blocks_before_oracle_launch(tmp_path: Path) -> None:
@@ -667,6 +705,7 @@ def test_devspace_patch_change_blocks_before_submission_until_restart(
             "package_roots": ["package"],
             "service_restart_required": True,
         },
+        devspace_qualification_factory=lambda root: {"qualified": True, "project_root": str(root)},
     )
 
     assert result["ok"] is False

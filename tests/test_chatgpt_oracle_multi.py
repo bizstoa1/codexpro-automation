@@ -155,7 +155,10 @@ def test_reconcile_recovered_lanes_restores_stable_order_without_submission(tmp_
     assert [lane["id"] for lane in result["lanes"]] == ["s0", "s1", "s2"]
     assert result["successful_lane_count"] == 3
     merger_text = Path(result["merger_mission_path"]).read_text(encoding="utf-8")
-    positions = [merger_text.index(f"handoffs\\s{index}.md") for index in range(3)]
+    positions = [
+        merger_text.index(str(config["output_dir"] / "handoffs" / f"s{index}.md"))
+        for index in range(3)
+    ]
     assert positions == sorted(positions)
     assert result["merger_run_dir"].endswith("failed-pre-submit-merger")
 

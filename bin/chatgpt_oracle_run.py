@@ -17,6 +17,7 @@ from typing import Any, Callable, Sequence
 STATE_PATH = Path(__file__).resolve().with_name("chatgpt_oracle_state.py")
 COMPAT_PATH = Path(__file__).resolve().with_name("chatgpt_oracle_compat.py")
 DEVSPACE_COMPAT_PATH = Path(__file__).resolve().with_name("chatgpt_devspace_compat.py")
+DEVSPACE_PREFLIGHT_PATH = Path(__file__).resolve().with_name("chatgpt_devspace_preflight.py")
 
 
 def load_state_module():
@@ -61,6 +62,22 @@ def load_devspace_compat_module():
 DEVSPACE_COMPAT = load_devspace_compat_module()
 
 
+def load_devspace_preflight_module():
+    spec = importlib.util.spec_from_file_location(
+        "chatgpt_devspace_preflight_runtime",
+        DEVSPACE_PREFLIGHT_PATH,
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"DevSpace preflight module unavailable: {DEVSPACE_PREFLIGHT_PATH}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+DEVSPACE_PREFLIGHT = load_devspace_preflight_module()
+
+
 class OracleRunError(RuntimeError):
     def __init__(self, code: str, message: str, evidence: dict[str, Any] | None = None):
         super().__init__(message)
@@ -78,13 +95,19 @@ def build_oracle_argv(config, layout, prompt: str) -> list[str]:
     # value.  Oracle's upstream default can cut a submitted Pro response while
     # ChatGPT is still visibly working, so every new Oracle lane gets the same
     # explicit, bounded original-session budget.
+    answer_budget_seconds = int(getattr(config, "web_answer_budget_seconds", 4200))
+    answer_timeout_value = (
+        STATE.DEFAULT_BROWSER_ANSWER_TIMEOUT
+        if answer_budget_seconds == 4200
+        else f"{answer_budget_seconds}s"
+    )
     answer_timeout_args = (
         []
         if any(
             item == "--browser-timeout" or item.startswith("--browser-timeout=")
             for item in config.oracle_args
         )
-        else ["--browser-timeout", STATE.DEFAULT_BROWSER_ANSWER_TIMEOUT]
+        else ["--browser-timeout", answer_timeout_value]
     )
     command = [
         *config.oracle_command,
@@ -585,6 +608,9 @@ def execute_run(
     devspace_compat_factory: Callable[[], dict[str, Any]] = (
         DEVSPACE_COMPAT.ensure_devspace_compatibility
     ),
+    devspace_qualification_factory: Callable[[Path], dict[str, Any]] = (
+        DEVSPACE_PREFLIGHT.ensure_exact_root_qualified
+    ),
 ) -> dict[str, Any]:
     config = STATE.load_manifest(manifest_path, platform_name=platform_name)
     validate_oracle_attachment_sizes(config)
@@ -596,6 +622,12 @@ def execute_run(
     argv = build_oracle_argv(config, layout, prompt)
     if dry_run:
         return dry_run_payload(config, layout, argv, prompt)
+
+    if STATE.is_devspace_transport(config.transport):
+        try:
+            devspace_qualification_factory(config.project_root)
+        except DEVSPACE_PREFLIGHT.DevSpacePreflightError as exc:
+            raise OracleRunError(exc.code, str(exc), exc.evidence) from exc
 
     STATE.cleanup_prior_boot_browser_temps(config.run_root, platform_name=platform_name)
     watchdog_timeout_seconds = host_watchdog_timeout_seconds(config, argv)

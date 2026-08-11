@@ -28,6 +28,12 @@ but never writes, edits, invokes shell, or runs commands. Explicit
 Regular routes select `GPT-5.6 Sol` with `heavy` and require Oracle
 evidence for visible `Extra High`. Never invent xhigh or silently downgrade.
 
+On the first DevSpace-backed submission for a new project, the runner checks
+exact equality with local DevSpace `allowedRoots` before creating the Oracle
+run directory or browser session. It caches success against the config hash
+and rechecks only after config changes. This is a local root guard, not a
+repeated endpoint/read probe or ChatGPT app/settings inspection.
+
 ## Manifest
 
 Require schema `codex.chatgpt.oracle-run/v1` with:

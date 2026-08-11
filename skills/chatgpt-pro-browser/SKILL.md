@@ -25,6 +25,14 @@ exact absolute project root. After one-time qualification, do not inspect,
 register, repair, select, or otherwise verify ChatGPT app/settings state on
 each run.
 
+Before the first qualified Pro submission for a new project, the local runner
+must verify that the normalized exact root is present in DevSpace
+`allowedRoots`. A parent, child, or similarly named root is not sufficient.
+The result is cached by exact config hash, so later questions in the same
+project do not repeat endpoint/read probes; a changed config is revalidated.
+Failure returns `DEVSPACE_EXACT_ROOT_UNAVAILABLE` before Oracle or a browser is
+created and points to the complete root-preserving setup preview.
+
 Pro reads the mission and applicable `AGENTS.md` chain completely, then begins
 with the `read('.')` directory-list compatibility call. It may discover and
 read broadly and adaptively within that exact root: current Git state, project

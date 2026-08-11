@@ -5,6 +5,19 @@ README는 현재 제품의 목적과 사용법만 설명합니다. 구현 변경
 
 ## 현재 릴리스
 
+### 1.7.0 — macOS Ultrawork
+
+- macOS arm64에서 공통 Python `install/update/doctor/rollback/uninstall` lifecycle과
+  영수증/WAL/충돌 보존을 지원합니다. PowerShell 진입점은 Windows 호환 경로로
+  유지합니다.
+- OMO Codex Light, 로컬 CodexPro hook marketplace, GJC식 brownfield 인터뷰와
+  합산 동시 실행 상한 5를 추가했습니다.
+- `RUNNING → CHECKPOINT_DUE(75분) → HANDOFF_PENDING(80분)` 상태 머신과
+  exact Oracle 회수, 동일 Codex session resume, launchd 감독기를 추가했습니다.
+- DevSpace 1.0.4를 macOS에서 직접 실행하고 MagicDNS 자동 탐지 및 Tailscale
+  Funnel `8443 → 127.0.0.1:7676` 복구 경로를 추가했습니다.
+- GitHub Actions는 `windows-latest`와 `macos-14`를 모두 검증합니다.
+
 ### Oracle + DevSpace 단일 실행 경로
 
 - 일반 GPT, 계획, 검토, 수정, 지휘, 심층 리서치, 종합모드와 Web
@@ -20,8 +33,9 @@ README는 현재 제품의 목적과 사용법만 설명합니다. 구현 변경
 
 ### 장기 작업과 복구
 
-- 비Pro 작업은 기본 `--browser-timeout 90m`을 사용합니다.
-- Oracle의 재로드·fallback은 같은 90분 예산의 남은 시간만 사용합니다.
+- 웹 작업은 기본 70분 이내 episode로 분할합니다.
+- 75분에는 새 fan-out을 막고 80분에는 durable handoff와 정확한 owner 상태를
+  평가합니다.
 - CDP 호출이 멈춰도 host watchdog이 30초 grace 뒤 동일 세션을 보존한 채
   `attention_required`로 반환합니다.
 - 제출 후 로컬 종료·브라우저 연결 끊김은 `attention_required`로 보존합니다.
@@ -50,7 +64,8 @@ README는 현재 제품의 목적과 사용법만 설명합니다. 구현 변경
 
 - 설치 전 파일을 백업하고 durable 영수증을 남깁니다.
 - 기본 설치는 동결된 agbrowse/CodexPro 의존성을 설치하거나 갱신하지 않습니다.
-- portability, fast gate, golden-path, v3/v4 계약 테스트를 CI에서 실행합니다.
+- portability, fast gate, golden-path, v3/v4 계약 테스트를 Windows와 macOS
+  CI에서 실행합니다.
 
 ## 레거시 기록
 

@@ -34,7 +34,7 @@ def test_roots_are_narrow_and_registration_url_is_exact(tmp_path: Path) -> None:
     with pytest.raises(module.SetupError, match="ALLOWED_ROOT_REQUIRED"):
         module.validate_config([], "device.tailnet.ts.net")
     with pytest.raises(module.SetupError, match="ALLOWED_ROOT_TOO_BROAD"):
-        module.validate_config([str(Path(tmp_path.drive + "\\"))], "device.tailnet.ts.net")
+        module.validate_config([str(Path(tmp_path.anchor))], "device.tailnet.ts.net")
 
 
 def test_setup_plan_has_no_secrets_and_is_explicit_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -42,7 +42,7 @@ def test_setup_plan_has_no_secrets_and_is_explicit_only(tmp_path: Path, monkeypa
     bash = tmp_path / "bash.exe"
     bash.write_text("", encoding="utf-8")
     monkeypatch.setenv("DEVSPACE_GIT_BASH", str(bash))
-    plan = module.setup_plan(current)
+    plan = module.setup_plan(current, platform_name="nt")
     text = json.dumps(plan)
     assert "password" not in text.lower()
     assert "token" not in text.lower()
@@ -55,6 +55,68 @@ def test_setup_plan_has_no_secrets_and_is_explicit_only(tmp_path: Path, monkeypa
     assert plan["devspace_init"][1:3] == [
         "-lc",
         "exec npx --yes @waishnav/devspace@1.0.4 init",
+    ]
+
+
+def test_setup_subset_preview_preserves_every_persisted_allowed_root(tmp_path: Path) -> None:
+    module = load_module()
+    existing = tmp_path / "existing"
+    requested = tmp_path / "requested"
+    existing.mkdir()
+    requested.mkdir()
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"allowedRoots": [str(existing)]}), encoding="utf-8")
+    subset = module.validate_config([str(requested)], "device.tailnet.ts.net")
+
+    merged, preserved = module.merge_persisted_setup_roots(subset, config_path)
+    plan = module.setup_plan(
+        merged,
+        requested_roots=subset.roots,
+        preserved_existing_roots=preserved,
+        platform_name="posix",
+    )
+
+    assert plan["requested_roots"] == [str(requested.resolve())]
+    assert plan["preserved_existing_roots"] == [str(existing.resolve())]
+    assert plan["allowed_roots"] == [str(existing.resolve()), str(requested.resolve())]
+    assert plan["root_merge_applied"] is True
+
+
+def test_setup_apply_stops_if_interactive_init_drops_a_preserved_root(tmp_path: Path) -> None:
+    module = load_module()
+    existing = tmp_path / "existing"
+    requested = tmp_path / "requested"
+    existing.mkdir()
+    requested.mkdir()
+    current = module.validate_config(
+        [str(existing), str(requested)],
+        "device.tailnet.ts.net",
+    )
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"allowedRoots": [str(requested)]}), encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def runner(argv, **kwargs):
+        calls.append(list(argv))
+        if argv == ["tailscale", "funnel", "status", "--json"]:
+            return SimpleNamespace(returncode=0, stdout=json.dumps({"Web": {}}), stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    with pytest.raises(
+        module.SetupError,
+        match="DEVSPACE_SETUP_DID_NOT_PERSIST_COMPLETE_ALLOWED_ROOTS",
+    ):
+        module.apply_setup(
+            current,
+            runner=runner,
+            popen_factory=lambda *args, **kwargs: None,
+            config_path=config_path,
+            platform_name="posix",
+        )
+
+    assert calls == [
+        ["tailscale", "funnel", "status", "--json"],
+        ["npx", "--yes", "@waishnav/devspace@1.0.4", "init"],
     ]
 
 
@@ -195,6 +257,7 @@ def test_nondefault_public_port_is_explicit_and_existing_mapping_is_not_overwrit
     assert calls == [["tailscale", "funnel", "status", "--json"]]
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows STARTUPINFO exists only on Windows")
 def test_windows_launch_is_hidden() -> None:
     module = load_module()
     kwargs = module.windows_subprocess_kwargs(platform_name="nt")
@@ -288,6 +351,7 @@ def test_setup_applies_hash_validated_devspace_compat_before_service_start(
         runner=runner,
         popen_factory=lambda argv, **kwargs: launched.append((list(argv), kwargs.get("env"))),
         sleeper=lambda _: None,
+        platform_name="nt",
     )
 
     assert calls[1][1:3] == [
@@ -303,6 +367,19 @@ def test_setup_applies_hash_validated_devspace_compat_before_service_start(
     ]
     assert launched[0][1]["DEVSPACE_TOOL_MODE"] == "full"
     assert launched[0][1]["DEVSPACE_OAUTH_SCOPES"] == "devspace,offline_access"
+
+
+def test_posix_setup_invokes_pinned_devspace_directly(tmp_path: Path) -> None:
+    module, current = config(tmp_path)
+    plan = module.setup_plan(current, platform_name="posix")
+    assert plan["devspace_init"] == ["npx", "--yes", "@waishnav/devspace@1.0.4", "init"]
+    assert plan["devspace_serve"] == ["npx", "--yes", "@waishnav/devspace@1.0.4", "serve"]
+
+
+def test_tailscale_hostname_is_discovered_from_status_json() -> None:
+    module = load_module()
+    result = SimpleNamespace(returncode=0, stdout=json.dumps({"Self": {"DNSName": "macmini.tailnet.ts.net."}}), stderr="")
+    assert module.discover_tailscale_hostname(runner=lambda *args, **kwargs: result) == "macmini.tailnet.ts.net"
 
 
 def test_ensure_public_route_restores_missing_mapping_after_exact_local_health(tmp_path: Path) -> None:

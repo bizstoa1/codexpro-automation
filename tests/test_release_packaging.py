@@ -52,6 +52,10 @@ def test_manifest_covers_runtime_and_schemas() -> None:
         'bin/chatgpt_web_multi_upstream.py',
         'bin/codexpro_agbrowse_app.py',
         'bin/codexpro_fixed_runtime_watchdog.py',
+        'bin/codexpro_harness.py',
+        'bin/codexpro_lifecycle.py',
+        'bin/codexpro_macos_launchd.py',
+        'bin/codexpro_posix_process.py',
         'bin/codexpro_project_cloudflare_bootstrap.ps1',
         'skills/chatgpt-pro-browser/SKILL.md',
         'skills/chatgpt-pro-browser/agents/openai.yaml',
@@ -60,7 +64,10 @@ def test_manifest_covers_runtime_and_schemas() -> None:
         'skills/chatgpt-pro-plan-handoff/scripts/run_pro_plan_handoff.py',
         'skills/chatgpt-pro-plan-handoff/schemas/*.json',
         'scripts/run_v4_contract_tests.py',
+        'scripts/run_harness_canary.py',
         'contracts/install/*.json',
+        'contracts/gjc-interview-v1.schema.json',
+        'marketplace/plugins/codexpro-harness/hooks/hooks.json',
         'tests/fixtures/planner-v7-app-trace-quiescent-incident.json',
         'tests/fixtures/planner-v8-app-trace-quiescent-incident.json',
     }
@@ -73,6 +80,11 @@ def test_manifest_covers_runtime_and_schemas() -> None:
         'skills/chatgpt-pro-browser/scripts/build_project_context_packet.py',
         'skills/chatgpt-pro-browser/scripts/run_chatgpt_pro.py',
         'skills/chatgpt-pro-browser/scripts/run_pro_browser.py',
+        'bin/codexpro_harness.py',
+        'bin/codexpro_lifecycle.py',
+        'marketplace/',
+        'install.py',
+        'doctor.py',
     } <= package_files
 
 
@@ -141,3 +153,5 @@ def test_release_workflow_runs_focused_and_full_contract_checks() -> None:
     assert 'scripts/run_v4_contract_tests.py --focused' in workflow
     assert 'scripts/run_v3_contract_tests.py' in workflow
     assert 'scripts/run_v4_contract_tests.py --full' in workflow
+    assert 'windows-latest' in workflow
+    assert 'macos-14' in workflow

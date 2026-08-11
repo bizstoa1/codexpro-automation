@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -57,6 +58,11 @@ def _candidate_roots() -> list[Path]:
     candidates = [appdata / "npm" / "node_modules" / "@waishnav" / "devspace"]
     local = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local"))
     candidates.extend((local / "npm-cache" / "_npx").glob("*/node_modules/@waishnav/devspace"))
+    if os.name != "nt":
+        candidates.extend((Path.home() / ".npm" / "_npx").glob("*/node_modules/@waishnav/devspace"))
+        completed = subprocess.run(["npm", "root", "--global"], capture_output=True, text=True, check=False)
+        if completed.returncode == 0 and completed.stdout.strip():
+            candidates.append(Path(completed.stdout.strip()) / "@waishnav" / "devspace")
     return sorted(
         {path.resolve() for path in candidates if path.is_dir()},
         key=lambda path: path.stat().st_mtime,
@@ -145,10 +151,16 @@ def _powershell_json(script: str) -> dict[str, Any] | None:
 
 def current_devspace_service_identity(local_port: int = 7676) -> dict[str, Any] | None:
     if os.name != "nt":
-        raise DevSpaceCompatError(
-            "DEVSPACE_SERVICE_PROBE_UNSUPPORTED",
-            "automatic DevSpace restart proof is currently implemented for Windows only",
-        )
+        path = Path(__file__).resolve().with_name("codexpro_posix_process.py")
+        spec = importlib.util.spec_from_file_location("codexpro_posix_process_runtime", path)
+        if spec is None or spec.loader is None:
+            raise DevSpaceCompatError("DEVSPACE_SERVICE_PROBE_UNAVAILABLE", "POSIX identity module unavailable")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        try:
+            return module.listener_identity(local_port)
+        except module.ProcessIdentityError as exc:
+            raise DevSpaceCompatError("DEVSPACE_SERVICE_PROBE_FAILED", str(exc)) from exc
     script = (
         f"$c=Get-NetTCPConnection -State Listen -LocalPort {int(local_port)} "
         "-ErrorAction SilentlyContinue | Select-Object -First 1; "
@@ -179,6 +191,15 @@ def _assert_devspace_service_identity(
         str(root / "dist" / "cli.js").replace("\\", "/").casefold()
         for root in package_roots
     ]
+    if os.name != "nt":
+        for root in package_roots:
+            cli = root / "dist" / "cli.js"
+            shim = root.parents[1] / ".bin" / "devspace"
+            try:
+                if shim.is_symlink() and shim.resolve(strict=True) == cli.resolve(strict=True):
+                    expected_cli_paths.append(str(shim).casefold())
+            except OSError:
+                continue
     if not any(
         expected in normalized
         and re.search(rf"{re.escape(expected)}(?:\"|\s)+serve(?:\s|$)", normalized)
@@ -211,6 +232,17 @@ def stop_exact_devspace_service(
     pid = int(identity["pid"])
     if stopper is not None:
         stopper(pid)
+    elif os.name != "nt":
+        path = Path(__file__).resolve().with_name("codexpro_posix_process.py")
+        spec = importlib.util.spec_from_file_location("codexpro_posix_process_stop_runtime", path)
+        if spec is None or spec.loader is None:
+            raise DevSpaceCompatError("DEVSPACE_SERVICE_STOP_FAILED", "POSIX identity module unavailable")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        try:
+            module.terminate_exact_process(identity)
+        except module.ProcessIdentityError as exc:
+            raise DevSpaceCompatError("DEVSPACE_SERVICE_STOP_FAILED", str(exc), {"pid": pid}) from exc
     else:
         script = (
             f"Stop-Process -Id {pid} -Force -ErrorAction Stop; "

@@ -71,9 +71,16 @@ SAFE_ORACLE_VALUE_OPTIONS = {
     "--browser-timeout",
     "--browser-recheck-timeout",
 }
-# Overall answer budget for a heavy non-Pro run.
-DEFAULT_BROWSER_ANSWER_TIMEOUT = "90m"
-DEFAULT_BROWSER_ANSWER_CEILING_MINUTES = 90
+# Keep each web episode below the local 75/80-minute checkpoint boundary.
+DEFAULT_BROWSER_ANSWER_TIMEOUT = "70m"
+DEFAULT_BROWSER_ANSWER_CEILING_MINUTES = 70
+DEFAULT_EPISODE_POLICY = {
+    "soft_checkpoint_seconds": 4500,
+    "handoff_seconds": 4800,
+    "observed_platform_limit_seconds": 6000,
+    "max_total_concurrency": 5,
+    "web_answer_budget_seconds": 4200,
+}
 HOST_WATCHDOG_GRACE_SECONDS = 30
 ORACLE_DUPLICATE_PROMPT_RE = re.compile(
     r'A session with the same prompt is already running '
@@ -194,6 +201,11 @@ class OracleConfig:
     oracle_command: tuple[str, ...]
     oracle_args: tuple[str, ...]
     submit_mutex_timeout_seconds: float
+    soft_checkpoint_seconds: int
+    handoff_seconds: int
+    observed_platform_limit_seconds: int
+    max_total_concurrency: int
+    web_answer_budget_seconds: int
     model: str
     model_strategy: str
     thinking_time: str
@@ -390,6 +402,28 @@ def load_manifest(path: Path, *, platform_name: str | None = None) -> OracleConf
         raise OracleStateError("MUTEX_TIMEOUT_INVALID", "submit_mutex_timeout_seconds must be numeric") from exc
     if not 0 < timeout <= 300:
         raise OracleStateError("MUTEX_TIMEOUT_INVALID", "submit_mutex_timeout_seconds must be within 0..300")
+    policy_raw = payload.get("episode_policy") or {}
+    if not isinstance(policy_raw, dict):
+        raise OracleStateError("EPISODE_POLICY_INVALID", "episode_policy must be one object")
+    unknown_policy = set(policy_raw) - set(DEFAULT_EPISODE_POLICY)
+    if unknown_policy:
+        raise OracleStateError("EPISODE_POLICY_INVALID", "episode_policy contains unknown fields", {"fields": sorted(unknown_policy)})
+    policy: dict[str, int] = {}
+    for key, default in DEFAULT_EPISODE_POLICY.items():
+        value = policy_raw.get(key, default)
+        if isinstance(value, bool):
+            raise OracleStateError("EPISODE_POLICY_INVALID", f"{key} must be an integer")
+        try:
+            policy[key] = int(value)
+        except (TypeError, ValueError) as exc:
+            raise OracleStateError("EPISODE_POLICY_INVALID", f"{key} must be an integer") from exc
+    if not (
+        60 <= policy["web_answer_budget_seconds"] <= policy["soft_checkpoint_seconds"]
+        <= policy["handoff_seconds"] < policy["observed_platform_limit_seconds"] <= 7 * 24 * 3600
+    ):
+        raise OracleStateError("EPISODE_POLICY_INVALID", "episode timing must satisfy answer <= checkpoint <= handoff < observed limit")
+    if not 1 <= policy["max_total_concurrency"] <= 5:
+        raise OracleStateError("EPISODE_POLICY_INVALID", "max_total_concurrency must be within 1..5")
     model = str(payload.get("model") or "gpt-5.6").strip()
     if not model or MODEL_RE.fullmatch(model) is None:
         raise OracleStateError("MODEL_INVALID", "model must be one safe Oracle browser model label")
@@ -489,6 +523,11 @@ def load_manifest(path: Path, *, platform_name: str | None = None) -> OracleConf
         oracle_command,
         validate_oracle_args(payload.get("oracle_args")),
         timeout,
+        policy["soft_checkpoint_seconds"],
+        policy["handoff_seconds"],
+        policy["observed_platform_limit_seconds"],
+        policy["max_total_concurrency"],
+        policy["web_answer_budget_seconds"],
         model,
         model_strategy,
         thinking_time,
@@ -585,6 +624,13 @@ def state_payload(config: OracleConfig, layout: RunLayout, *, status: str, resol
         "task_outcome_contract": config.task_outcome_contract,
         "task_outcome": "not_applicable" if is_attachment_transport(config.transport) else "pending",
         "task_outcome_reason": None,
+        "episode_policy": {
+            "soft_checkpoint_seconds": config.soft_checkpoint_seconds,
+            "handoff_seconds": config.handoff_seconds,
+            "observed_platform_limit_seconds": config.observed_platform_limit_seconds,
+            "max_total_concurrency": config.max_total_concurrency,
+            "web_answer_budget_seconds": config.web_answer_budget_seconds,
+        },
         "mission": {
             "path": str(config.mission_path),
             "transport_path": str(layout.run_dir / "mission.md"),
@@ -618,7 +664,12 @@ def state_payload(config: OracleConfig, layout: RunLayout, *, status: str, resol
 def host_uptime_ms(*, platform_name: str | None = None) -> int:
     platform = os.name if platform_name is None else platform_name
     if platform == "nt":
-        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        win_dll = getattr(ctypes, "WinDLL", None)
+        if win_dll is None:
+            # Unit tests exercise Windows argv construction from POSIX hosts.
+            # The actual Windows runtime always provides ctypes.WinDLL.
+            return int(time.monotonic() * 1000)
+        kernel32 = win_dll("kernel32", use_last_error=True)
         kernel32.GetTickCount64.restype = ctypes.c_ulonglong
         return int(kernel32.GetTickCount64())
     return int(time.monotonic() * 1000)

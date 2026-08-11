@@ -11,6 +11,12 @@ Use this skill only for a first connection, an explicitly requested DevSpace/Tai
 
 The user must provide every allowed project root and the Tailscale MagicDNS hostname. A drive root such as `C:\` is rejected. The setup process is intentionally interactive because DevSpace itself stores the Owner secret in its own standard location; never copy that secret into a manifest, log, or Git file.
 
+When setup is invoked with only a new root, the preview reads the current
+DevSpace `allowedRoots`, preserves every existing root, and displays the
+complete merged list. Interactive init must persist that complete list or the
+helper stops before restarting the service. This prevents a one-root setup
+from silently removing previously approved projects.
+
 Preview the exact setup plan first:
 
 ```powershell
@@ -60,6 +66,13 @@ The only app information to enter manually in ChatGPT Developer Mode is:
 - Complete the first Owner-password approval page that DevSpace presents.
 
 Never open ChatGPT settings, register/delete an app, change permissions, inspect app lists, select an app name, or press Tab in the ChatGPT UI.
+
+Before the first DevSpace-backed Oracle question for a new project, the Oracle
+runner checks that the normalized exact project root is present in the local
+`allowedRoots`. Parent, child, and similarly named roots do not qualify. A
+successful qualification is cached against the exact config SHA-256; later
+questions for that project do not repeat endpoint, read, OAuth, or app-setting
+probes, while any config change triggers a lightweight recheck.
 
 ## Diagnosis
 

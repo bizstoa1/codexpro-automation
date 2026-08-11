@@ -5,6 +5,21 @@ description: Part of the current Oracle prompt-design path; use before submittin
 
 # ChatGPT Question Designer
 
+## GJC Brownfield Interview Mode
+
+Before a non-trivial implementation whose goal, constraints, success criteria,
+or existing context remain ambiguous, use the installed
+`bin/chatgpt_gjc_interview.py` state machine. Lock one to six top-level
+components in round zero, ask exactly the emitted single question each round,
+and record coverage for only that dimension. Brownfield ambiguity is:
+
+`1 - (0.35 goal + 0.25 constraints + 0.25 success criteria + 0.15 context)`
+
+Contradictory or evasive answers raise ambiguity. At the default 0.35 threshold,
+present the generated one-sentence restatement and require explicit approval.
+Persist and resume the state under `.omo/interviews/`; approval and execution
+remain separate actions.
+
 ## Purpose
 
 Use this skill to give each question the cognitive posture its purpose needs. Construction should remain constructive, research evidence-seeking, synthesis integrative, execution adaptive, and review adversarial.

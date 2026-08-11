@@ -16,6 +16,11 @@ From this repository, preview the plan and check the roots:
 python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py setup --root C:\projects\one --root C:\projects\two --hostname your-device.your-tailnet.ts.net --dry-run
 ```
 
+If DevSpace is already configured, a preview that names only a new root safely
+merges the current `allowedRoots` and displays the complete list. It never
+silently plans a subset that would remove an existing project. The interactive
+init must persist every displayed root or setup stops before service restart.
+
 After reviewing the plan, use `--apply`. It invokes `devspace init` through Git Bash, then starts `devspace serve` and configures a Tailscale HTTPS Funnel to the local default port (7676). DevSpace asks you to select roots and enter the public origin. Enter exactly the reviewed roots and `https://your-device.your-tailnet.ts.net`, without `/mcp`.
 
 The helper will not overwrite an existing Funnel mapping. If port 443 is
@@ -53,6 +58,14 @@ To use a different display name, store the identical name in
 the default remains `DevSpace`.
 
 Approve the initial Owner-password page when DevSpace asks. This tooling never opens settings, creates/deletes apps, picks permissions, inspects app lists, or selects an app in the composer.
+
+Before the first DevSpace-backed Oracle question in a new project, the runner
+checks that the normalized exact folder is present in local `allowedRoots`.
+Parent, child, and similarly named folders do not qualify. Success is cached
+against the DevSpace config SHA-256, so later questions for the same project do
+not repeat endpoint/read or ChatGPT app checks; changing the config triggers a
+lightweight revalidation. A missing exact root returns
+`DEVSPACE_EXACT_ROOT_UNAVAILABLE` before Oracle or a browser session exists.
 
 ## Read-only diagnosis
 

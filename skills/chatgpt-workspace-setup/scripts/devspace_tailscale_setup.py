@@ -106,6 +106,8 @@ def windows_subprocess_kwargs(platform_name: str | None = None) -> dict[str, Any
     if (platform_name or os.name) != "nt":
         return {}
     creationflags = int(getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    if not hasattr(subprocess, "STARTUPINFO"):
+        return {"creationflags": creationflags}
     startupinfo = subprocess.STARTUPINFO()
     startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
     startupinfo.wShowWindow = 0
@@ -114,6 +116,12 @@ def windows_subprocess_kwargs(platform_name: str | None = None) -> dict[str, Any
 
 def bash_argv(command: Sequence[str]) -> list[str]:
     return [str(git_bash_path()), "-lc", "exec " + " ".join(shlex.quote(part) for part in command)]
+
+
+def command_argv(command: Sequence[str], *, platform_name: str | None = None) -> list[str]:
+    if (platform_name or os.name) == "nt":
+        return bash_argv(command)
+    return list(command)
 
 
 def devspace_compat_argv(
@@ -135,12 +143,25 @@ def devspace_compat_argv(
     return argv
 
 
-def setup_plan(config: SetupConfig) -> dict[str, Any]:
+def setup_plan(
+    config: SetupConfig,
+    *,
+    platform_name: str | None = None,
+    requested_roots: Sequence[Path] | None = None,
+    preserved_existing_roots: Sequence[Path] = (),
+) -> dict[str, Any]:
+    requested = tuple(requested_roots or config.roots)
+    preserved = tuple(preserved_existing_roots)
     return {
         "action": "explicit_setup_only",
+        "platform": platform_name or os.name,
         "allowed_roots": [str(root) for root in config.roots],
-        "devspace_init": bash_argv(["npx", "--yes", DEVSPACE_PACKAGE, "init"]),
-        "devspace_serve": bash_argv(["npx", "--yes", DEVSPACE_PACKAGE, "serve"]),
+        "requested_roots": [str(root) for root in requested],
+        "preserved_existing_roots": [str(root) for root in preserved],
+        "root_merge_applied": bool(preserved),
+        "root_safety": "existing allowedRoots are preserved; setup must use the complete displayed list",
+        "devspace_init": command_argv(["npx", "--yes", DEVSPACE_PACKAGE, "init"], platform_name=platform_name),
+        "devspace_serve": command_argv(["npx", "--yes", DEVSPACE_PACKAGE, "serve"], platform_name=platform_name),
         "managed_service_environment": {
             "DEVSPACE_TOOL_MODE": DEVSPACE_TOOL_MODE,
             "DEVSPACE_OAUTH_SCOPES": DEVSPACE_OAUTH_SCOPES,
@@ -176,7 +197,9 @@ def launch_hidden(
     *,
     popen_factory: Callable[..., Any] = subprocess.Popen,
     environment: dict[str, str] | None = None,
+    platform_name: str | None = None,
 ) -> Any:
+    platform = platform_name or os.name
     return popen_factory(
         list(argv),
         stdin=subprocess.DEVNULL,
@@ -184,7 +207,8 @@ def launch_hidden(
         stderr=subprocess.DEVNULL,
         shell=False,
         env=environment,
-        **windows_subprocess_kwargs(),
+        start_new_session=platform != "nt",
+        **windows_subprocess_kwargs(platform),
     )
 
 
@@ -195,22 +219,34 @@ def apply_setup(
     runner: Callable[..., Any] = subprocess.run,
     popen_factory: Callable[..., Any] = subprocess.Popen,
     sleeper: Callable[[float], None] = time.sleep,
+    platform_name: str | None = None,
+    config_path: Path | None = None,
 ) -> None:
     # Init remains DevSpace's own interactive prompt so it can safely retain its
     # Owner credential.  The root list/public origin are displayed before this call.
     slot = funnel_status(config, runner=runner, allow_absent=True)
     if slot.get("mapping") == "conflict":
         raise SetupError("TAILSCALE_FUNNEL_PORT_IN_USE")
-    run_checked(bash_argv(["npx", "--yes", DEVSPACE_PACKAGE, "init"]), runner=runner)
+    run_checked(command_argv(["npx", "--yes", DEVSPACE_PACKAGE, "init"], platform_name=platform_name), runner=runner)
+    if config_path is not None:
+        persisted = persisted_allowed_roots(config_path)
+        missing = [
+            root
+            for root in config.roots
+            if not any(os.path.normcase(str(root)) == os.path.normcase(str(item)) for item in persisted)
+        ]
+        if missing:
+            raise SetupError("DEVSPACE_SETUP_DID_NOT_PERSIST_COMPLETE_ALLOWED_ROOTS")
     run_checked(devspace_compat_argv(), runner=runner)
     run_checked(
         devspace_compat_argv(stop_exact_service=True, local_port=config.local_port),
         runner=runner,
     )
     launch_hidden(
-        bash_argv(["npx", "--yes", DEVSPACE_PACKAGE, "serve"]),
+        command_argv(["npx", "--yes", DEVSPACE_PACKAGE, "serve"], platform_name=platform_name),
         popen_factory=popen_factory,
         environment=devspace_service_environment(),
+        platform_name=platform_name,
     )
     run_checked(
         devspace_compat_argv(confirm_restarted=True, local_port=config.local_port),
@@ -336,6 +372,38 @@ def persisted_tool_mode(config_path: Path) -> str | None:
     return str(value).casefold() if isinstance(value, str) else None
 
 
+def merge_persisted_setup_roots(
+    config: SetupConfig,
+    config_path: Path,
+) -> tuple[SetupConfig, tuple[Path, ...]]:
+    """Preserve current allowedRoots when setup is invoked with only new roots."""
+    if not config_path.exists():
+        return config, ()
+    existing = persisted_allowed_roots(config_path)
+    merged = list(existing)
+    preserved: list[Path] = []
+    keys = {os.path.normcase(os.path.normpath(str(root))) for root in merged}
+    requested_keys = {
+        os.path.normcase(os.path.normpath(str(root)))
+        for root in config.roots
+    }
+    for root in existing:
+        if os.path.normcase(os.path.normpath(str(root))) not in requested_keys:
+            preserved.append(root)
+    for root in config.roots:
+        key = os.path.normcase(os.path.normpath(str(root)))
+        if key not in keys:
+            merged.append(root)
+            keys.add(key)
+    merged_config = validate_config(
+        [str(root) for root in merged],
+        config.hostname,
+        config.local_port,
+        config.public_port,
+    )
+    return merged_config, tuple(preserved)
+
+
 def funnel_status(
     config: SetupConfig | None = None,
     *,
@@ -373,6 +441,29 @@ def funnel_status(
         return {"ok": True, "status": status}
     except json.JSONDecodeError:
         return {"ok": False, "error": "TAILSCALE_STATUS_JSON_INVALID"}
+
+
+def discover_tailscale_hostname(*, runner: Callable[..., Any] = subprocess.run) -> str:
+    try:
+        result = runner(
+            ["tailscale", "status", "--json"],
+            check=False,
+            capture_output=True,
+            text=True,
+            **windows_subprocess_kwargs(),
+        )
+    except OSError as exc:
+        raise SetupError("TAILSCALE_NOT_INSTALLED") from exc
+    if result.returncode != 0:
+        raise SetupError("TAILSCALE_NOT_CONNECTED")
+    try:
+        value = json.loads(result.stdout)
+        hostname = str((value.get("Self") or {}).get("DNSName") or "").strip().lower().rstrip(".")
+    except (AttributeError, json.JSONDecodeError) as exc:
+        raise SetupError("TAILSCALE_STATUS_JSON_INVALID") from exc
+    if not HOSTNAME_PATTERN.fullmatch(hostname):
+        raise SetupError("TAILSCALE_HOSTNAME_UNAVAILABLE")
+    return hostname
 
 
 def doctor(config: SetupConfig, *, opener: Callable[..., Any] = urllib.request.urlopen, runner: Callable[..., Any] = subprocess.run, chatgpt_call_failed: bool = False, config_path: Path | None = None) -> dict[str, Any]:
@@ -468,7 +559,7 @@ def parser() -> argparse.ArgumentParser:
     for name in ("setup", "doctor", "ensure", "recover"):
         command = sub.add_parser(name)
         command.add_argument("--root", action="append", default=[], help="Narrow allowed DevSpace root; repeat as needed")
-        command.add_argument("--hostname", required=True, help="Tailscale MagicDNS hostname")
+        command.add_argument("--hostname", help="Tailscale MagicDNS hostname; auto-detected when omitted")
         command.add_argument("--local-port", type=int, default=DEFAULT_PORT)
         command.add_argument("--public-port", type=int, default=443)
     setup = sub.choices["setup"]
@@ -481,14 +572,22 @@ def parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
-        config = validate_config(args.root, args.hostname, args.local_port, args.public_port)
+        hostname = args.hostname or discover_tailscale_hostname()
+        config = validate_config(args.root, hostname, args.local_port, args.public_port)
         if args.command == "setup":
             if args.dry_run == args.apply:
                 raise SetupError("CHOOSE_EXACTLY_ONE_OF_DRY_RUN_OR_APPLY")
-            plan = setup_plan(config)
+            config_path = Path.home() / ".devspace" / "config.json"
+            requested_roots = config.roots
+            config, preserved_roots = merge_persisted_setup_roots(config, config_path)
+            plan = setup_plan(
+                config,
+                requested_roots=requested_roots,
+                preserved_existing_roots=preserved_roots,
+            )
             print(json.dumps(plan, ensure_ascii=False, indent=2))
             if args.apply:
-                apply_setup(config)
+                apply_setup(config, config_path=config_path)
             return 0
         if args.command == "ensure":
             print(json.dumps(ensure_public_route(config), ensure_ascii=False, indent=2))

@@ -1,0 +1,13 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {"hooks": [{"type": "command", "command": "python3 \"${PLUGIN_ROOT}/hooks/hook.py\" session-start", "timeout": 10, "statusMessage": "Loading CodexPro durable handoff"}]}
+    ],
+    "PreToolUse": [
+      {"matcher": "^(spawn_agent|collaborationspawn_agent|collaboration\\.spawn_agent)$", "hooks": [{"type": "command", "command": "python3 \"${PLUGIN_ROOT}/hooks/hook.py\" pre-tool-use", "timeout": 5, "statusMessage": "Checking CodexPro episode budget"}]}
+    ],
+    "Stop": [
+      {"hooks": [{"type": "command", "command": "python3 \"${PLUGIN_ROOT}/hooks/hook.py\" stop", "timeout": 10, "statusMessage": "Saving CodexPro handoff"}]}
+    ]
+  }
+}

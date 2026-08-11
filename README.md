@@ -3,7 +3,7 @@
 한국어 | [English](README.en.md)
 
 Codex가 웹 ChatGPT에 계획·리서치·검토·코드 구현을 맡기고, 로컬 Codex는
-제출·복구·해시·최종 테스트만 담당하도록 만드는 Windows용 자동화 도구입니다.
+제출·복구·해시·최종 테스트만 담당하도록 만드는 Windows·macOS 자동화 도구입니다.
 
 이 프로젝트는 다음 두 도구를 연결합니다.
 
@@ -28,6 +28,8 @@ Codex가 웹 ChatGPT에 계획·리서치·검토·코드 구현을 맡기고, �
 - 다른 프로젝트의 ChatGPT 작업과 분리된 브라우저 프로필
 - 작업 완료 후 Oracle 소유 대화 자동 보관
 - 설치 파일 백업, 설치 영수증, 롤백
+- OMO `ultrawork` todo와 GJC식 요구사항 인터뷰
+- 75분 체크포인트와 80분 exact-session 안전 재개
 
 ## 동작 구조
 
@@ -48,7 +50,8 @@ Codex가 해시·상태·최종 결정론적 테스트만 확인
 ```
 
 호스트 상태와 ChatGPT 출력은 DevSpace 프로젝트 밖의
-`%USERPROFILE%\.codex\state\chatgpt-oracle`에 저장됩니다.
+Windows에서는 `%USERPROFILE%\.codex\state\chatgpt-oracle`, macOS에서는
+`~/.codex/state/chatgpt-oracle`에 저장됩니다.
 
 ## 모드
 
@@ -81,10 +84,10 @@ Oracle이 여러 독립 ChatGPT 웹 세션을 실행한 뒤 결과를 병합합�
 
 ## 요구사항
 
-- Windows 11
+- Windows 11 또는 macOS 12 이상(Apple Silicon 지원)
 - Python
 - Node.js 22.19 이상, 27 미만
-- Git for Windows / Git Bash
+- Windows는 Git for Windows / Git Bash, macOS는 `rsync`, `lsof`, `launchd`
 - Tailscale
 - 브라우저에서 ChatGPT에 로그인된 Oracle 프로필
 - ChatGPT Developer Mode에 최초 한 번 수동 등록한 DevSpace 앱
@@ -104,6 +107,20 @@ cd codexpro-automation
 설치기는 기존 파일을 백업하고
 `%USERPROFILE%\.codex\receipts`에 설치 영수증을 남깁니다.
 
+macOS에서는 공통 Python lifecycle을 사용합니다.
+
+```bash
+git clone https://github.com/ventianima-lab/codexpro-automation.git
+cd codexpro-automation
+python3 install.py --dry-run
+python3 install.py
+python3 doctor.py
+```
+
+설치 영수증은 `~/.codex/receipts`에 기록되며 `python3 rollback.py` 또는
+`python3 uninstall.py`로 exact inverse를 수행합니다. OMO·launchd·Tailscale
+설정은 [macOS Ultrawork 가이드](docs/MACOS_ULTRAWORK.md)를 따릅니다.
+
 ## DevSpace 최초 연결
 
 DevSpace 앱은 프로젝트마다 설치하는 것이 아닙니다. 앱 하나에 허용할
@@ -114,7 +131,6 @@ python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py setup 
   --root C:\projects\alpha `
   --root C:\projects\beta `
   --hostname your-device.your-tailnet.ts.net `
-  --public-port 8443 `
   --dry-run
 ```
 
@@ -122,7 +138,7 @@ python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py setup 
 Mode에는 다음 앱 하나만 수동으로 등록합니다.
 
 - 이름: `DevSpace`
-- URL: `https://your-device.your-tailnet.ts.net:8443/mcp`
+- URL: `https://your-device.your-tailnet.ts.net/mcp`
 
 앱 표시 이름을 다르게 등록할 때는 같은 이름을 전역 라우팅에도 지정합니다.
 
@@ -137,6 +153,14 @@ Mode에는 다음 앱 하나만 수동으로 등록합니다.
 Owner 승인을 완료한 뒤에는 매 작업마다 앱 목록·권한·URL을 다시 확인하거나
 앱을 재등록하지 않습니다. 새 프로젝트는 DevSpace 허용 루트에만 추가합니다.
 ChatGPT 설정·앱 목록·권한·삭제·선택 UI를 자동화하지 않습니다.
+
+macOS는 hostname을 생략하면 로그인된 Tailscale의 MagicDNS 이름을 자동
+탐지합니다. 먼저 미리보기하고, 정확한 프로젝트 루트만 허용합니다.
+
+```bash
+python3 skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py setup \
+  --root "$PWD" --dry-run
+```
 
 자세한 과정은
 [DevSpace + Tailscale 설정](docs/DEVSPACE_TAILSCALE_SETUP.md)을
@@ -180,7 +204,10 @@ python "$env:USERPROFILE\.codex\bin\chatgpt_oracle_dispatch.py" `
 - 같은 프로젝트에는 활성 또는 불확실한 Oracle 작업 하나만 허용합니다.
 - 다른 프로젝트는 서로 분리된 프로필로 병렬 실행할 수 있습니다.
 - Web Multi-GPT는 하나의 부모 작업 안에서 최대 5개 세션씩 wave로 실행합니다.
-- 비Pro의 무거운 작업은 1차 90분과 복구 90분, 실효 약 180분까지 기다립니다.
+- 새 웹 episode는 70분 이내로 분할하고 75분에 fan-out을 잠그며 80분에
+  durable handoff를 평가합니다.
+- 80분에도 Oracle가 살아 있으면 동일 slug와 대화 URL만 회수하고 새 세션에
+  재제출하지 않습니다.
 - 브라우저나 로컬 프로세스 종료는 웹 작업 실패의 증거가 아닙니다.
 - 복구는 저장된 정확한 Oracle slug와 대화 URL만 사용하며 재제출하지 않습니다.
 - 완료에는 Oracle 종료 코드 0과 비어 있지 않은 새 결과 파일이 모두 필요합니다.
@@ -209,6 +236,7 @@ python "$env:USERPROFILE\.codex\bin\chatgpt_oracle_run.py" recover `
 
 - [전역 ChatGPT 라우팅과 모드 선택](docs/GLOBAL_CHATGPT_ROUTING.md)
 - [DevSpace + Tailscale 최초 설정](docs/DEVSPACE_TAILSCALE_SETUP.md)
+- [macOS Ultrawork·75/80분 재개](docs/MACOS_ULTRAWORK.md)
 - [기술 변경 기록](docs/CHANGELOG.md)
 - [구형 실행 복구용 동결 자산](docs/FROZEN_LEGACY.md)
 - [릴리스 검증 절차](docs/RELEASE_CHECKLIST.md)
