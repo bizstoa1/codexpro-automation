@@ -158,6 +158,53 @@ def test_stop_service_requires_exact_devspace_identity() -> None:
     assert foreign.value.code == "DEVSPACE_SERVICE_IDENTITY_MISMATCH"
 
 
+def test_service_identity_accepts_posix_npm_shim_only_for_exact_package(
+    tmp_path: Path,
+) -> None:
+    if sys.platform == "win32":
+        pytest.skip("POSIX npm launchers use symlinks")
+    compat = load_compat()
+    package = tmp_path / "node_modules" / "@waishnav" / "devspace"
+    cli = package / "dist" / "cli.js"
+    cli.parent.mkdir(parents=True)
+    cli.write_text("#!/usr/bin/env node\n", encoding="utf-8")
+    shim = tmp_path / "node_modules" / ".bin" / "devspace"
+    shim.parent.mkdir()
+    shim.symlink_to(cli)
+
+    identity = compat._assert_devspace_service_identity(
+        {"pid": 77, "command_line": f"node {shim} serve"},
+        [package],
+    )
+
+    assert identity["pid"] == 77
+
+
+def test_service_identity_rejects_posix_npm_shim_for_foreign_package(
+    tmp_path: Path,
+) -> None:
+    if sys.platform == "win32":
+        pytest.skip("POSIX npm launchers use symlinks")
+    compat = load_compat()
+    package = tmp_path / "node_modules" / "@waishnav" / "devspace"
+    cli = package / "dist" / "cli.js"
+    cli.parent.mkdir(parents=True)
+    cli.write_text("#!/usr/bin/env node\n", encoding="utf-8")
+    foreign_cli = tmp_path / "foreign-cli.js"
+    foreign_cli.write_text("#!/usr/bin/env node\n", encoding="utf-8")
+    shim = tmp_path / "node_modules" / ".bin" / "devspace"
+    shim.parent.mkdir()
+    shim.symlink_to(foreign_cli)
+
+    with pytest.raises(compat.DevSpaceCompatError) as mismatch:
+        compat._assert_devspace_service_identity(
+            {"pid": 88, "command_line": f"node {shim} serve"},
+            [package],
+        )
+
+    assert mismatch.value.code == "DEVSPACE_SERVICE_IDENTITY_MISMATCH"
+
+
 def test_unknown_devspace_version_or_file_hash_fails_closed(tmp_path: Path) -> None:
     compat = load_compat()
     package = tmp_path / "package"
@@ -208,8 +255,8 @@ def test_directory_read_patch_routes_directories_without_widening_read_access() 
 
     assert compat.PATCHES["dist/server.js"] == {
         "patch": "directory-read.patch",
-        "pristine": "0acc3636a5778b9463cb0d95c393c924b804af60a7b2a51790ed5f33a529e5fd",
-        "patched": "142007d1b0d07b59942adb7cb3f8db12514747027b83ffb458bcca0d83f24da1",
+        "pristine": "c49c1c607b42e040cdf0b15d5a4a93cfef9ddb8147d492a3cfa2a8c3889dab24",
+        "patched": "d5d9b08c482b282f3390f415d69d460f4ee844046962a4013f11612cbb6b52e0",
     }
     assert "const readPath = workspaces.resolveReadPath(workspace, input.path);" in patch
     assert "isDirectory = (await stat(readPath.absolutePath)).isDirectory();" in patch

@@ -16,8 +16,8 @@ CREATE_NO_WINDOW = 0x08000000
 PATCHES = {
     "dist/server.js": {
         "patch": "directory-read.patch",
-        "pristine": "0acc3636a5778b9463cb0d95c393c924b804af60a7b2a51790ed5f33a529e5fd",
-        "patched": "142007d1b0d07b59942adb7cb3f8db12514747027b83ffb458bcca0d83f24da1",
+        "pristine": "c49c1c607b42e040cdf0b15d5a4a93cfef9ddb8147d492a3cfa2a8c3889dab24",
+        "patched": "d5d9b08c482b282f3390f415d69d460f4ee844046962a4013f11612cbb6b52e0",
     },
     "dist/workspaces.js": {
         "patch": "workspaces.patch",
@@ -189,6 +189,15 @@ def _assert_devspace_service_identity(
         str(root / "dist" / "cli.js").replace("\\", "/").casefold()
         for root in package_roots
     ]
+    if os.name != "nt":
+        for root in package_roots:
+            cli = root / "dist" / "cli.js"
+            shim = root.parents[1] / ".bin" / "devspace"
+            try:
+                if shim.is_symlink() and shim.resolve(strict=True) == cli.resolve(strict=True):
+                    expected_cli_paths.append(str(shim).casefold())
+            except OSError:
+                continue
     if not any(
         expected in normalized
         and re.search(rf"{re.escape(expected)}(?:\"|\s)+serve(?:\s|$)", normalized)
