@@ -131,7 +131,6 @@ python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py setup 
   --root C:\projects\alpha `
   --root C:\projects\beta `
   --hostname your-device.your-tailnet.ts.net `
-  --public-port 8443 `
   --dry-run
 ```
 
@@ -139,7 +138,7 @@ python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py setup 
 Mode에는 다음 앱 하나만 수동으로 등록합니다.
 
 - 이름: `DevSpace`
-- URL: `https://your-device.your-tailnet.ts.net:8443/mcp`
+- URL: `https://your-device.your-tailnet.ts.net/mcp`
 
 Owner 승인을 완료한 뒤에는 매 작업마다 앱 목록·권한·URL을 다시 확인하거나
 앱을 재등록하지 않습니다. 새 프로젝트는 DevSpace 허용 루트에만 추가합니다.
@@ -150,7 +149,7 @@ macOS는 hostname을 생략하면 로그인된 Tailscale의 MagicDNS 이름을 �
 
 ```bash
 python3 skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py setup \
-  --root "$PWD" --public-port 8443 --dry-run
+  --root "$PWD" --dry-run
 ```
 
 자세한 과정은

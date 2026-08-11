@@ -36,13 +36,13 @@ OMO 설치 전 `[features.multi_agent_v2]`의
 ```bash
 python3 "$HOME/.codex/skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py" setup \
   --root "/absolute/path/to/codexpro-automation" \
-  --public-port 8443 \
   --dry-run
 ```
 
 미리보기를 확인한 뒤 `--dry-run`을 `--apply`로 바꾼다. ChatGPT Developer
 Mode 등록과 Owner 승인은 수동으로 완료한다. URL은 doctor가 출력하는
-`https://<magic-dns>:8443/mcp`다.
+`https://<magic-dns>/mcp`다. 표준 HTTPS 443을 사용하므로 ChatGPT OAuth
+메타데이터 수집 경로에도 별도 포트가 붙지 않는다.
 
 ## launchd
 

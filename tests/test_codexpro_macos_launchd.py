@@ -29,8 +29,18 @@ def test_launchd_services_use_unique_labels_and_exact_allowed_root(tmp_path: Pat
 
     assert {value["Label"] for value in values.values()} == set(module.LABELS.values())
     assert all(value["CodexProManaged"] is True for value in values.values())
-    assert values["funnel"]["ProgramArguments"][-3:] == [str(project.resolve()), "--public-port", "8443"]
     assert values["supervisor"]["StartInterval"] == 60
     assert values["devspace"]["EnvironmentVariables"]["DEVSPACE_TOOL_MODE"] == "full"
     for value in values.values():
         assert plistlib.loads(plistlib.dumps(value))["Label"] == value["Label"]
+
+
+def test_launchd_funnel_uses_standard_https_port_for_chatgpt_oauth(tmp_path: Path) -> None:
+    module = load_module()
+    codex_home = tmp_path / "codex"
+    project = tmp_path / "project"
+    project.mkdir()
+
+    values = module.service_plists(codex_home=codex_home, project_root=project.resolve(), python="/usr/bin/python3", npx="/opt/homebrew/bin/npx")
+
+    assert values["funnel"]["ProgramArguments"][-3:] == [str(project.resolve()), "--public-port", "443"]

@@ -82,7 +82,7 @@ def service_plists(
             "ProgramArguments": [
                 python,
                 str(codex_home / "skills" / "chatgpt-workspace-setup" / "scripts" / "devspace_tailscale_setup.py"),
-                "ensure", "--root", str(project_root), "--public-port", "8443",
+                "ensure", "--root", str(project_root), "--public-port", "443",
             ],
             "RunAtLoad": True,
             "StartInterval": 300,

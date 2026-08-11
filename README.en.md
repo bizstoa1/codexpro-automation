@@ -131,7 +131,6 @@ python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py setup 
   --root C:\projects\alpha `
   --root C:\projects\beta `
   --hostname your-device.your-tailnet.ts.net `
-  --public-port 8443 `
   --dry-run
 ```
 
@@ -139,7 +138,7 @@ Review the output, then replace `--dry-run` with `--apply`. In ChatGPT Developer
 Mode, manually register one app:
 
 - Name: `DevSpace`
-- URL: `https://your-device.your-tailnet.ts.net:8443/mcp`
+- URL: `https://your-device.your-tailnet.ts.net/mcp`
 
 After owner approval, the automation does not inspect or manipulate ChatGPT
 settings, app lists, permissions, deletion, or picker UI per task. Adding a new
@@ -150,7 +149,7 @@ Preview the exact, single approved root before applying it:
 
 ```bash
 python3 skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py setup \
-  --root "$PWD" --public-port 8443 --dry-run
+  --root "$PWD" --dry-run
 ```
 
 See [DevSpace and Tailscale setup](docs/DEVSPACE_TAILSCALE_SETUP.md) for the
