@@ -8,6 +8,19 @@ The default installer must leave both frozen dependencies untouched.
 `-InstallLegacyRecoveryDependency` is the only opt-in that may install or
 contract-validate agbrowse for an old persisted run.
 
+## Version and presentation
+
+- Choose the SemVer impact using [VERSIONING.md](VERSIONING.md).
+- Require the same version in `package.json`, the root `package-lock.json`
+  entries, `install-manifest.json`, and the newest changelog heading.
+- Validate every relative Markdown link and every committed SVG/PNG asset.
+- Keep Korean and English README mode tables, safety claims, requirements, and
+  documentation maps semantically equivalent.
+- Confirm the repository description, topics, issue templates, PR template,
+  release badge, and social-preview asset match the current product name.
+- Create an annotated `vMAJOR.MINOR.PATCH` tag and GitHub Release only after the
+  exact commit passes both Windows and macOS CI. Never move a published tag.
+
 - Run `python scripts/check_portability.py --root .`, `python scripts/run_v4_contract_tests.py --focused`, `python scripts/run_v3_contract_tests.py`, and `python scripts/run_v4_contract_tests.py --full`.
 - Confirm `install-manifest.json` and `package.json` inventory every shipped runtime/schema file, the v4 runner, and both v7/v8 quiescent app-trace incident fixtures.
 - Confirm MIT copyright is `2026 ventianima-lab` and third-party notices retain the multi-gpt commit/hash attribution.
@@ -40,7 +53,7 @@ contract-validate agbrowse for an old persisted run.
 - Run `python scripts/run_v3_contract_tests.py`; opt into the live Windows exact-unit integration only in an isolated release environment with test credentials.
 - Verify full registered tests and canonical baseline/config/submodule/filesystem revalidation occur before temporary-ref import and ff-only apply. A forced conflict or test failure must leave canonical source unchanged.
 
-# Release lifecycle safety
+## Release lifecycle safety
 
 - `install.ps1` only manages manifest-owned files. By default it neither
   installs nor updates CodexPro/agbrowse because those dependencies are frozen

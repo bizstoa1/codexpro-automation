@@ -2,8 +2,9 @@
 
 The supported English names are `GPT`/`direct`, `plan`, `review`, `edit`,
 `orchestrator`, `deep research`/`deep-research`, `Web Multi-GPT`,
-`comprehensive mode`, and `Pro`. Korean names documented in the main README map
-to the same runners; language never selects a different backend.
+`Local Multi-GPT`, `comprehensive mode`, `Ultra Economy Mode`/`ultra-economy`,
+and `Pro`. Korean names documented in the main README map to the same runners;
+language never selects a different backend.
 
 Use this routing in the Codex global `AGENTS.md` after installing the package.
 
@@ -44,6 +45,13 @@ Use this routing in the Codex global `AGENTS.md` after installing the package.
 - Genuine Web Multi-GPT uses distinct Oracle sessions. Windows lanes use
   independent throwaway copies of the signed-in Oracle profile, run in waves
   of at most five, and hand compact files to one merger.
+- Local Multi-GPT is an optional, read-only PC-local advisory component. It is
+  fixed to `gpt-5.6-luna` with `max` reasoning and is not a web transport or a
+  release authority.
+- Ultra Economy Mode keeps the local commander and native subagents on exact
+  Luna Max while separate Oracle sessions own Pro design, review,
+  implementation, and web verification. It fails closed when current runtime
+  identity cannot prove Luna Max.
 
 ## Standalone Pro versus comprehensive
 

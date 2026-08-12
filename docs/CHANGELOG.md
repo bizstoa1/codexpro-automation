@@ -1,5 +1,17 @@
 # 기술 변경 기록
 
+## 1.12.0 - 브랜드와 릴리스 체계
+
+- 포털·코드 괄호·연결 노드를 결합한 프로젝트 로고, README 배너, GitHub
+  소셜 프리뷰와 사용 규칙을 추가했습니다.
+- 한국어·영어 README를 동일한 정보 구조로 재작성하고 최초 설치, 모드 선택,
+  안전 계약과 문서 지도를 한 화면에서 찾을 수 있게 정리했습니다.
+- 현행 아키텍처, 문서 인덱스, 기여 가이드, 브랜드 가이드와 SemVer 정책을
+  추가하고 legacy 문서를 현재 실행 경로와 명확히 분리했습니다.
+- GitHub 이슈·기능 제안·Pull Request 템플릿과 저장소 주제/설명을 정비했습니다.
+- `package.json`, `package-lock.json`, `install-manifest.json`, Git 태그와 GitHub
+  Release가 하나의 버전을 가리키는 릴리스 계약을 도입했습니다.
+
 ## 1.11.3 - standalone Pro 전송 불확실성 정산
 
 - Oracle 0.17.1의 정확한 prompt-not-observed 오류와 no-live-tab/no-URL
@@ -69,9 +81,7 @@
 README는 현재 제품의 목적과 사용법만 설명합니다. 구현 변경, 호환 패치,
 레거시 이전 기록은 이 문서에서 관리합니다.
 
-## 현재 릴리스
-
-### 1.8.0 — Codex Web GPT Automation
+## 1.8.0 — Codex Web GPT Automation
 
 - 공개 제품명과 저장소명을 Pro 전용으로 오해되지 않는
   `Codex Web GPT Automation` / `codex-web-gpt-automation`으로 변경했습니다.
@@ -87,7 +97,7 @@ README는 현재 제품의 목적과 사용법만 설명합니다. 구현 변경
   잠금 정산과, `TASK_OUTCOME` 뒤의 제한된 Markdown reference footer 분류를
   회귀 테스트로 고정했습니다.
 
-### 1.7.0 — macOS Ultrawork
+## 1.7.0 — macOS Ultrawork
 
 - macOS arm64에서 공통 Python `install/update/doctor/rollback/uninstall` lifecycle과
   영수증/WAL/충돌 보존을 지원합니다. PowerShell 진입점은 Windows 호환 경로로

@@ -49,12 +49,12 @@ python doctor.py
 서버 파일, `multi_gpt` MCP 등록이 함께 완료되며 Codex를 재시작해야 합니다.
 자세한 내용은 [선택형 Local Multi-GPT](LOCAL_MULTI_GPT.md)를 참고하세요.
 
-### Optional recommended Codex native subagents
+### 선택 권장: Codex 네이티브 서브에이전트
 
-Install the cost-bounded global defaults only after the lifecycle install. The
-command re-reads the current `~/.codex/config.toml`, preserves unrelated
-settings and the existing global `AGENTS.md`, creates a timestamped backup and
-receipt, and then installs three standalone roles.
+비용 제한형 전역 기본값은 lifecycle 설치가 끝난 뒤에만 적용합니다. 이 명령은
+현재 `~/.codex/config.toml`을 다시 읽고, 관련 없는 설정과 기존 전역
+`AGENTS.md`를 보존하며, 시간표시 백업과 영수증을 만든 뒤 세 가지 독립 역할을
+설치합니다.
 
 ```powershell
 python "$env:USERPROFILE\.codex\bin\codex_global_agents_setup.py"
@@ -62,13 +62,12 @@ python "$env:USERPROFILE\.codex\bin\codex_global_agents_setup.py" --apply
 python "$env:USERPROFILE\.codex\bin\codex_global_agents_setup.py" --doctor
 ```
 
-The main agent is GPT-5.6 Sol at high reasoning. The normal subagent default is
-GPT-5.6 Terra at medium reasoning, with a hard cap of three spawned threads and
-a policy default of two concurrent workers. `scout` is Luna medium/read-only,
-`implementer` is Terra high and accepts only an explicit file list, and
-`verifier` is Terra high/read-only. This setup does not enable the unstable
-`multi_agent_v2` feature. Restart Codex after applying it so a new task loads
-the global configuration and role registry.
+주 에이전트는 GPT-5.6 Sol high, 일반 서브에이전트 기본값은 GPT-5.6 Terra
+medium입니다. 생성 작업의 하드 상한은 3개이고 정책상 기본 동시 작업자는
+2명입니다. `scout`는 Luna medium/read-only, `implementer`는 명시된 파일만
+맡는 Terra high, `verifier`는 Terra high/read-only입니다. 불안정한
+`multi_agent_v2`는 켜지 않습니다. 적용 후 Codex를 재시작해야 새 작업이 전역
+설정과 역할 목록을 다시 읽습니다.
 
 macOS:
 

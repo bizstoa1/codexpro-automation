@@ -87,6 +87,10 @@ def test_manifest_covers_runtime_and_schemas() -> None:
     assert not any('*' in path for path in includes if not (path.endswith('/schemas/*.json') or path == 'contracts/install/*.json'))
     package_files = set(json.loads((ROOT / 'package.json').read_text(encoding='utf-8'))['files'])
     assert {
+        'README.md',
+        'README.en.md',
+        'CONTRIBUTING.md',
+        'docs/',
         'skills/chatgpt-pro-browser/SKILL.md',
         'skills/chatgpt-pro-browser/agents/openai.yaml',
         'skills/chatgpt-pro-browser/scripts/build_project_context_packet.py',
@@ -150,6 +154,7 @@ def test_package_is_publishable_and_lockfile_matches() -> None:
         'install.ps1',
         'LICENSE',
         'scripts/run_v4_contract_tests.py',
+        'scripts/check_docs.py',
         'contracts/install/',
     } <= set(package['files'])
 

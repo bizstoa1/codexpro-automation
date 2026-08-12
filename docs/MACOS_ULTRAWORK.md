@@ -14,11 +14,11 @@ python3 install.py --dry-run
 python3 install.py
 python3 doctor.py
 
-# 설치된 로컬 CodexPro marketplace와 hook plugin
+### 설치된 로컬 legacy marketplace와 hook plugin
 codex plugin marketplace add "$HOME/.codex/marketplace"
 codex plugin add codexpro-harness@ventianima-local
 
-# OMO Codex Light: OpenCode Ultimate는 설치하지 않는다.
+### OMO Codex Light: OpenCode Ultimate는 설치하지 않는다
 OMO_CODEX_DISABLE_POSTHOG=1 npx lazycodex-ai install --no-tui --codex-autonomous
 ```
 

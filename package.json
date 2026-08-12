@@ -1,8 +1,8 @@
 {
   "name": "codex-web-gpt-automation",
-  "version": "1.11.3",
+  "version": "1.12.0",
   "private": false,
-  "description": "Windows and macOS orchestrator for Oracle, DevSpace, OMO ultrawork, and exact 75/80-minute recovery",
+  "description": "Guarded, recoverable web ChatGPT automation for local Codex projects on Windows and macOS",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -24,7 +24,9 @@
     "ultrawork"
   ],
   "files": [
+    "README.md",
     "README.en.md",
+    "CONTRIBUTING.md",
     "onboard.py",
     "bin/codex_web_gpt_onboarding.py",
     "bin/codex_global_agents_setup.py",
@@ -109,6 +111,7 @@
     "scripts/run_fast_gate.py",
     "scripts/run_golden_path_smoke.py",
     "scripts/run_harness_canary.py",
+    "scripts/check_docs.py",
     "contracts/install/",
     "contracts/gjc-interview-v1.schema.json",
     "marketplace/",
