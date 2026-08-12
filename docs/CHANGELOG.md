@@ -1,5 +1,13 @@
 # 기술 변경 기록
 
+## 1.11.3 - standalone Pro 전송 불확실성 정산
+
+- Oracle 0.17.1의 정확한 prompt-not-observed 오류와 no-live-tab/no-URL
+  harvest가 함께 있을 때 standalone qualified Pro도 사용자 확인 기반의
+  `settle-no-submission` 정산을 사용할 수 있습니다.
+- 출력, 대화 URL, 상충 recovery 상태, 다른 Oracle 버전, 다른 transport,
+  변경된 미션 바이트가 있으면 프로젝트 잠금을 계속 유지합니다.
+
 ## 1.11.2 - stale Funnel 등록 후 복구
 
 - `post-register`가 로컬 status상 동일한 매핑이라도 외부 relay에서 닫힌

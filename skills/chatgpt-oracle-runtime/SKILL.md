@@ -111,9 +111,11 @@ saved-URL recovery evidence does not mechanically prove non-submission. A
 maintenance owner may release that exact run only after explicit user
 confirmation through `chatgpt_oracle_run.py settle-no-submission` with the
 exact run directory, `--confirmation user-confirmed-no-submission`, and a
-concise reason. The settlement is hash-bound to
-project/workflow/stage/attempt/input evidence and does not launch Oracle;
-comprehensive mode may consume only one replacement for that binding.
+concise reason. The settlement is hash-bound to the comprehensive stage,
+direct Web Multi child, or standalone qualified-Pro identity and immutable
+mission evidence and does not launch Oracle. Comprehensive mode may consume
+only one replacement for its binding; standalone qualified Pro permits only
+the separately authorized single fresh retry with identical mission bytes.
 
 Direct same-project runs hold one cross-process mutex for the entire Oracle
 process lifetime. A Multi parent owns that project mutex while authorized

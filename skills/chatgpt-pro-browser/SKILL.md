@@ -122,5 +122,13 @@ Recover only the stored exact Oracle run directory and slug. `live` and
 `harvest` may observe or collect that same session; they never restart,
 resubmit, change route/model/effort, or create a replacement conversation.
 
+When Oracle 0.17.1 reports the exact prompt-not-observed timeout, first run
+exact-slug harvest. No live tab plus no recoverable conversation URL remains
+submission-uncertain and needs explicit user confirmation before the
+hash-bound `settle-no-submission` path can release a standalone qualified-Pro
+run. Only then may an explicitly authorized single retry reuse the identical
+mission bytes; no output, URL, mismatched hash, conflicting recovery state, or
+ordinary trailing browser error may be treated as proof.
+
 For an already persisted agbrowse Pro run only, former recovery commands remain
 available. They must never create a new run.

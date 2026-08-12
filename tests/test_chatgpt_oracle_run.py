@@ -169,6 +169,32 @@ def popen_for(code: int, output: bytes | None, captured: dict, events: list[str]
     return popen
 
 
+def prompt_not_observed_popen(command, **kwargs):
+    slug = command[command.index("--slug") + 1]
+    kwargs["stdout"].write(
+        (
+            f"Session: {slug}\n"
+            "ERROR: Prompt did not appear in conversation before timeout (send may have failed)\n"
+            "User error (browser-automation): Prompt did not appear in conversation before timeout (send may have failed)\n"
+        ).encode()
+    )
+    kwargs["stdout"].flush()
+    return Process(1, [])
+
+
+def recovery_binding_unavailable_popen(command, **kwargs):
+    slug = command[command.index("session") + 1]
+    kwargs["stdout"].write(
+        f'No live ChatGPT tab matched session "{slug}". Attempting recovery by reopening the saved conversation URL.\n'.encode()
+    )
+    kwargs["stderr"].write(
+        b"Cannot recover conversation: session metadata has no recoverable ChatGPT conversation URL.\n"
+    )
+    kwargs["stdout"].flush()
+    kwargs["stderr"].flush()
+    return Process(1, [])
+
+
 def duplicate_prompt_popen(command, **kwargs):
     kwargs["stdout"].write(
         b'oracle 0.17.1\nA session with the same prompt is already running '
@@ -1673,6 +1699,93 @@ def test_user_confirmed_no_submission_is_hash_bound_idempotent_and_fail_closed(t
         parallel_parent_id="e" * 64,
     )
     assert owners[0]["run_id"] == run_id
+
+
+def test_standalone_qualified_pro_prompt_timeout_can_be_user_settled_and_unlocks(tmp_path: Path) -> None:
+    runner = load_runner()
+    initial = execute_run(
+        runner,
+        pro_readonly_manifest(tmp_path, run_id="b" * 32),
+        run_factory=version_0171_runner,
+        popen_factory=prompt_not_observed_popen,
+    )
+    run_dir = Path(initial["run_dir"])
+    recovered = runner.recover_run(
+        run_dir,
+        action="harvest",
+        oracle_command=["oracle"],
+        popen_factory=recovery_binding_unavailable_popen,
+    )
+
+    assert recovered["status"] == "recovery_binding_unavailable"
+    settled = runner.settle_user_confirmed_no_submission(
+        run_dir,
+        confirmation=runner.STATE.USER_CONFIRMED_NO_SUBMISSION,
+        reason="user inspected the exact ChatGPT history and confirmed no prompt or response",
+    )
+    proof = runner.STATE.proven_user_confirmed_no_submission(run_dir / "state.json")
+
+    assert settled["safe_for_fresh_run"] is True
+    assert settled["unresolved_owners"] == []
+    assert settled["result"]["session_authority"] == "pre_submit"
+    assert proof is not None
+    assert proof["settlement_eligibility"] == "oracle-standalone-qualified-pro/v1"
+    assert proof["transport"] == "pro-devspace-readonly"
+    assert proof["oracle_version"] == "0.17.1"
+    assert proof["source_mission_sha256"] == proof["transport_mission_sha256"]
+
+
+@pytest.mark.parametrize(
+    "contradiction",
+    ("output", "conversation_url", "version", "mission", "recovery_state", "stderr", "transport"),
+)
+def test_standalone_qualified_pro_prompt_timeout_keeps_lock_when_evidence_is_incomplete(
+    tmp_path: Path,
+    contradiction: str,
+) -> None:
+    runner = load_runner()
+    initial = execute_run(
+        runner,
+        pro_readonly_manifest(tmp_path, run_id="c" * 32),
+        run_factory=version_0171_runner,
+        popen_factory=prompt_not_observed_popen,
+    )
+    run_dir = Path(initial["run_dir"])
+    runner.recover_run(
+        run_dir,
+        action="harvest",
+        oracle_command=["oracle"],
+        popen_factory=recovery_binding_unavailable_popen,
+    )
+    state_path = run_dir / "state.json"
+    state = runner.STATE.load_state(state_path)
+    if contradiction == "output":
+        (run_dir / "output.md").write_text("unexpected durable answer", encoding="utf-8")
+    elif contradiction == "conversation_url":
+        state["oracle"]["conversation_url"] = "https://chatgpt.com/c/exact-submitted-session"
+        runner.STATE.write_json_atomic(state_path, state)
+    elif contradiction == "version":
+        state["oracle"]["resolved_version"] = "0.17.2"
+        runner.STATE.write_json_atomic(state_path, state)
+    elif contradiction == "mission":
+        Path(state["mission"]["path"]).write_text("changed mission", encoding="utf-8")
+    elif contradiction == "recovery_state":
+        (run_dir / "recovery-harvest-stdout.log").write_text("State: running\n", encoding="utf-8")
+    elif contradiction == "stderr":
+        (run_dir / "stderr.log").write_text("unexpected browser error\n", encoding="utf-8")
+    elif contradiction == "transport":
+        state["transport"] = "regular-devspace"
+        runner.STATE.write_json_atomic(state_path, state)
+
+    with pytest.raises(runner.STATE.OracleStateError) as exc:
+        runner.settle_user_confirmed_no_submission(
+            run_dir,
+            confirmation=runner.STATE.USER_CONFIRMED_NO_SUBMISSION,
+            reason="user inspected the exact ChatGPT history and confirmed no prompt or response",
+        )
+
+    assert exc.value.code == "NO_SUBMISSION_EVIDENCE_INCOMPLETE"
+    assert runner.STATE.load_state(state_path)["session_authority"] == "submitted_unknown"
 
 
 def test_user_confirmation_rejects_bare_bindings_without_host_contract(tmp_path: Path) -> None:

@@ -99,6 +99,7 @@ ORACLE_NO_LIVE_TAB_MARKER = "No live ChatGPT tab matched session"
 ORACLE_NO_RECOVERABLE_URL_MARKER = (
     "session metadata has no recoverable ChatGPT conversation URL"
 )
+ORACLE_STANDALONE_PRO_NO_SUBMISSION_VERSIONS = {"0.17.1"}
 USER_CONFIRMED_NO_SUBMISSION = "user-confirmed-no-submission"
 USER_CONFIRMED_EXECUTION_ENDED = "user-confirmed-task-ended"
 ORACLE_RECOVERY_STATE_RE = re.compile(r"(?im)^\s*State:\s*[a-z][a-z0-9_-]*\s*$")
@@ -1262,13 +1263,167 @@ def _settlement_logs_have_conversation_url(state_path: Path) -> bool:
     return False
 
 
+def _standalone_pro_no_submission_evidence(state_path: Path) -> dict[str, Any] | None:
+    """Return bounded evidence for user adjudication of one qualified Pro run."""
+    state = load_state(state_path)
+    run_dir = state_path.parent
+    run_id = str(state.get("run_id") or "")
+    profile = state.get("profile") if isinstance(state.get("profile"), dict) else {}
+    if (
+        state.get("schema") != "codex.chatgpt.oracle-run-state/v1"
+        or str(state.get("session_authority") or "") not in {"submitted_unknown", "pre_submit"}
+        or state.get("status") != "attention_required"
+        or state.get("transport_status") not in {"failed", "not_submitted_user_confirmed"}
+        or state.get("task_outcome") != "pending"
+        or state.get("terminal_harvested") is True
+        or _state_has_conversation_url(state)
+        or int(state.get("exit_code") or 0) == 0
+        or str(state.get("mode") or "") != "browser"
+        or str(state.get("transport") or "") != "pro-devspace-readonly"
+        or state.get("parallel_parent_id") is not None
+        or state.get("requested_run_id") not in (None, run_id)
+        or state.get("web_multi_child_provenance") is not None
+        or state.get("attachments") not in (None, [])
+        or run_dir.name != run_id
+        or str(profile.get("model") or "") != "gpt-5.6-sol"
+        or str(profile.get("model_strategy") or "") != "select"
+        or str(profile.get("thinking_time") or "") != "heavy"
+    ):
+        return None
+    oracle = state.get("oracle") if isinstance(state.get("oracle"), dict) else {}
+    version = str(oracle.get("resolved_version") or "").removeprefix("oracle ").strip()
+    locator = str(oracle.get("session_locator") or oracle.get("slug") or "").strip()
+    if version not in ORACLE_STANDALONE_PRO_NO_SUBMISSION_VERSIONS or not locator:
+        return None
+    artifacts = state.get("artifacts") if isinstance(state.get("artifacts"), dict) else {}
+    output = Path(str(artifacts.get("output") or ""))
+    if output.resolve() != (run_dir / "output.md").resolve() or output.is_symlink() or output_is_nonempty(output):
+        return None
+    records = {name: _artifact_bytes(state, name) for name in ("stdout", "stderr", "transcript")}
+    if any(record is None for record in records.values()):
+        return None
+    stdout_path, stdout_bytes = records["stdout"]  # type: ignore[misc]
+    stderr_path, stderr_bytes = records["stderr"]  # type: ignore[misc]
+    transcript_path, transcript_bytes = records["transcript"]  # type: ignore[misc]
+    if (
+        stdout_path.resolve() != (run_dir / "stdout.log").resolve()
+        or stderr_path.resolve() != (run_dir / "stderr.log").resolve()
+        or transcript_path.resolve() != (run_dir / "transcript.md").resolve()
+        or any(path.is_symlink() for path in (stdout_path, stderr_path, transcript_path))
+        or stderr_bytes
+        or transcript_bytes != stdout_bytes
+    ):
+        return None
+    try:
+        stdout_text = stdout_bytes.decode("utf-8", errors="strict")
+    except UnicodeDecodeError:
+        return None
+    marker_lines = {
+        line.strip()
+        for line in stdout_text.splitlines()
+        if ORACLE_PROMPT_NOT_OBSERVED_MARKER in line
+    }
+    allowed_marker_lines = {
+        f"ERROR: {ORACLE_PROMPT_NOT_OBSERVED_MARKER}",
+        f"User error (browser-automation): {ORACLE_PROMPT_NOT_OBSERVED_MARKER}",
+    }
+    if (
+        not marker_lines
+        or not marker_lines.issubset(allowed_marker_lines)
+        or stdout_text.count(ORACLE_PROMPT_NOT_OBSERVED_MARKER) != len(marker_lines)
+        or f"Session: {locator}" not in stdout_text
+        or CHATGPT_CONVERSATION_URL_RE.search(stdout_text)
+    ):
+        return None
+    mission = state.get("mission") if isinstance(state.get("mission"), dict) else {}
+    source_path = Path(str(mission.get("path") or ""))
+    transport_path = Path(str(mission.get("transport_path") or ""))
+    try:
+        project_root = Path(str(state.get("project_root") or "")).resolve(strict=True)
+        source_path = source_path.resolve(strict=True)
+        transport_path = transport_path.resolve(strict=True)
+        if (
+            not project_root.is_dir()
+            or not source_path.is_file()
+            or source_path.is_symlink()
+            or transport_path.is_symlink()
+            or not is_within(project_root, source_path)
+            or transport_path != (run_dir / "mission.md").resolve()
+        ):
+            return None
+        source_bytes = source_path.read_bytes()
+        transport_bytes = transport_path.read_bytes()
+    except OSError:
+        return None
+    mission_sha256 = str(mission.get("sha256") or "")
+    source_sha256 = hashlib.sha256(source_bytes).hexdigest()
+    transport_sha256 = hashlib.sha256(transport_bytes).hexdigest()
+    if (
+        not re.fullmatch(r"[a-f0-9]{64}", mission_sha256)
+        or source_sha256 != mission_sha256
+        or transport_sha256 != mission_sha256
+        or source_bytes != transport_bytes
+    ):
+        return None
+    recovery_records: list[dict[str, str]] = []
+    for recovery_stdout in sorted(run_dir.glob("recovery-*-stdout.log"), key=lambda item: item.name):
+        recovery_stderr = recovery_stdout.with_name(recovery_stdout.name.replace("-stdout.log", "-stderr.log"))
+        try:
+            if recovery_stdout.is_symlink() or recovery_stderr.is_symlink():
+                return None
+            recovery_stdout_bytes = recovery_stdout.read_bytes()
+            recovery_stderr_bytes = recovery_stderr.read_bytes()
+            recovery_text = b"\n".join((recovery_stdout_bytes, recovery_stderr_bytes)).decode("utf-8", errors="strict")
+        except (OSError, UnicodeDecodeError):
+            return None
+        if (
+            CHATGPT_CONVERSATION_URL_RE.search(recovery_text)
+            or ORACLE_RECOVERY_STATE_RE.search(recovery_text)
+            or ORACLE_NO_LIVE_TAB_MARKER not in recovery_text
+            or f'"{locator}"' not in recovery_text
+            or ORACLE_NO_RECOVERABLE_URL_MARKER not in recovery_text
+        ):
+            return None
+        recovery_records.append({
+            "stdout_name": recovery_stdout.name,
+            "stdout_sha256": hashlib.sha256(recovery_stdout_bytes).hexdigest(),
+            "stderr_name": recovery_stderr.name,
+            "stderr_sha256": hashlib.sha256(recovery_stderr_bytes).hexdigest(),
+        })
+    if not recovery_records:
+        return None
+    return {
+        "settlement_eligibility": "oracle-standalone-qualified-pro/v1",
+        "project_root": str(project_root),
+        "run_id": run_id,
+        "transport": "pro-devspace-readonly",
+        "source_mission_path": str(source_path),
+        "source_mission_sha256": source_sha256,
+        "transport_mission_path": str(transport_path),
+        "transport_mission_sha256": transport_sha256,
+        "mission_sha256": mission_sha256,
+        "oracle_locator": locator,
+        "oracle_version": version,
+        "stdout_sha256": hashlib.sha256(stdout_bytes).hexdigest(),
+        "stderr_sha256": hashlib.sha256(stderr_bytes).hexdigest(),
+        "recovery_evidence": recovery_records,
+        "output_absent": True,
+        "conversation_url_absent": True,
+        "_source_mission_path": str(source_path),
+        "_transport_mission_path": str(transport_path),
+    }
+
+
 def _user_confirmable_no_submission_evidence(state_path: Path) -> dict[str, Any] | None:
-    """Return exact evidence for a comprehensive stage or direct Web Multi child."""
+    """Return exact evidence for supported user-adjudicable Oracle runs."""
     if _settlement_logs_have_conversation_url(state_path):
         return None
     comprehensive = _comprehensive_no_submission_evidence(state_path)
     if comprehensive is not None:
         return comprehensive
+    standalone_pro = _standalone_pro_no_submission_evidence(state_path)
+    if standalone_pro is not None:
+        return standalone_pro
     try:
         mission_text = (state_path.parent / "mission.md").read_text(encoding="utf-8", errors="strict")
     except (OSError, UnicodeDecodeError):
@@ -1322,7 +1477,13 @@ def proven_user_confirmed_no_submission(state_path: Path) -> dict[str, Any] | No
     ):
         if recorded.get(key) != current.get(key):
             return None
-    if current.get("settlement_eligibility") == "oracle-web-multi-child/v1":
+    if current.get("settlement_eligibility") == "oracle-standalone-qualified-pro/v1":
+        required = (
+            "settlement_eligibility", "transport", "source_mission_path",
+            "source_mission_sha256", "transport_mission_path", "transport_mission_sha256",
+            "oracle_version",
+        )
+    elif current.get("settlement_eligibility") == "oracle-web-multi-child/v1":
         required = (
             "settlement_eligibility", "parallel_parent_id", "source_mission_path",
             "source_mission_sha256", "transport_mission_path", "transport_mission_sha256",
