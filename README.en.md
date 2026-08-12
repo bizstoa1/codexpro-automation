@@ -185,6 +185,15 @@ python3 skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py setup
 See [DevSpace and Tailscale setup](docs/DEVSPACE_TAILSCALE_SETUP.md) for the
 complete procedure.
 
+## Ultra Economy Mode
+
+Ultra Economy Mode keeps the current local commander and every native
+subagent on exact `gpt-5.6-luna` with `max` reasoning, while separate web
+sessions own Pro design, design review, implementation, and final verification.
+It fails closed when the current task runtime identity is unavailable or does
+not match; a `config.toml` default is not accepted as proof. See
+[Ultra Economy Mode](docs/ULTRA_ECONOMY_MODE.md).
+
 ## Regular GPT example
 
 Create a UTF-8 mission file inside the project, then dry-run the manifest:
@@ -258,6 +267,7 @@ already persisted legacy run.
 - [Global ChatGPT routing and mode selection](docs/GLOBAL_CHATGPT_ROUTING.md)
 - [Ordered first install and onboarding](docs/FIRST_INSTALL.md)
 - [DevSpace and Tailscale setup](docs/DEVSPACE_TAILSCALE_SETUP.md)
+- [Ultra Economy Mode](docs/ULTRA_ECONOMY_MODE.md)
 - [macOS Ultrawork and 75/80-minute recovery](docs/MACOS_ULTRAWORK.md)
 - [Technical changelog](docs/CHANGELOG.md)
 - [Frozen legacy recovery assets](docs/FROZEN_LEGACY.md)

@@ -22,6 +22,13 @@ plan -> optional Pro or Oracle Web Multi -> review
      -> implementation -> final web gate -> one local deterministic gate
 ```
 
+The optional `ultra-economy` profile instead starts with qualified read-only
+Pro design, then uses separate regular web review, implementation, and final
+gate sessions. It is valid only after the current Codex task runtime is
+observed as exact `gpt-5.6-luna` with `max` reasoning; a global config default
+is not current-task evidence. Follow `skills/ultra-economy-mode/SKILL.md` for
+the local commander and Luna Max subagent contract.
+
 Comprehensive mode is a staged workflow, not a prompt variant. Its
 implementation stage carries the same orchestrator ownership contract used by
 the single-submission `orchestrator` mode in `chatgpt-thinking-browser`, so

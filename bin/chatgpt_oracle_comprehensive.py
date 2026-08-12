@@ -28,6 +28,10 @@ PRO_OUTPUT_PREFIX_KEYS = (
 PRO_OUTPUT_RECOVERY_SCHEMA = "codex.chatgpt.oracle-pro-output-recovery/v1"
 STATE_SCHEMA = "codex.chatgpt.oracle-comprehensive-state/v1"
 SCOPE_SCHEMA = "codex.chatgpt.oracle-comprehensive-scope/v1"
+STANDARD_PROFILE = "standard"
+ULTRA_ECONOMY_PROFILE = "ultra-economy"
+ULTRA_ECONOMY_LOCAL_MODEL = "gpt-5.6-luna"
+ULTRA_ECONOMY_LOCAL_REASONING = "max"
 MAX_PLAN_REVISIONS = 2
 REVIEW_STATUSES = {"PASS", "PASS_WITH_NOTES", "REVISE", "FAIL"}
 UNAMBIGUOUS_PRE_SUBMIT_MARKERS = (
@@ -65,6 +69,7 @@ def _load(name: str, path: Path):
 RUNNER = _load("oracle_comprehensive_runner", BIN / "chatgpt_oracle_run.py")
 MULTI = _load("oracle_comprehensive_multi", BIN / "chatgpt_oracle_multi.py")
 WORKSPACE_CONFIG = _load("oracle_comprehensive_workspace_config", BIN / "chatgpt_workspace_config.py")
+RUNTIME_IDENTITY = _load("oracle_comprehensive_runtime_identity", BIN / "codex_runtime_identity.py")
 
 
 class WorkflowError(RuntimeError):
@@ -123,6 +128,25 @@ def load_manifest(path: Path) -> dict[str, Any]:
     maximum = int(value.get("max_stages", 8))
     if not 1 <= maximum <= 12:
         raise WorkflowError("max_stages must be within 1..12")
+    workflow_profile = str(value.get("workflow_profile") or STANDARD_PROFILE).strip().casefold()
+    if workflow_profile not in {STANDARD_PROFILE, ULTRA_ECONOMY_PROFILE}:
+        raise WorkflowError("workflow_profile must be standard or ultra-economy")
+    initial_stage = str(
+        value.get("initial_stage")
+        or ("pro" if workflow_profile == ULTRA_ECONOMY_PROFILE else "plan")
+    ).strip().casefold()
+    if "local_runtime_contract" in value:
+        raise WorkflowError(
+            "local_runtime_contract is not accepted; ultra-economy verifies the current Codex runtime directly"
+        )
+    if workflow_profile == ULTRA_ECONOMY_PROFILE:
+        if initial_stage != "pro":
+            raise WorkflowError("ULTRA_ECONOMY_INITIAL_STAGE_REQUIRED: initial_stage must be pro")
+        if maximum < 4:
+            raise WorkflowError("ULTRA_ECONOMY_STAGE_BUDGET_TOO_SMALL: max_stages must be at least 4")
+    else:
+        if initial_stage != "plan":
+            raise WorkflowError("standard workflow initial_stage must be plan")
     local_gate = value.get("local_gate_command")
     if not isinstance(local_gate, list) or not local_gate or not all(isinstance(item, str) and item for item in local_gate):
         raise WorkflowError("local_gate_command must be a nonempty string list")
@@ -144,12 +168,34 @@ def load_manifest(path: Path) -> dict[str, Any]:
         "workflow_dir": workflow_dir,
         "initial_mission_path": mission,
         "max_stages": maximum,
+        "workflow_profile": workflow_profile,
+        "initial_stage": initial_stage,
         "app_name": app_name,
         "model": str(value.get("model") or "gpt-5.6"),
         "local_gate_command": list(local_gate),
         "manifest_sha256": sha(path.resolve(strict=True)),
         "workflow_id": workflow_id,
     }
+
+
+def _verify_ultra_economy_runtime(config: dict[str, Any]) -> dict[str, Any] | None:
+    if config["workflow_profile"] != ULTRA_ECONOMY_PROFILE:
+        return None
+    try:
+        identity = RUNTIME_IDENTITY.current_runtime_identity()
+    except RUNTIME_IDENTITY.RuntimeIdentityError as exc:
+        raise WorkflowError(
+            f"ULTRA_ECONOMY_MAIN_MODEL_UNVERIFIED: {exc}; select gpt-5.6-luna with max reasoning and retry"
+        ) from exc
+    if (
+        identity["model"] != ULTRA_ECONOMY_LOCAL_MODEL
+        or identity["reasoning_effort"] != ULTRA_ECONOMY_LOCAL_REASONING
+    ):
+        raise WorkflowError(
+            "ULTRA_ECONOMY_MAIN_MODEL_REQUIRED: select gpt-5.6-luna with max reasoning for the current task "
+            f"(observed {identity['model']} / {identity['reasoning_effort']})"
+        )
+    return identity
 
 
 def _write(path: Path, value: dict[str, Any]) -> None:
@@ -389,6 +435,15 @@ def _pro_stage_mission(
         "next_mission_text. Never paste a nested JSON document into either string with raw, unescaped quotes; "
         "encode it as string content with JSON escaping.\n"
     )
+    if config.get("workflow_profile") == ULTRA_ECONOMY_PROFILE:
+        protocol += (
+            "\n[ULTRA_ECONOMY_DESIGN_CONTRACT]\n"
+            "You are the mandatory architecture and design owner. Remain read-only and produce the complete, "
+            "implementation-ready design. The next mission must target a separate review session, which must "
+            "repair the design and author the implementation mission. Implementation and final web verification "
+            "must remain separate later sessions. Do not ask the local Luna commander to perform project analysis, "
+            "implementation, or semantic review.\n"
+        )
     target.write_text(body.rstrip() + protocol, encoding="utf-8")
     return target, receipt, input_sha
 
@@ -1154,23 +1209,40 @@ def _run_workflow_locked(
     local_gate_runner: Callable[..., Any] = subprocess.run,
 ) -> dict[str, Any]:
     config = load_manifest(manifest_path)
+    _verify_ultra_economy_runtime(config)
     workflow_id = config["workflow_id"]
     config["_review_policy"] = _review_policy_from_history(config)
     config["_parallel_parent_id"] = hashlib.sha256(workflow_id.encode("utf-8")).hexdigest()
     config["workflow_dir"].mkdir(parents=True, exist_ok=True)
     if dry_run:
         attempt_id = uuid.uuid4().hex
-        mission, receipt_path, input_sha = _stage_mission(
-            config, workflow_id, 0, "plan", config["initial_mission_path"], attempt_id
+        initial_stage = config["initial_stage"]
+        if initial_stage == "pro":
+            mission, receipt_path, input_sha = _pro_stage_mission(
+                config, workflow_id, 0, config["initial_mission_path"], attempt_id
+            )
+            pro_attachments = _declared_pro_attachments(config, config["initial_mission_path"])
+        else:
+            mission, receipt_path, input_sha = _stage_mission(
+                config, workflow_id, 0, initial_stage, config["initial_mission_path"], attempt_id
+            )
+            pro_attachments = ()
+        oracle_manifest = _oracle_manifest(
+            config,
+            mission,
+            mission.parent,
+            attempt_id,
+            stage=initial_stage,
+            pro_attachments=pro_attachments,
         )
-        oracle_manifest = _oracle_manifest(config, mission, mission.parent, attempt_id, stage="plan")
         preview = oracle_execute(oracle_manifest, dry_run=True)
         return {
             "ok": bool(preview.get("ok")),
             "schema": STATE_SCHEMA,
             "status": "dry-run",
             "workflow_id": workflow_id,
-            "stage": "plan",
+            "stage": initial_stage,
+            "workflow_profile": config["workflow_profile"],
             "attempt_id": attempt_id,
             "input_mission_sha256": input_sha,
             "receipt_path": str(receipt_path),
@@ -1390,12 +1462,12 @@ def _run_workflow_locked(
             records = list(stored.get("records") or [])
             start_index = int(stored.get("next_index") or 0)
     else:
-        stage, source, records, start_index = "plan", config["initial_mission_path"], [], 0
+        stage, source, records, start_index = config["initial_stage"], config["initial_mission_path"], [], 0
         _write_workflow_state(state_path, config, {
             "schema": STATE_SCHEMA, "status": "prepared", "workflow_id": workflow_id,
             "manifest_sha256": config["manifest_sha256"], "next_stage": stage,
             "next_mission_path": str(source), "next_mission_sha256": sha(source),
-            "next_index": 0, "records": records,
+            "next_index": 0, "records": records, "workflow_profile": config["workflow_profile"],
         })
     for index in range(start_index, config["max_stages"]):
         if stage == "web-multi":

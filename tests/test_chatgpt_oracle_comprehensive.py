@@ -40,6 +40,66 @@ def manifest(tmp_path: Path) -> Path:
     return path
 
 
+def ultra_economy_manifest(tmp_path: Path) -> Path:
+    path = manifest(tmp_path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload.update({
+        "workflow_profile": "ultra-economy",
+        "initial_stage": "pro",
+    })
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def test_ultra_economy_manifest_rejects_untrusted_runtime_self_declaration(tmp_path: Path) -> None:
+    module = load()
+    path = ultra_economy_manifest(tmp_path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["local_runtime_contract"] = {
+        "model": "gpt-5.6-luna",
+        "reasoning_effort": "max",
+        "source": "current-task-runtime",
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(module.WorkflowError, match="local_runtime_contract is not accepted"):
+        module.load_manifest(path)
+
+def test_ultra_economy_dry_run_starts_with_read_only_pro_design(tmp_path: Path, monkeypatch) -> None:
+    module = load()
+    monkeypatch.setattr(module.RUNTIME_IDENTITY, "current_runtime_identity", lambda: {
+        "model": "gpt-5.6-luna", "reasoning_effort": "max"
+    })
+    seen: dict[str, object] = {}
+
+    def preview(oracle_manifest: Path, *, dry_run: bool):
+        seen.update(json.loads(oracle_manifest.read_text(encoding="utf-8")))
+        mission = Path(str(seen["mission_path"])).read_text(encoding="utf-8")
+        assert "stage=pro\n" in mission
+        assert "[ULTRA_ECONOMY_DESIGN_CONTRACT]" in mission
+        return {"ok": True}
+
+    result = module.run_workflow(
+        ultra_economy_manifest(tmp_path), dry_run=True, oracle_execute=preview
+    )
+
+    assert result["ok"] is True
+    assert result["stage"] == "pro"
+    assert result["workflow_profile"] == "ultra-economy"
+    assert seen["model"] == "gpt-5.6-sol"
+    assert seen["thinking_time"] == "heavy"
+    assert seen["transport"] == "pro-devspace-readonly"
+
+
+def test_standard_workflow_cannot_skip_plan_with_initial_pro(tmp_path: Path) -> None:
+    module = load()
+    path = manifest(tmp_path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["initial_stage"] = "pro"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(module.WorkflowError, match="standard workflow initial_stage must be plan"):
+        module.load_manifest(path)
+
+
 def test_manifest_accepts_configured_workspace_app_before_workflow_creation(tmp_path: Path) -> None:
     module = load()
     path = manifest(tmp_path)

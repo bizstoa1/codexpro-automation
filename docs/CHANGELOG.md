@@ -1,5 +1,16 @@
 # 기술 변경 기록
 
+## 1.10.0 - 초절약모드
+
+- 로컬 지휘관과 모든 네이티브 서브에이전트를 `gpt-5.6-luna` / `max`로
+  제한하고, Pro 설계와 regular 웹 검토·구현·최종 검증을 분리하는 선택형
+  `ultra-economy` comprehensive 프로필을 추가했습니다.
+- 현재 작업 런타임 모델을 관찰할 수 없거나 Luna Max가 아니면 세션 생성 전에
+  중단합니다. 전역 `config.toml` 기본값은 현재 작업 모델의 증거로 인정하지 않고
+  자동 변경하지 않습니다.
+- Pro-first, 최소 4단계, task-bound rollout runtime evidence를 코드와 회귀 테스트로
+  fail-closed 고정했습니다.
+
 ## 1.9.1 - ChatGPT 앱 등록 후 연결 안정화
 
 - 수동 ChatGPT 앱 등록·재연결 직후 기존 DevSpace 설정, Owner 자격, OAuth DB,

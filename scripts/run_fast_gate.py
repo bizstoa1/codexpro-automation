@@ -31,6 +31,8 @@ FAST_TARGETS = [
     "tests/test_release_packaging.py",
     "tests/test_codex_web_gpt_onboarding.py",
     "tests/test_codex_global_agents_setup.py",
+    "tests/test_codex_runtime_identity.py",
+    "tests/test_ultra_economy_mode.py",
 ]
 
 DEFAULT_BUDGET_SECONDS = 60.0

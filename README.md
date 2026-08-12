@@ -66,6 +66,7 @@ Windows에서는 `%USERPROFILE%\.codex\state\chatgpt-oracle`, macOS에서는
 | Web Multi-GPT | Web Multi-GPT | 여러 관점의 독립 탐색·검증 | 독립 Oracle 세션 2~25개 + merger |
 | Local Multi-GPT | Local Multi-GPT | 로컬 병렬 자문·반례 탐색 | `gpt-5.6-luna` + `max` 고정, 읽기 전용 |
 | 종합모드 | comprehensive mode | 계획부터 구현·최종 게이트까지 자동 연결 | plan → optional Pro/Multi → review → implementation → gate |
+| 초절약모드 | `ultra-economy` | 로컬 비용을 극소화한 웹 중심 종합 실행 | Luna Max 지휘 → Pro 설계 → 분리된 웹 구현·검증 → 로컬 gate |
 | Pro | `pro` / Pro | 독립적인 최종 판단·설계 검토 후 결과만 반환 | Oracle + DevSpace 읽기 전용(기본), 명시적 `pro-attachment` |
 
 지휘는 웹 제출 한 번으로 끝나는 실행 모드입니다. 종합모드는 지휘와 같은
@@ -81,6 +82,13 @@ PC의 Codex 하위 레인을 사용하는 선택적 자문 도구이며, 모든 
 `gpt-5.6-luna`와 `max` 사고 레벨로 고정됩니다. 다른 모델이나 사고
 레벨을 요청하면 하위 프로세스를 시작하기 전에 거부합니다. Web Multi-GPT는
 Oracle이 여러 독립 ChatGPT 웹 세션을 실행한 뒤 결과를 병합합니다.
+
+초절약모드는 Local Multi-GPT와도 다른 실행 프로필입니다. 현재 작업의 로컬
+지휘관과 모든 네이티브 서브에이전트를 Luna Max로 제한하고, Pro 설계·별도 웹
+검토·웹 구현·웹 최종 검증을 서로 다른 세션으로 분리합니다. 현재 작업 모델을
+관찰할 수 없거나 Luna Max가 아니면 제출 전에 중단하며 전역 기본 모델을 자동으로
+바꾸지 않습니다. 자세한 계약은 [초절약모드 가이드](docs/ULTRA_ECONOMY_MODE.md)를
+참고하세요.
 
 ## 요구사항
 
@@ -261,6 +269,7 @@ python "$env:USERPROFILE\.codex\bin\chatgpt_oracle_run.py" recover `
 - [전역 ChatGPT 라우팅과 모드 선택](docs/GLOBAL_CHATGPT_ROUTING.md)
 - [Codex Web GPT Automation 최초 설치](docs/FIRST_INSTALL.md)
 - [DevSpace + Tailscale 최초 설정](docs/DEVSPACE_TAILSCALE_SETUP.md)
+- [초절약모드](docs/ULTRA_ECONOMY_MODE.md)
 - [macOS Ultrawork·75/80분 재개](docs/MACOS_ULTRAWORK.md)
 - [기술 변경 기록](docs/CHANGELOG.md)
 - [구형 실행 복구용 동결 자산](docs/FROZEN_LEGACY.md)
