@@ -105,6 +105,12 @@ class DoctorResult(TypedDict):
     plist: str
 
 
+class UninstallResult(TypedDict):
+    ok: bool
+    removed: list[str]
+    conflicts: list[str]
+
+
 def render_config(spec: TunnelSpec) -> str:
     credentials = json.dumps(str(spec.credentials_file), ensure_ascii=False)
     return (
@@ -154,7 +160,30 @@ def _write_atomic(path: Path, content: bytes, mode: int) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def _snapshot(path: Path) -> tuple[bytes, int] | None:
+    if not path.exists():
+        return None
+    return path.read_bytes(), path.stat().st_mode & 0o777
+
+
+def _restore(path: Path, snapshot: tuple[bytes, int] | None) -> None:
+    if snapshot is None:
+        path.unlink(missing_ok=True)
+    else:
+        _write_atomic(path, snapshot[0], snapshot[1])
+
+
+def _launchctl(*argv: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["launchctl", *argv], capture_output=True, text=True, check=False)
+
+
+def _domain() -> str:
+    return f"gui/{os.getuid()}"
+
+
 def install_service(*, paths: InstallPaths, spec: TunnelSpec, load: bool) -> InstallResult:
+    if load and sys.platform != "darwin":
+        raise TunnelConfigError(field="platform", reason="launchd requires macOS")
     codex_home = paths.codex_home.expanduser().resolve()
     launch_agents = paths.launch_agents.expanduser().resolve()
     project_root = paths.project_root.expanduser().resolve()
@@ -168,6 +197,8 @@ def install_service(*, paths: InstallPaths, spec: TunnelSpec, load: bool) -> Ins
     logs = codex_home / "logs" / "codexpro-automation"
     config = state / "config.yml"
     plist_path = launch_agents / f"{LABEL}.plist"
+    if config.exists() and not plist_path.exists():
+        raise TunnelConfigError(field="config", reason="existing config has no managed LaunchAgent owner")
     if plist_path.exists():
         try:
             prior = plistlib.loads(plist_path.read_bytes())
@@ -184,17 +215,32 @@ def install_service(*, paths: InstallPaths, spec: TunnelSpec, load: bool) -> Ins
         logs=logs,
     )
     plist = service_plist(runtime=runtime, tunnel_id=spec.tunnel_id)
-    _write_atomic(config, render_config(spec).encode("utf-8"), 0o600)
-    _write_atomic(plist_path, plistlib.dumps(plist, fmt=plistlib.FMT_XML, sort_keys=True), 0o644)
+    config_snapshot = _snapshot(config)
+    plist_snapshot = _snapshot(plist_path)
+    try:
+        _write_atomic(config, render_config(spec).encode("utf-8"), 0o600)
+        _write_atomic(plist_path, plistlib.dumps(plist, fmt=plistlib.FMT_XML, sort_keys=True), 0o644)
+    except OSError as exc:
+        _restore(config, config_snapshot)
+        _restore(plist_path, plist_snapshot)
+        raise TunnelConfigError(field="install", reason=f"artifact write failed: {exc}") from exc
 
     if load:
-        if sys.platform != "darwin":
-            raise TunnelConfigError(field="platform", reason="launchd requires macOS")
-        domain = f"gui/{os.getuid()}"
-        subprocess.run(["launchctl", "bootout", domain, str(plist_path)], capture_output=True, text=True, check=False)
-        result = subprocess.run(["launchctl", "bootstrap", domain, str(plist_path)], capture_output=True, text=True, check=False)
+        domain = _domain()
+        _launchctl("bootout", domain, str(plist_path))
+        result = _launchctl("bootstrap", domain, str(plist_path))
         if result.returncode != 0:
-            raise TunnelConfigError(field="launchctl", reason=result.stderr.strip() or "bootstrap failed")
+            _restore(config, config_snapshot)
+            _restore(plist_path, plist_snapshot)
+            rollback_error = ""
+            if plist_snapshot is not None:
+                rollback = _launchctl("bootstrap", domain, str(plist_path))
+                if rollback.returncode != 0:
+                    rollback_error = f"; rollback bootstrap failed: {rollback.stderr.strip() or rollback.stdout.strip()}"
+            raise TunnelConfigError(
+                field="launchctl",
+                reason=(result.stderr.strip() or result.stdout.strip() or "bootstrap failed") + rollback_error,
+            )
 
     return {
         "ok": True,
@@ -218,21 +264,44 @@ def doctor_service(*, codex_home: Path, launch_agents: Path) -> DoctorResult:
             managed = False
     loaded = False
     if sys.platform == "darwin":
-        current = subprocess.run(
-            ["launchctl", "print", f"gui/{os.getuid()}/{LABEL}"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        current = _launchctl("print", f"{_domain()}/{LABEL}")
         loaded = current.returncode == 0
     return {
-        "ok": installed and managed,
+        "ok": installed and managed and (sys.platform != "darwin" or loaded),
         "installed": installed,
         "managed": managed,
         "loaded": loaded,
         "config": str(config),
         "plist": str(plist_path),
     }
+
+
+def uninstall_service(*, codex_home: Path, launch_agents: Path, unload: bool) -> UninstallResult:
+    if unload and sys.platform != "darwin":
+        raise TunnelConfigError(field="platform", reason="launchd requires macOS")
+    config = codex_home.expanduser().resolve() / "state" / "codexpro-cloudflare" / "config.yml"
+    plist_path = launch_agents.expanduser().resolve() / f"{LABEL}.plist"
+    if not plist_path.exists():
+        return {"ok": not config.exists(), "removed": [], "conflicts": [str(config)] if config.exists() else []}
+    try:
+        value = plistlib.loads(plist_path.read_bytes())
+    except (OSError, plistlib.InvalidFileException):
+        return {"ok": False, "removed": [], "conflicts": [str(plist_path)]}
+    if value.get("CodexProManaged") is not True or value.get("Label") != LABEL:
+        return {"ok": False, "removed": [], "conflicts": [str(plist_path)]}
+    if unload:
+        domain = _domain()
+        current = _launchctl("print", f"{domain}/{LABEL}")
+        if current.returncode == 0:
+            stopped = _launchctl("bootout", domain, str(plist_path))
+            if stopped.returncode != 0:
+                return {"ok": False, "removed": [], "conflicts": [str(plist_path)]}
+    removed: list[str] = []
+    for path in (plist_path, config):
+        if path.exists():
+            path.unlink()
+            removed.append(str(path))
+    return {"ok": True, "removed": removed, "conflicts": []}
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -248,6 +317,7 @@ def build_parser() -> argparse.ArgumentParser:
     install.add_argument("--credentials-file", type=Path, required=True)
     install.add_argument("--load", action="store_true")
     commands.add_parser("doctor")
+    commands.add_parser("uninstall")
     return parser
 
 
@@ -267,8 +337,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 cloudflared=args.cloudflared,
             )
             result = install_service(paths=paths, spec=spec, load=args.load)
-        else:
+        elif args.command == "doctor":
             result = doctor_service(codex_home=args.codex_home, launch_agents=args.launch_agents)
+        else:
+            result = uninstall_service(
+                codex_home=args.codex_home,
+                launch_agents=args.launch_agents,
+                unload=True,
+            )
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0 if result["ok"] else 2
     except TunnelConfigError as exc:

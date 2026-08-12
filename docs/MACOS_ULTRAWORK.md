@@ -69,6 +69,13 @@ DevSpace의 `publicBaseUrl`은 `https://devspace.example.com`과 정확히 같�
 resource metadata, 인증 없는 `/mcp`의 401 challenge를 확인한다. ChatGPT
 Developer Mode 앱 등록과 Owner 승인은 사용자가 새 URL로 다시 수행한다.
 Cloudflare Access나 대화형 WAF challenge를 이 hostname 앞에 추가하지 않는다.
+제거할 때는 아래 명령을 사용한다. 관리 표식과 정확한 label이 모두 일치할 때만
+전용 plist와 생성된 config를 제거하며 Cloudflare credential JSON과 기존 터널은
+보존한다.
+
+```bash
+python3 "$HOME/.codex/bin/codexpro_cloudflared_launchd.py" uninstall
+```
 
 ## launchd
 

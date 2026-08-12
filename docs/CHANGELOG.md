@@ -1,5 +1,14 @@
 # 기술 변경 기록
 
+## 1.11.0 - 격리된 macOS Cloudflare DevSpace 터널
+
+- Tailscale Funnel이 OpenAI 연결 제한을 넘는 환경을 위해 별도 Named Tunnel과
+  전용 LaunchAgent를 추가했습니다. 기존 Cloudflare 터널과 `com.openclaw.*`
+  서비스를 재사용하거나 수정하지 않습니다.
+- 설치·재시작 실패 시 기존 관리 파일과 서비스를 복구하고, doctor는 macOS에서
+  실제 loaded 상태까지 검사하며, exact managed artifact만 제거하는 uninstall을
+  제공합니다.
+
 ## 1.10.0 - 초절약모드
 
 - 로컬 지휘관과 모든 네이티브 서브에이전트를 `gpt-5.6-luna` / `max`로
