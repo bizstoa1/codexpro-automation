@@ -7,4 +7,11 @@
 - Prefer `scout` for narrow repetitive read-only discovery, `implementer` only when the parent supplies an explicit non-overlapping file list, and `verifier` for independent read-only validation.
 - Never assign overlapping write ownership. The primary agent integrates results and remains responsible for final deterministic verification.
 - Keep `multi_agent_v2` disabled while it is unstable; the supported `[agents]` settings and standalone role files are sufficient.
+
+## Filesystem hygiene
+
+- Never create test output, temporary directories, logs, downloaded archives, or dependency checkouts directly under a drive root such as `C:\` or `D:\`.
+- Use the operating-system temp directory under a task-specific `Codex` child first. If Windows path length requires a shorter location, use the active repository's gitignored `.codex-tmp\<task>` directory, never `D:\pytest-*` or another drive-root scratch path.
+- Put reusable third-party source checkouts under `%LOCALAPPDATA%\Codex\Sources`. Keep explicit user project roots separate and never repurpose them as scratch space.
+- Before cleanup, verify ownership and active references. Preserve user projects, system folders, credentials, and ambiguous items; move confirmed automation artifacts to a recoverable archive instead of deleting them.
 <!-- END CODEX WEB GPT SUBAGENT POLICY -->

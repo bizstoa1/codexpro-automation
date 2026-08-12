@@ -65,6 +65,10 @@ def test_apply_preserves_existing_config_and_policy_and_is_idempotent(tmp_path: 
     assert "ANCHORMIND ACTIVE MEMORY POLICY" in global_policy
     assert global_policy.count(module.MANAGED_BEGIN) == 1
     assert "no more than two concurrent workers" in global_policy
+    assert "Never create test output" in global_policy
+    assert "directly under a drive root" in global_policy
+    assert ".codex-tmp\\<task>" in global_policy
+    assert "%LOCALAPPDATA%\\Codex\\Sources" in global_policy
     assert module.doctor(home, source_root=ROOT)["ok"] is True
 
     second = module.apply_setup(home, source_root=ROOT)

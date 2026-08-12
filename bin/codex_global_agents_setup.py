@@ -154,7 +154,9 @@ def merge_global_policy(text: str, policy: str) -> str:
         pattern = re.compile(
             rf"{re.escape(MANAGED_BEGIN)}.*?{re.escape(MANAGED_END)}\n?", re.DOTALL
         )
-        return pattern.sub(policy, normalized).rstrip() + "\n"
+        # Treat Windows paths and other backslashes in the managed policy as
+        # literal text instead of regular-expression replacement escapes.
+        return pattern.sub(lambda _match: policy, normalized).rstrip() + "\n"
     prefix = normalized.rstrip()
     return (prefix + "\n\n" if prefix else "") + policy
 

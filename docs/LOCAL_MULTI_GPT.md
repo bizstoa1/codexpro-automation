@@ -57,8 +57,9 @@ It is advisory only: it is not release approval or deterministic verification.
 To keep a separate pristine upstream checkout for audit or comparison:
 
 ```powershell
-git clone https://github.com/hehee9/multi-gpt.git D:\multi-gpt
-git -C D:\multi-gpt checkout 4f5e130fe12f9841eb956c69d8316871c4e955f7
+$source = Join-Path $env:LOCALAPPDATA 'Codex\Sources\multi-gpt'
+git clone https://github.com/hehee9/multi-gpt.git $source
+git -C $source checkout 4f5e130fe12f9841eb956c69d8316871c4e955f7
 ```
 
 The runtime installed by this repository includes compatibility hardening and

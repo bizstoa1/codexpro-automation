@@ -1,5 +1,15 @@
 # 기술 변경 기록
 
+## 1.11.1 - 드라이브 루트 위생 정책
+
+- 전역 AGENTS 정책에서 테스트·임시·로그·다운로드·dependency checkout을
+  `C:\` 또는 `D:\` 바로 아래에 만들지 못하게 했습니다.
+- 기본 임시 위치는 OS temp의 task별 Codex 하위 폴더이며, 짧은 경로가 꼭
+  필요하면 저장소의 gitignored `.codex-tmp`를 사용합니다. 외부 소스 checkout은
+  `%LOCALAPPDATA%\Codex\Sources`에 둡니다.
+- 기존 루트 정리는 소유권과 실행 참조를 먼저 확인하고, 확실한 자동화 산출물만
+  복구 가능한 archive로 이동하도록 명시했습니다.
+
 ## 1.11.0 - 격리된 macOS Cloudflare DevSpace 터널
 
 - Tailscale Funnel이 OpenAI 연결 제한을 넘는 환경을 위해 별도 Named Tunnel과
