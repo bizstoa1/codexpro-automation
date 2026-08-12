@@ -1,5 +1,12 @@
 # 기술 변경 기록
 
+## 1.11.2 - stale Funnel 등록 후 복구
+
+- `post-register`가 로컬 status상 동일한 매핑이라도 외부 relay에서 닫힌
+  exclusive HTTPS 슬롯을 scoped `off` 후 동일 target으로 다시 수립합니다.
+- 전체 `tailscale funnel reset`은 사용하지 않으며, 같은 포트에 다른 path
+  handler가 있으면 이를 보존하고 비파괴 확인만 수행합니다.
+
 ## 1.11.1 - 드라이브 루트 위생 정책
 
 - 전역 AGENTS 정책에서 테스트·임시·로그·다운로드·dependency checkout을

@@ -338,9 +338,14 @@ def test_post_register_always_recycles_service_and_preserves_oauth_state(
     def runner(argv, **kwargs):
         calls.append(list(argv))
         if argv == ["tailscale", "funnel", "status", "--json"]:
+            funnel_status_reads = sum(
+                call == ["tailscale", "funnel", "status", "--json"] for call in calls
+            )
+            if funnel_status_reads == 2:
+                return SimpleNamespace(returncode=0, stdout=json.dumps({"Web": {}}), stderr="")
             return SimpleNamespace(
                 returncode=0,
-                stdout=json.dumps({"Web": {current.hostname + ":443": {"Proxy": f"http://127.0.0.1:{current.local_port}"}}}),
+                stdout=json.dumps({"Web": {current.hostname + ":443": {"Handlers": {"/": {"Proxy": f"http://127.0.0.1:{current.local_port}"}}}}}),
                 stderr="",
             )
         return SimpleNamespace(returncode=0, stdout="", stderr="")
@@ -356,13 +361,59 @@ def test_post_register_always_recycles_service_and_preserves_oauth_state(
     assert report["ok"] is True
     assert report["service_restarted"] is True
     assert report["credentials_preserved"] is True
+    assert report["exact_funnel_recycled"] is True
+    assert report["funnel_recycle_scope"] == "https:443"
     assert report["next_action"] == "VERIFY_REGISTERED_CHATGPT_APP_WITH_ORACLE"
     assert "different connector" in report["verification_boundary"]
     assert calls[0] == module.devspace_compat_argv()
     assert calls[1] == module.devspace_compat_argv(stop_exact_service=True)
     assert calls[2] == module.devspace_compat_argv(confirm_restarted=True)
+    assert ["tailscale", "funnel", "--bg", "--https=443", "off"] in calls
+    assert [
+        "tailscale", "funnel", "--bg", "--https=443", f"http://127.0.0.1:{current.local_port}"
+    ] in calls
     assert launches[0][1]["DEVSPACE_TOOL_MODE"] == "full"
     assert launches[0][1]["DEVSPACE_OAUTH_SCOPES"] == "devspace,offline_access"
+
+
+def test_post_register_preserves_shared_funnel_port(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module, current = config(tmp_path)
+    bash = tmp_path / "bash.exe"
+    bash.write_text("", encoding="utf-8")
+    monkeypatch.setenv("DEVSPACE_GIT_BASH", str(bash))
+    calls: list[list[str]] = []
+
+    class Response:
+        status = 401
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+
+    def runner(argv, **kwargs):
+        calls.append(list(argv))
+        if argv == ["tailscale", "funnel", "status", "--json"]:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps({"Web": {current.hostname + ":443": {"Handlers": {
+                    "/": {"Proxy": f"http://127.0.0.1:{current.local_port}"},
+                    "/other": {"Proxy": "http://127.0.0.1:9000"},
+                }}}}),
+                stderr="",
+            )
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    report = module.refresh_after_app_registration(
+        current,
+        opener=lambda *args, **kwargs: Response(),
+        runner=runner,
+        popen_factory=lambda *args, **kwargs: SimpleNamespace(),
+        sleeper=lambda _: None,
+    )
+
+    assert report["ok"] is True
+    assert report["exact_funnel_recycled"] is False
+    assert not any(call[-1:] == ["off"] for call in calls)
 
 
 def test_parser_exposes_explicit_post_register_command() -> None:

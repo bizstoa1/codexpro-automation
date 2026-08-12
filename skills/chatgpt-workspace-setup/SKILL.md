@@ -75,6 +75,10 @@ Owner credential, OAuth database, roots, and Funnel hostname:
 python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py post-register --root C:\projects\example --hostname your-device.your-tailnet.ts.net
 ```
 
+`post-register` also recycles only the exclusive managed HTTPS port before
+reasserting the same Funnel target. It never uses the global `funnel reset`
+operation and preserves a port that has additional path handlers.
+
 Then verify the manually registered app with a fresh **regular, non-Pro**
 Oracle `@codex` read-only probe that opens the exact project root and reads a
 small directory listing. Codex Desktop's built-in `DevSpace` plugin is a

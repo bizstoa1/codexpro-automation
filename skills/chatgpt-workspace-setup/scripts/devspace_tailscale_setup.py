@@ -315,7 +315,7 @@ def refresh_after_app_registration(
         devspace_compat_argv(confirm_restarted=True, local_port=config.local_port),
         runner=runner,
     )
-    result = ensure_public_route(config, opener=opener, runner=runner, sleeper=sleeper)
+    result = refresh_exact_public_route(config, opener=opener, runner=runner, sleeper=sleeper)
     return {
         **result,
         "service_restarted": True,
@@ -326,6 +326,55 @@ def refresh_after_app_registration(
             "DevSpace plugin tools are a different connector and are not proof of "
             "the manually registered ChatGPT app."
         ),
+    }
+
+
+def _exclusive_exact_funnel_entry(config: SetupConfig, entry: Any) -> bool:
+    """Return true only for one root handler owned by this managed route."""
+    if not isinstance(entry, dict):
+        return False
+    handlers = entry.get("Handlers")
+    if not isinstance(handlers, dict) or set(handlers) != {"/"}:
+        return False
+    root = handlers.get("/")
+    if not isinstance(root, dict):
+        return False
+    proxy = str(root.get("Proxy") or "").rstrip("/").casefold()
+    expected = f"http://127.0.0.1:{config.local_port}".casefold()
+    return proxy == expected
+
+
+def refresh_exact_public_route(
+    config: SetupConfig,
+    *,
+    opener: Callable[..., Any] = urllib.request.urlopen,
+    runner: Callable[..., Any] = subprocess.run,
+    sleeper: Callable[[float], None] = time.sleep,
+) -> dict[str, Any]:
+    """Recycle only the exact managed HTTPS slot before reasserting it.
+
+    A matching local Funnel status can survive while its public relay path is
+    stale.  Never use the global ``funnel reset`` command here: it would erase
+    unrelated ports.  If port 443 has any additional path handlers, preserve
+    it and fall back to the non-destructive idempotent check.
+    """
+    wait_for_local_service(config, opener=opener, sleeper=sleeper)
+    current = funnel_status(config, runner=runner, allow_absent=True)
+    if current.get("mapping") == "conflict":
+        raise SetupError("TAILSCALE_FUNNEL_PORT_IN_USE")
+    recycled = current.get("mapping") == "match" and _exclusive_exact_funnel_entry(
+        config, current.get("status")
+    )
+    if recycled:
+        run_checked(
+            ["tailscale", "funnel", "--bg", f"--https={config.public_port}", "off"],
+            runner=runner,
+        )
+    result = ensure_public_route(config, opener=opener, runner=runner, sleeper=sleeper)
+    return {
+        **result,
+        "exact_funnel_recycled": recycled,
+        "funnel_recycle_scope": f"https:{config.public_port}" if recycled else None,
     }
 
 
