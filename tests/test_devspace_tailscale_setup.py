@@ -146,7 +146,9 @@ def test_doctor_orders_local_funnel_public_and_manual_failure_branch(tmp_path: P
 
     report = module.doctor(current, opener=opener, runner=runner, chatgpt_call_failed=True)
     assert seen == [current.local_mcp_url, current.registration_url]
-    assert report["next_action"] == "MANUAL_CHATGPT_REGISTRATION_CHECK"
+    assert report["next_action"] == "POST_REGISTER_REFRESH_OR_EXTERNAL_APP_CHECK"
+    assert "run post-register once" in report["message"]
+    assert "do not automate or repeat app registration" in report["message"]
     assert report["registration_url"] == current.registration_url
 
 
@@ -313,6 +315,66 @@ def test_recover_starts_missing_service_then_restores_exact_funnel(
     assert len(launches) == 1
     assert any("--stop-exact-service" in call for call in calls)
     assert any("--confirm-service-restarted" in call for call in calls)
+
+
+def test_post_register_always_recycles_service_and_preserves_oauth_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module, current = config(tmp_path)
+    bash = tmp_path / "bash.exe"
+    bash.write_text("", encoding="utf-8")
+    monkeypatch.setenv("DEVSPACE_GIT_BASH", str(bash))
+    calls: list[list[str]] = []
+    launches: list[tuple[list[str], dict[str, str] | None]] = []
+
+    class Response:
+        status = 401
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+
+    def runner(argv, **kwargs):
+        calls.append(list(argv))
+        if argv == ["tailscale", "funnel", "status", "--json"]:
+            return SimpleNamespace(
+                returncode=0,
+                stdout=json.dumps({"Web": {current.hostname + ":443": {"Proxy": f"http://127.0.0.1:{current.local_port}"}}}),
+                stderr="",
+            )
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    report = module.refresh_after_app_registration(
+        current,
+        opener=lambda *args, **kwargs: Response(),
+        runner=runner,
+        popen_factory=lambda argv, **kwargs: launches.append((list(argv), kwargs.get("env"))),
+        sleeper=lambda _: None,
+    )
+
+    assert report["ok"] is True
+    assert report["service_restarted"] is True
+    assert report["credentials_preserved"] is True
+    assert report["next_action"] == "VERIFY_REGISTERED_CHATGPT_APP_WITH_ORACLE"
+    assert "different connector" in report["verification_boundary"]
+    assert calls[0] == module.devspace_compat_argv()
+    assert calls[1] == module.devspace_compat_argv(stop_exact_service=True)
+    assert calls[2] == module.devspace_compat_argv(confirm_restarted=True)
+    assert launches[0][1]["DEVSPACE_TOOL_MODE"] == "full"
+    assert launches[0][1]["DEVSPACE_OAUTH_SCOPES"] == "devspace,offline_access"
+
+
+def test_parser_exposes_explicit_post_register_command() -> None:
+    module = load_module()
+    parsed = module.parser().parse_args([
+        "post-register",
+        "--root",
+        str(Path.cwd()),
+        "--hostname",
+        "device.tailnet.ts.net",
+    ])
+    assert parsed.command == "post-register"
 
 
 def test_setup_applies_hash_validated_devspace_compat_before_service_start(

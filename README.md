@@ -173,6 +173,11 @@ Owner 승인을 완료한 뒤에는 매 작업마다 앱 목록·권한·URL을 
 앱을 재등록하지 않습니다. 새 프로젝트는 DevSpace 허용 루트에만 추가합니다.
 ChatGPT 설정·앱 목록·권한·삭제·선택 UI를 자동화하지 않습니다.
 
+최초 등록 또는 요청한 재연결 직후에는 가이드의 `post-register` 명령으로 관리
+DevSpace를 한 번만 재순환한 뒤, 일반(non-Pro) Oracle `@codex` 읽기 검사로 실제
+등록 앱을 확인합니다. Codex Desktop의 `DevSpace` 플러그인은 별도 연결이므로 앱
+등록 검증에 쓰지 않으며, Pro 세션을 최초 연결 검사로 소비하지 않습니다.
+
 macOS는 hostname을 생략하면 로그인된 Tailscale의 MagicDNS 이름을 자동
 탐지합니다. 먼저 미리보기하고, 정확한 프로젝트 루트만 허용합니다.
 

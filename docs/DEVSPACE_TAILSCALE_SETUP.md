@@ -60,6 +60,20 @@ do not yet have this explicit config.
 
 Approve the initial Owner-password page when DevSpace asks. This tooling never opens settings, creates/deletes apps, picks permissions, inspects app lists, or selects an app in the composer.
 
+After a manual first registration or requested reconnect, recycle the managed
+DevSpace process once without changing its roots, Owner credential, OAuth
+database, or Funnel hostname:
+
+```powershell
+python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py post-register --root C:\projects\one --hostname your-device.your-tailnet.ts.net
+```
+
+Verify the registered app with a fresh regular, non-Pro Oracle `@codex`
+read-only probe that opens the exact project root and reads a small directory
+listing. Do not substitute Codex Desktop's built-in `DevSpace` plugin tools:
+they are a separate connector and do not validate the manually registered
+ChatGPT app. Never spend a Pro submission as the first connectivity probe.
+
 Before the first DevSpace-backed Oracle question in a new project, the runner
 checks that the normalized exact folder is present in local `allowedRoots`.
 Parent, child, and similarly named folders do not qualify. Success is cached
@@ -74,7 +88,12 @@ lightweight revalidation. A missing exact root returns
 python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py doctor --root C:\projects\one --hostname your-device.your-tailnet.ts.net
 ```
 
-Diagnosis checks local DevSpace `/mcp`, then `tailscale funnel status --json`, then the public `/mcp` endpoint. If the endpoint is healthy but a ChatGPT tool call fails, keep the server running and re-check the same manual connector URL; do not automate deletion or re-registration.
+Diagnosis checks local DevSpace `/mcp`, then `tailscale funnel status --json`,
+then the public `/mcp` endpoint. If the endpoint is healthy but a ChatGPT tool
+call fails just after manual registration or reconnect, run the explicit
+`post-register` refresh once and repeat only the regular read-only Oracle
+probe. If it still fails, keep the server running and report the same connector
+URL; do not automate deletion, re-registration, or repeated refreshes.
 
 ## Idempotent service/Funnel recovery
 

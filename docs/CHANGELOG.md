@@ -1,5 +1,16 @@
 # 기술 변경 기록
 
+## 1.9.1 - ChatGPT 앱 등록 후 연결 안정화
+
+- 수동 ChatGPT 앱 등록·재연결 직후 기존 DevSpace 설정, Owner 자격, OAuth DB,
+  허용 루트와 Funnel 주소를 보존하면서 관리 서비스를 한 번 재순환하는 명시적
+  `post-register` 단계를 추가했습니다.
+- 실제 등록 앱 검증은 일반(non-Pro) Oracle `@codex` 읽기 검사로 분리했습니다.
+  Codex Desktop의 동명 DevSpace 플러그인은 다른 연결이므로 등록 검증에 사용하지
+  않고, Pro 세션을 최초 연결 검사로 소비하지 않습니다.
+- public endpoint가 정상인 상태의 앱 호출 실패가 무조건 재등록을 요구하지 않고,
+  한 번의 post-register 복구 후 외부 앱 경계를 보고하도록 진단 안내를 수정했습니다.
+
 ## 1.9.0 - 선택형 Local Multi-GPT
 
 - 첫 대화형 설치에서 `Local Multi-GPT도 설치할까요? [y/N]`를 묻고 기본값은

@@ -285,6 +285,50 @@ def recover_service(
     return {**result, "service_started": service_started}
 
 
+def refresh_after_app_registration(
+    config: SetupConfig,
+    *,
+    opener: Callable[..., Any] = urllib.request.urlopen,
+    runner: Callable[..., Any] = subprocess.run,
+    popen_factory: Callable[..., Any] = subprocess.Popen,
+    sleeper: Callable[[float], None] = time.sleep,
+) -> dict[str, Any]:
+    """Recycle the managed server after manual ChatGPT OAuth registration.
+
+    DevSpace 1.0.4 can leave a newly approved ChatGPT connector unable to
+    create its first tool session until the server is recycled.  This command
+    is deliberately explicit: it never opens ChatGPT settings and it preserves
+    the existing config, Owner credential, OAuth database, roots, and Funnel
+    hostname.
+    """
+    run_checked(devspace_compat_argv(), runner=runner)
+    run_checked(
+        devspace_compat_argv(stop_exact_service=True, local_port=config.local_port),
+        runner=runner,
+    )
+    launch_hidden(
+        bash_argv(["npx", "--yes", DEVSPACE_PACKAGE, "serve"]),
+        popen_factory=popen_factory,
+        environment=devspace_service_environment(),
+    )
+    run_checked(
+        devspace_compat_argv(confirm_restarted=True, local_port=config.local_port),
+        runner=runner,
+    )
+    result = ensure_public_route(config, opener=opener, runner=runner, sleeper=sleeper)
+    return {
+        **result,
+        "service_restarted": True,
+        "credentials_preserved": True,
+        "next_action": "VERIFY_REGISTERED_CHATGPT_APP_WITH_ORACLE",
+        "verification_boundary": (
+            "Use a fresh regular Oracle @codex read-only probe; Codex Desktop's "
+            "DevSpace plugin tools are a different connector and are not proof of "
+            "the manually registered ChatGPT app."
+        ),
+    }
+
+
 def wait_for_local_service(
     config: SetupConfig,
     *,
@@ -544,8 +588,13 @@ def doctor(config: SetupConfig, *, opener: Callable[..., Any] = urllib.request.u
         "tool_mode": tool_mode,
     }
     if public.get("ok") and chatgpt_call_failed:
-        report["next_action"] = "MANUAL_CHATGPT_REGISTRATION_CHECK"
-        report["message"] = "Public endpoint is healthy. Re-enter this URL manually in ChatGPT Developer Mode; do not automate re-registration."
+        report["next_action"] = "POST_REGISTER_REFRESH_OR_EXTERNAL_APP_CHECK"
+        report["message"] = (
+            "Public endpoint is healthy. If manual registration or reconnect just completed, "
+            "run post-register once and verify the registered app with a fresh regular Oracle "
+            "@codex read-only probe. Do not use Codex Desktop DevSpace plugin tools as proof, "
+            "and do not automate or repeat app registration."
+        )
     elif not public.get("ok"):
         report["next_action"] = "CHECK_PUBLIC_FUNNEL_ENDPOINT"
     else:
@@ -556,7 +605,7 @@ def doctor(config: SetupConfig, *, opener: Callable[..., Any] = urllib.request.u
 def parser() -> argparse.ArgumentParser:
     value = argparse.ArgumentParser(description=__doc__)
     sub = value.add_subparsers(dest="command", required=True)
-    for name in ("setup", "doctor", "ensure", "recover"):
+    for name in ("setup", "doctor", "ensure", "recover", "post-register"):
         command = sub.add_parser(name)
         command.add_argument("--root", action="append", default=[], help="Narrow allowed DevSpace root; repeat as needed")
         command.add_argument("--hostname", help="Tailscale MagicDNS hostname; auto-detected when omitted")
@@ -594,6 +643,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if args.command == "recover":
             print(json.dumps(recover_service(config), ensure_ascii=False, indent=2))
+            return 0
+        if args.command == "post-register":
+            print(json.dumps(refresh_after_app_registration(config), ensure_ascii=False, indent=2))
             return 0
         print(json.dumps(doctor(
             config,

@@ -1,6 +1,6 @@
 {
   "name": "codex-web-gpt-automation",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "private": false,
   "description": "Windows and macOS orchestrator for Oracle, DevSpace, OMO ultrawork, and exact 75/80-minute recovery",
   "license": "MIT",

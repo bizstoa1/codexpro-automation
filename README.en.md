@@ -168,6 +168,12 @@ After owner approval, the automation does not inspect or manipulate ChatGPT
 settings, app lists, permissions, deletion, or picker UI per task. Adding a new
 project only changes the DevSpace allowed roots.
 
+Immediately after first registration or a requested reconnect, run the guide's
+`post-register` command once, then validate the actual registered app with a
+regular, non-Pro Oracle `@codex` read-only probe. Codex Desktop's built-in
+`DevSpace` plugin is a separate connector and is not registration evidence; do
+not spend a Pro session as the first connectivity test.
+
 On macOS, omit `--hostname` to discover the signed-in Tailscale MagicDNS name.
 Preview the exact, single approved root before applying it:
 

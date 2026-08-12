@@ -67,6 +67,20 @@ The only app information to enter manually in ChatGPT Developer Mode is:
 
 Never open ChatGPT settings, register/delete an app, change permissions, inspect app lists, select an app name, or press Tab in the ChatGPT UI.
 
+Immediately after a manual first registration or requested reconnect, recycle
+the managed DevSpace process exactly once while preserving its configuration,
+Owner credential, OAuth database, roots, and Funnel hostname:
+
+```powershell
+python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py post-register --root C:\projects\example --hostname your-device.your-tailnet.ts.net
+```
+
+Then verify the manually registered app with a fresh **regular, non-Pro**
+Oracle `@codex` read-only probe that opens the exact project root and reads a
+small directory listing. Codex Desktop's built-in `DevSpace` plugin is a
+different connector; its tools cannot prove that the manually registered
+ChatGPT app works. A Pro submission must never be the first connectivity test.
+
 Before the first DevSpace-backed Oracle question for a new project, the Oracle
 runner checks that the normalized exact project root is present in the local
 `allowedRoots`. Parent, child, and similarly named roots do not qualify. A
@@ -82,7 +96,11 @@ This is read-only and checks only local DevSpace, then Funnel status, then the p
 python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py doctor --root C:\projects\one --hostname your-device.your-tailnet.ts.net
 ```
 
-If the public endpoint is healthy but a ChatGPT call still fails, report the same registration URL and stop. Do not re-register the app automatically.
+If the public endpoint is healthy but a ChatGPT call still fails immediately
+after a manual registration or reconnect, run `post-register` once and repeat
+only the regular read-only Oracle probe. If that still fails, report the same
+registration URL and stop. Do not re-register the app automatically or loop
+the refresh.
 
 For an explicitly requested service/Funnel repair, use the idempotent `ensure`
 command after DevSpace starts:
