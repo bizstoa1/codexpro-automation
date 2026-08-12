@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import uuid
@@ -112,10 +113,13 @@ def safe_child(root: Path, relative: str) -> Path:
     return candidate
 
 
-def manifest_files(repo_root: Path) -> list[str]:
+def manifest_files(repo_root: Path, *, include_local_multi_gpt: bool = False) -> list[str]:
     manifest = json.loads((repo_root / "install-manifest.json").read_text(encoding="utf-8"))
     result: set[str] = set()
-    for pattern in manifest.get("include", []):
+    patterns = list(manifest.get("include", []))
+    if include_local_multi_gpt:
+        patterns.extend(manifest.get("optional_components", {}).get("local_multi_gpt", {}).get("include", []))
+    for pattern in patterns:
         path = Path(str(pattern))
         if path.is_absolute() or any(part in {".", ".."} for part in path.parts):
             raise LifecycleError(f"unsafe manifest pattern: {pattern}")
@@ -187,10 +191,10 @@ def recover_pending_installs(codex_home: Path) -> list[str]:
     return recovered
 
 
-def install(repo_root: Path, codex_home: Path, *, dry_run: bool = False) -> dict[str, Any]:
+def install(repo_root: Path, codex_home: Path, *, dry_run: bool = False, local_multi_gpt: bool = False) -> dict[str, Any]:
     repo_root = repo_root.resolve()
     codex_home = codex_home.expanduser().resolve()
-    files = manifest_files(repo_root)
+    files = manifest_files(repo_root, include_local_multi_gpt=local_multi_gpt)
     if dry_run:
         return {"ok": True, "action": "install-plan", "codex_home": str(codex_home), "files": files}
     codex_home.mkdir(parents=True, exist_ok=True)
@@ -268,17 +272,51 @@ def install(repo_root: Path, codex_home: Path, *, dry_run: bool = False) -> dict
     wal["status"] = "COMPLETE"
     wal["completed_at"] = utc_now()
     _write_json_atomic(wal_path, wal)
-    receipt = {
-        "schema": RECEIPT_SCHEMA,
-        "installed_at": utc_now(),
-        "manifest_version": json.loads((repo_root / "install-manifest.json").read_text(encoding="utf-8"))["version"],
-        "backup": str(backup_root),
-        "files": records,
-        "dependency": {"mode": "skipped", "reason": "legacy-recovery-dependencies-frozen"},
-        "wal": str(wal_path),
-        "installer": "python-portable",
-    }
-    _write_json_atomic(receipt_path, receipt)
+    registration_receipt: Path | None = None
+    try:
+        local_multi_result: dict[str, Any] = {"enabled": local_multi_gpt, "mode": "skipped", "reason": "not-selected"}
+        if local_multi_gpt:
+            completed = subprocess.run(
+                [sys.executable, str(repo_root / "bin" / "codex_local_multi_gpt_setup.py"), "enable", "--codex-home", str(codex_home)],
+                text=True, encoding="utf-8", errors="replace", capture_output=True, check=False, timeout=60,
+            )
+            if completed.returncode != 0:
+                raise LifecycleError("Local Multi-GPT MCP registration failed: " + (completed.stderr.strip() or completed.stdout.strip()))
+            try:
+                setup = json.loads(completed.stdout)
+            except json.JSONDecodeError as exc:
+                raise LifecycleError("Local Multi-GPT MCP setup produced invalid output") from exc
+            registration_receipt = Path(setup["receipt"]) if setup.get("receipt") else None
+            local_multi_result = {
+                "enabled": True,
+                "mode": "registered" if setup.get("changed") else "preserved",
+                "reason": None,
+                "receipt": setup.get("receipt"),
+                "cli": setup.get("cli"),
+                "cli_version": setup.get("cli_version"),
+            }
+        receipt = {
+            "schema": RECEIPT_SCHEMA,
+            "installed_at": utc_now(),
+            "manifest_version": json.loads((repo_root / "install-manifest.json").read_text(encoding="utf-8"))["version"],
+            "backup": str(backup_root),
+            "files": records,
+            "dependency": {"mode": "skipped", "reason": "legacy-recovery-dependencies-frozen"},
+            "optional_components": {"local_multi_gpt": local_multi_result},
+            "wal": str(wal_path),
+            "installer": "python-portable",
+        }
+        _write_json_atomic(receipt_path, receipt)
+    except Exception:
+        if registration_receipt:
+            subprocess.run(
+                [sys.executable, str(repo_root / "bin" / "codex_local_multi_gpt_setup.py"), "rollback", "--codex-home", str(codex_home), "--receipt", str(registration_receipt)],
+                text=True, encoding="utf-8", errors="replace", capture_output=True, check=False, timeout=60,
+            )
+        _rollback_records(codex_home, backup_root, records)
+        wal["status"] = "ROLLED_BACK_AFTER_FAILURE"
+        _write_json_atomic(wal_path, wal)
+        raise
     return {"ok": True, "action": "installed", "count": len(records), "receipt": str(receipt_path), "recovered": recovered}
 
 
@@ -320,7 +358,24 @@ def rollback(codex_home: Path, receipt_path: Path | None = None) -> dict[str, An
     backup_root = Path(str(receipt.get("backup") or "")).expanduser().resolve()
     if not _is_within((codex_home / "backups").resolve(), backup_root):
         raise LifecycleError("receipt backup must be owned by this CODEX_HOME")
+    local_receipt_text = receipt.get("optional_components", {}).get("local_multi_gpt", {}).get("receipt")
+    local_receipt = Path(str(local_receipt_text)).expanduser().resolve() if local_receipt_text else None
+    helper = Path(__file__).with_name("codex_local_multi_gpt_setup.py")
+    if local_receipt:
+        preflight = subprocess.run(
+            [sys.executable, str(helper), "rollback", "--dry-run", "--codex-home", str(codex_home), "--receipt", str(local_receipt)],
+            text=True, encoding="utf-8", errors="replace", capture_output=True, check=False, timeout=60,
+        )
+        if preflight.returncode != 0:
+            return {"ok": False, "status": "CONFLICT", "receipt": str(receipt_path), "conflicts": [{"path": "config.toml", "action": "local_multi_gpt_registration_preflight_incomplete", "detail": preflight.stderr.strip()}]}
     conflicts = _rollback_records(codex_home, backup_root, receipt.get("files") or [])
+    if not conflicts and local_receipt:
+        completed = subprocess.run(
+            [sys.executable, str(helper), "rollback", "--codex-home", str(codex_home), "--receipt", str(local_receipt)],
+            text=True, encoding="utf-8", errors="replace", capture_output=True, check=False, timeout=60,
+        )
+        if completed.returncode != 0:
+            conflicts.append({"path": "config.toml", "action": "local_multi_gpt_registration_rollback_incomplete", "detail": completed.stderr.strip()})
     status = "CONFLICT" if conflicts else "COMPLETE"
     return {"ok": not conflicts, "status": status, "receipt": str(receipt_path), "conflicts": conflicts}
 
@@ -330,9 +385,11 @@ def doctor(codex_home: Path) -> dict[str, Any]:
     issues: list[dict[str, Any]] = []
     warnings: list[dict[str, Any]] = []
     receipt_path: Path | None = None
+    local_multi_gpt: dict[str, Any] = {"enabled": False, "doctor": None}
     try:
         receipt_path = latest_receipt(codex_home)
         receipt = _read_json(receipt_path)
+        local_multi_gpt["enabled"] = bool(receipt.get("optional_components", {}).get("local_multi_gpt", {}).get("enabled"))
         for record in receipt.get("files") or []:
             path = safe_child(codex_home, str(record.get("path") or ""))
             if not path.is_file():
@@ -341,6 +398,18 @@ def doctor(codex_home: Path) -> dict[str, Any]:
                 issues.append({"code": "HASH_MISMATCH", "path": str(record.get("path"))})
     except LifecycleError as exc:
         issues.append({"code": "RECEIPT_INVALID", "detail": str(exc)})
+    if local_multi_gpt["enabled"]:
+        helper = codex_home / "bin" / "codex_local_multi_gpt_setup.py"
+        completed = subprocess.run(
+            [sys.executable, str(helper), "doctor", "--codex-home", str(codex_home)],
+            text=True, encoding="utf-8", errors="replace", capture_output=True, check=False, timeout=60,
+        ) if helper.is_file() else None
+        try:
+            local_multi_gpt["doctor"] = json.loads(completed.stdout) if completed else None
+        except json.JSONDecodeError:
+            local_multi_gpt["doctor"] = None
+        if completed is None or completed.returncode != 0 or not local_multi_gpt["doctor"] or not local_multi_gpt["doctor"].get("ok"):
+            issues.append({"code": "LOCAL_MULTI_GPT_MCP_INVALID", "detail": completed.stderr.strip() if completed else "helper missing"})
     required = {"python3": shutil.which("python3"), "node": shutil.which("node"), "npx": shutil.which("npx")}
     for name, path in required.items():
         if path is None:
@@ -364,6 +433,7 @@ def doctor(codex_home: Path) -> dict[str, Any]:
         "issues": issues,
         "warnings": warnings,
         "tools": required,
+        "local_multi_gpt": local_multi_gpt,
     }
 
 
@@ -377,6 +447,9 @@ def build_parser() -> argparse.ArgumentParser:
         value = commands.add_parser(name)
         common(value)
         value.add_argument("--dry-run", action="store_true")
+        choice = value.add_mutually_exclusive_group()
+        choice.add_argument("--enable-local-multi-gpt", action="store_true")
+        choice.add_argument("--disable-local-multi-gpt", action="store_true")
     value = commands.add_parser("doctor")
     common(value)
     for name in ("rollback", "uninstall"):
@@ -390,7 +463,20 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         if args.command in {"install", "update"}:
-            result = install(args.repo_root, args.codex_home, dry_run=args.dry_run)
+            requested = True if args.enable_local_multi_gpt else False if args.disable_local_multi_gpt else None
+            if requested is None:
+                try:
+                    prior = _read_json(latest_receipt(args.codex_home)).get("optional_components", {}).get("local_multi_gpt", {}).get("enabled")
+                except LifecycleError:
+                    prior = None
+                if prior is not None:
+                    requested = bool(prior)
+                elif not args.dry_run and sys.stdin.isatty():
+                    prompt = json.loads((args.repo_root / "install-manifest.json").read_text(encoding="utf-8"))["optional_components"]["local_multi_gpt"]["prompt"]
+                    requested = input(prompt + " ").strip().lower() in {"y", "yes", "예", "네"}
+                else:
+                    requested = False
+            result = install(args.repo_root, args.codex_home, dry_run=args.dry_run, local_multi_gpt=requested)
         elif args.command == "doctor":
             result = doctor(args.codex_home)
         else:

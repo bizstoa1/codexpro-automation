@@ -107,6 +107,12 @@ cd codex-web-gpt-automation
 설치기는 기존 파일을 백업하고
 `%USERPROFILE%\.codex\receipts`에 설치 영수증을 남깁니다.
 
+첫 대화형 설치에서는 `Local Multi-GPT도 설치할까요? [y/N]`를 묻고 기본값은
+아니오입니다. 필요한 경우에만 `.\install.ps1 -EnableLocalMultiGpt`로 명시적으로
+선택합니다. 이때 스킬, 로컬 MCP 서버, `multi_gpt` MCP 등록이 함께 설치됩니다.
+설치 후 Codex를 재시작하세요. 자세한 내용은
+[선택형 Local Multi-GPT](docs/LOCAL_MULTI_GPT.md)를 참고하세요.
+
 macOS에서는 공통 Python lifecycle을 사용합니다.
 
 ```bash

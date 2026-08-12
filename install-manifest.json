@@ -1,6 +1,6 @@
 {
   "schema": "codexpro.install-manifest/v1",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "include": [
     "bin/chatgpt_agbrowse_bridge.py",
     "bin/chatgpt_agbrowse_composer.py",
@@ -48,6 +48,7 @@
     "bin/chatgpt_workspace_config.py",
     "bin/codex_web_gpt_onboarding.py",
     "bin/codex_global_agents_setup.py",
+    "bin/codex_local_multi_gpt_setup.py",
     "bin/chatgpt_web_multi_runtime.py",
     "bin/chatgpt_web_multi_upstream.py",
     "bin/codexpro_agbrowse_app.py",
@@ -63,8 +64,6 @@
     "bin/codexpro_project_cloudflare_bootstrap.ps1",
     "bin/codexpro_windows_process_identity.py",
     "bin/mcp_resource_guard.py",
-    "mcp_servers/multi-gpt/server.mjs",
-    "skills/multi-gpt/SKILL.md",
     "skills/chatgpt-thinking-browser/SKILL.md",
     "skills/chatgpt-thinking-browser/agents/openai.yaml",
     "skills/chatgpt-thinking-browser/scripts/run_chatgpt_thinking.py",
@@ -119,6 +118,19 @@
     "skills/mcp-update-guard/SKILL.md",
     "skills/mcp-update-guard/agents/openai.yaml"
   ],
+  "optional_components": {
+    "local_multi_gpt": {
+      "default_install": false,
+      "prompt": "Local Multi-GPT도 설치할까요? [y/N]",
+      "include": [
+        "mcp_servers/multi-gpt/server.mjs",
+        "skills/multi-gpt/SKILL.md"
+      ],
+      "mcp_server_name": "multi_gpt",
+      "upstream": "https://github.com/hehee9/multi-gpt",
+      "upstream_ref": "4f5e130fe12f9841eb956c69d8316871c4e955f7"
+    }
+  },
   "routing": {
     "new_work_engine": "oracle",
     "regular_workspace_transport": "devspace",

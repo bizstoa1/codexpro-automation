@@ -108,6 +108,12 @@ cd codex-web-gpt-automation
 The installer backs up replaced files and writes durable install receipts under
 `%USERPROFILE%\.codex\receipts`.
 
+On the first interactive install it asks `Local Multi-GPT도 설치할까요? [y/N]`.
+The default is No. Use `.\install.ps1 -EnableLocalMultiGpt` for an explicit or
+unattended opt-in. The skill, local MCP server, and MCP registration are then
+installed together; restart Codex afterward. See
+[Optional Local Multi-GPT](docs/LOCAL_MULTI_GPT.md).
+
 On macOS, use the shared Python lifecycle:
 
 ```bash
@@ -117,6 +123,9 @@ python3 install.py --dry-run
 python3 install.py
 python3 doctor.py
 ```
+
+Use `python3 install.py --enable-local-multi-gpt` only when the optional local
+parallel-reasoning lane is wanted.
 
 Receipts are stored under `~/.codex/receipts`. `python3 rollback.py` and
 `python3 uninstall.py` perform an exact, receipt-backed inverse. See the

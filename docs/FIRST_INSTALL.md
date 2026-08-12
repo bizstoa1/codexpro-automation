@@ -42,6 +42,13 @@ python install.py
 python doctor.py
 ```
 
+첫 대화형 설치에서는 `Local Multi-GPT도 설치할까요? [y/N]`를 묻습니다.
+곁다리 기능이므로 기본값은 아니오입니다. 필요한 경우에만 Windows에서는
+`.\install.ps1 -EnableLocalMultiGpt`, 공통 Python lifecycle에서는
+`python install.py --enable-local-multi-gpt`를 사용합니다. 선택하면 스킬,
+서버 파일, `multi_gpt` MCP 등록이 함께 완료되며 Codex를 재시작해야 합니다.
+자세한 내용은 [선택형 Local Multi-GPT](LOCAL_MULTI_GPT.md)를 참고하세요.
+
 ### Optional recommended Codex native subagents
 
 Install the cost-bounded global defaults only after the lifecycle install. The

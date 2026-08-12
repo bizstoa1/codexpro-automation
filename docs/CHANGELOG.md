@@ -1,5 +1,15 @@
 # 기술 변경 기록
 
+## 1.9.0 - 선택형 Local Multi-GPT
+
+- 첫 대화형 설치에서 `Local Multi-GPT도 설치할까요? [y/N]`를 묻고 기본값은
+  아니오로 둡니다. 무인 설치는 `-EnableLocalMultiGpt` 또는
+  `--enable-local-multi-gpt`를 명시해야 합니다.
+- 선택하면 스킬, 서버, `multi_gpt` MCP 등록을 한 구성요소로 설치하고 하위
+  단계가 사용할 호환 Codex CLI 경로를 영수증에 기록합니다.
+- Multi-GPT는 PATH의 오래된 CLI보다 등록 시 검증한 Codex CLI를 우선하며,
+  Planner 실패 시 stderr 진단을 보존합니다.
+
 README는 현재 제품의 목적과 사용법만 설명합니다. 구현 변경, 호환 패치,
 레거시 이전 기록은 이 문서에서 관리합니다.
 

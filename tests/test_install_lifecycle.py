@@ -4,6 +4,7 @@ from pathlib import Path
 import subprocess
 import shutil
 import tempfile
+import hashlib
 
 import pytest
 
@@ -389,3 +390,37 @@ def test_receipt_sibling_prefix_and_external_backup_are_rejected() -> None:
             '-File', str(ROOT / 'rollback.ps1'), '-CodexHome', home, '-Receipt', str(receipt)
         )
         assert backup_result.returncode != 0
+
+
+def test_powershell_rollback_restores_optional_local_multi_gpt_registration() -> None:
+    with tempfile.TemporaryDirectory() as home:
+        codex_home = Path(home)
+        config = codex_home / 'config.toml'
+        backup_root = codex_home / 'backups' / 'owned'
+        registration_backup = codex_home / 'backups' / 'local-multi-gpt-registration' / 'case' / 'config.toml'
+        registration_receipt = codex_home / 'receipts' / 'local-multi-gpt-registration-case.json'
+        main_receipt = codex_home / 'receipts' / 'codexpro-automation-case.json'
+        for path in (backup_root, registration_backup.parent, registration_receipt.parent):
+            path.mkdir(parents=True, exist_ok=True)
+        before = b'model = "before"\n'
+        after = b'model = "after"\n[mcp_servers.multi_gpt]\ncommand = "node"\n'
+        registration_backup.write_bytes(before)
+        config.write_bytes(after)
+        registration_receipt.write_text(json.dumps({
+            'schema': 'codex.web-gpt.local-multi-gpt-registration/v1',
+            'config': str(config), 'config_existed': True,
+            'before_sha256': hashlib.sha256(before).hexdigest(),
+            'after_sha256': hashlib.sha256(after).hexdigest(),
+            'backup': str(registration_backup),
+        }), encoding='utf-8')
+        main_receipt.write_text(json.dumps({
+            'schema': 'codexpro.install-receipt/v3',
+            'backup': str(backup_root), 'files': [],
+            'dependency': {'mode': 'skipped'},
+            'optional_components': {'local_multi_gpt': {'enabled': True, 'receipt': str(registration_receipt)}},
+        }), encoding='utf-8')
+
+        result = run_powershell('-File', str(ROOT / 'rollback.ps1'), '-CodexHome', str(codex_home), '-Receipt', str(main_receipt))
+        assert result.returncode == 0, result.stderr
+        assert config.read_bytes() == before
+        assert json.loads(result.stdout)['status'] == 'COMPLETE'
