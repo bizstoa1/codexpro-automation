@@ -97,7 +97,7 @@ def test_install_writes_private_config_and_managed_launchagent(tmp_path: Path) -
     assert result["loaded"] is False
 
 
-def test_doctor_accepts_installed_managed_artifacts(tmp_path: Path) -> None:
+def test_doctor_accepts_installed_managed_artifacts(tmp_path: Path, monkeypatch) -> None:
     module = load_module()
     codex_home = tmp_path / "codex"
     launch_agents = tmp_path / "LaunchAgents"
@@ -114,6 +114,13 @@ def test_doctor_accepts_installed_managed_artifacts(tmp_path: Path) -> None:
     )
     paths = module.InstallPaths(codex_home, launch_agents, project_root, cloudflared)
     module.install_service(paths=paths, spec=spec, load=False)
+    monkeypatch.setattr(module.sys, "platform", "darwin")
+    monkeypatch.setattr(module, "_domain", lambda: "gui/501")
+    monkeypatch.setattr(
+        module,
+        "_launchctl",
+        lambda *args: subprocess.CompletedProcess(args, 0, "loaded", ""),
+    )
 
     result = module.doctor_service(codex_home=codex_home, launch_agents=launch_agents)
 
