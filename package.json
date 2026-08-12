@@ -61,6 +61,7 @@
     "bin/codexpro_exact_unit_cloudflare_bootstrap.ps1",
     "bin/codexpro_fixed_runtime_watchdog.py",
     "bin/codexpro_harness.py",
+    "bin/codexpro_cloudflared_launchd.py",
     "bin/codexpro_lifecycle.py",
     "bin/codexpro_macos_launchd.py",
     "bin/codexpro_mcp_identity.py",

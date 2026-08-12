@@ -63,7 +63,9 @@ README는 현재 제품의 목적과 사용법만 설명합니다. 구현 변경
 - `RUNNING → CHECKPOINT_DUE(75분) → HANDOFF_PENDING(80분)` 상태 머신과
   exact Oracle 회수, 동일 Codex session resume, launchd 감독기를 추가했습니다.
 - DevSpace 1.0.4를 macOS에서 직접 실행하고 MagicDNS 자동 탐지 및 Tailscale
-  Funnel `8443 → 127.0.0.1:7676` 복구 경로를 추가했습니다.
+  Funnel `443 → 127.0.0.1:7676` 복구 경로를 추가했습니다. Funnel 엣지가
+  OpenAI 연결 제한을 넘길 때 사용할 격리된 Cloudflare Named Tunnel
+  LaunchAgent도 제공합니다.
 - GitHub Actions는 `windows-latest`와 `macos-14`를 모두 검증합니다.
 
 ### Oracle + DevSpace 단일 실행 경로
