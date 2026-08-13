@@ -81,6 +81,63 @@ def resolve_package_roots(version: str = SUPPORTED_VERSION) -> list[Path]:
     return roots
 
 
+def check_native_runtime(
+    *,
+    package_root: Path | None = None,
+    runner: Any = subprocess.run,
+    allow_package_absent: bool = False,
+) -> dict[str, Any]:
+    """Prove the tested better-sqlite3 binding loads under the active Node runtime."""
+    try:
+        roots = (
+            resolve_package_roots()
+            if package_root is None
+            else [package_root.expanduser().resolve(strict=True)]
+        )
+    except DevSpaceCompatError as exc:
+        if allow_package_absent and exc.code == "DEVSPACE_PACKAGE_NOT_FOUND":
+            return {"ok": True, "status": "package-absent", "version": SUPPORTED_VERSION}
+        raise
+    node = shutil.which("node")
+    if not node:
+        raise DevSpaceCompatError("DEVSPACE_NODE_MISSING", "Node.js is required for DevSpace")
+    checked: list[str] = []
+    source = (
+        "const {createRequire}=require('node:module');"
+        "const r=createRequire(process.cwd()+'/package.json');"
+        "const Database=r('better-sqlite3');"
+        "const db=new Database(':memory:');db.close();"
+    )
+    for root in roots:
+        completed = runner(
+            [node, "-e", source],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            timeout=30,
+            **_git_kwargs(),
+        )
+        if completed.returncode != 0:
+            raise DevSpaceCompatError(
+                "DEVSPACE_NATIVE_BINDING_UNAVAILABLE",
+                "DevSpace better-sqlite3 could not load under the active Node runtime",
+                {
+                    "root": str(root),
+                    "version": SUPPORTED_VERSION,
+                    "stderr": (completed.stderr or "").strip()[-1200:],
+                    "next_action": (
+                        "Review `npm install-scripts ls`, explicitly approve only the tested "
+                        "DevSpace native dependency scripts, then rebuild better-sqlite3."
+                    ),
+                },
+            )
+        checked.append(str(root))
+    return {"ok": True, "status": "loadable", "version": SUPPORTED_VERSION, "package_roots": checked}
+
+
 def patch_root() -> Path:
     return Path(__file__).resolve().parent / "devspace-compat" / SUPPORTED_VERSION
 
@@ -452,15 +509,27 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--package-root", type=Path)
     parser.add_argument("--confirm-service-restarted", action="store_true")
     parser.add_argument("--stop-exact-service", action="store_true")
+    parser.add_argument("--check-native-runtime", action="store_true")
+    parser.add_argument("--allow-package-absent", action="store_true")
     parser.add_argument("--local-port", type=int, default=7676)
     args = parser.parse_args(argv)
     try:
-        if args.confirm_service_restarted and args.stop_exact_service:
+        selected = sum(bool(value) for value in (
+            args.confirm_service_restarted,
+            args.stop_exact_service,
+            args.check_native_runtime,
+        ))
+        if selected > 1:
             raise DevSpaceCompatError(
                 "DEVSPACE_COMPAT_ACTION_CONFLICT",
                 "choose only one DevSpace compatibility action",
             )
-        if args.confirm_service_restarted:
+        if args.check_native_runtime:
+            result = check_native_runtime(
+                package_root=args.package_root,
+                allow_package_absent=args.allow_package_absent,
+            )
+        elif args.confirm_service_restarted:
             result = confirm_service_restarted(
                 package_root=args.package_root,
                 local_port=args.local_port,

@@ -8,6 +8,7 @@ URL and must not invoke it.
 """
 
 import argparse
+import getpass
 import json
 import os
 import re
@@ -144,6 +145,14 @@ def devspace_compat_argv(
     return argv
 
 
+def devspace_native_argv(*, allow_package_absent: bool = False) -> list[str]:
+    argv = devspace_compat_argv()
+    argv.append("--check-native-runtime")
+    if allow_package_absent:
+        argv.append("--allow-package-absent")
+    return argv
+
+
 def setup_plan(
     config: SetupConfig,
     *,
@@ -186,6 +195,97 @@ def run_checked(argv: Sequence[str], *, runner: Callable[..., Any] = subprocess.
     runner(list(argv), check=True, text=True, **windows_subprocess_kwargs())
 
 
+def run_interactive_checked(
+    argv: Sequence[str],
+    *,
+    runner: Callable[..., Any] = subprocess.run,
+) -> None:
+    """Run a bounded setup prompt attached to the user's current terminal."""
+    runner(list(argv), check=True, text=True)
+
+
+def interactive_terminal_available() -> bool:
+    return bool(sys.stdin.isatty() and sys.stdout.isatty())
+
+
+def _validate_custom_owner_password(value: str) -> str:
+    if len(value) < 16 or len(value) > 256 or any(character.isspace() for character in value):
+        raise SetupError("DEVSPACE_OWNER_PASSWORD_STRENGTH_INVALID")
+    classes = (
+        any(character.islower() for character in value),
+        any(character.isupper() for character in value),
+        any(character.isdigit() for character in value),
+        any(not character.isalnum() for character in value),
+    )
+    if sum(classes) < 3 or value.isdigit():
+        raise SetupError("DEVSPACE_OWNER_PASSWORD_STRENGTH_INVALID")
+    return value
+
+
+def review_owner_password_interactive(
+    *,
+    auth_path: Path | None = None,
+    input_fn: Callable[[str], str] = input,
+    getpass_fn: Callable[[str], str] = getpass.getpass,
+    output_fn: Callable[[str], None] = print,
+    interactive: bool | None = None,
+) -> dict[str, Any]:
+    """Keep or replace the Owner password without exposing it to automation logs."""
+    if interactive is None:
+        interactive = bool(sys.stdin.isatty() and sys.stdout.isatty())
+    if not interactive:
+        raise SetupError("DEVSPACE_OWNER_PASSWORD_REVIEW_REQUIRES_INTERACTIVE_TTY")
+    target = (
+        auth_path
+        or Path(os.environ.get("DEVSPACE_CONFIG_DIR") or (Path.home() / ".devspace"))
+        / "auth.json"
+    ).expanduser().resolve()
+    if target.is_symlink():
+        raise SetupError("DEVSPACE_AUTH_SYMLINK_UNSUPPORTED")
+    try:
+        payload = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise SetupError("DEVSPACE_AUTH_UNREADABLE") from error
+    if not isinstance(payload, dict) or not isinstance(payload.get("ownerToken"), str) or not payload["ownerToken"]:
+        raise SetupError("DEVSPACE_OWNER_PASSWORD_MISSING")
+    choice = input_fn(
+        "Keep the generated Owner password (recommended), or set a custom one? [K/c]: "
+    ).strip().casefold()
+    changed = False
+    if choice in {"", "k", "keep"}:
+        owner_password = payload["ownerToken"]
+    elif choice in {"c", "custom"}:
+        first = _validate_custom_owner_password(getpass_fn("New Owner password: "))
+        second = getpass_fn("Confirm Owner password: ")
+        if first != second:
+            raise SetupError("DEVSPACE_OWNER_PASSWORD_CONFIRMATION_MISMATCH")
+        owner_password = first
+        replacement = dict(payload)
+        replacement["ownerToken"] = owner_password
+        temporary = target.with_name(f".{target.name}.tmp-{time.time_ns()}")
+        try:
+            temporary.write_text(
+                json.dumps(replacement, ensure_ascii=True, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            os.chmod(temporary, 0o600)
+            os.replace(temporary, target)
+        finally:
+            temporary.unlink(missing_ok=True)
+        changed = True
+    else:
+        raise SetupError("DEVSPACE_OWNER_PASSWORD_CHOICE_INVALID")
+    output_fn("Owner password (save this now in a password manager):")
+    output_fn(owner_password)
+    output_fn("It will not be written to Codex logs, receipts, manifests, or shell history.")
+    return {
+        "ok": True,
+        "changed": changed,
+        "auth_path": str(target),
+        "password_displayed_interactively": True,
+    }
+
+
 def devspace_service_environment(base: dict[str, str] | None = None) -> dict[str, str]:
     environment = dict(os.environ if base is None else base)
     environment["DEVSPACE_TOOL_MODE"] = DEVSPACE_TOOL_MODE
@@ -222,6 +322,8 @@ def apply_setup(
     sleeper: Callable[[float], None] = time.sleep,
     platform_name: str | None = None,
     config_path: Path | None = None,
+    owner_password_reviewer: Callable[..., dict[str, Any]] = review_owner_password_interactive,
+    terminal_check: Callable[[], bool] = interactive_terminal_available,
 ) -> None:
     # Init remains DevSpace's own interactive prompt so it can safely retain its
     # Owner credential.  The root list/public origin are displayed before this call.
@@ -231,10 +333,13 @@ def apply_setup(
     if config_path is not None and config_path.exists():
         persist_existing_setup_config(config_path, config)
     else:
-        run_checked(
+        if not terminal_check():
+            raise SetupError("DEVSPACE_FIRST_INIT_REQUIRES_INTERACTIVE_TTY")
+        run_interactive_checked(
             command_argv(["npx", "--yes", DEVSPACE_PACKAGE, "init"], platform_name=platform_name),
             runner=runner,
         )
+        owner_password_reviewer()
     if config_path is not None:
         persisted = persisted_allowed_roots(config_path)
         missing = [
@@ -244,6 +349,7 @@ def apply_setup(
         ]
         if missing:
             raise SetupError("DEVSPACE_SETUP_DID_NOT_PERSIST_COMPLETE_ALLOWED_ROOTS")
+    run_checked(devspace_native_argv(), runner=runner)
     run_checked(devspace_compat_argv(), runner=runner)
     run_checked(
         devspace_compat_argv(stop_exact_service=True, local_port=config.local_port),
@@ -274,6 +380,7 @@ def recover_service(
     local = http_probe(config.local_mcp_url, opener=opener)
     service_started = not local.get("ok")
     if service_started:
+        run_checked(devspace_native_argv(), runner=runner)
         run_checked(devspace_compat_argv(), runner=runner)
         run_checked(
             devspace_compat_argv(stop_exact_service=True, local_port=config.local_port),
@@ -308,6 +415,7 @@ def refresh_after_app_registration(
     the existing config, Owner credential, OAuth database, roots, and Funnel
     hostname.
     """
+    run_checked(devspace_native_argv(), runner=runner)
     run_checked(devspace_compat_argv(), runner=runner)
     run_checked(
         devspace_compat_argv(stop_exact_service=True, local_port=config.local_port),
@@ -404,6 +512,27 @@ def wait_for_local_service(
     raise SetupError("DEVSPACE_LOCAL_SERVICE_NOT_READY")
 
 
+def wait_for_public_service(
+    config: SetupConfig,
+    *,
+    opener: Callable[..., Any] = urllib.request.urlopen,
+    sleeper: Callable[[float], None] = time.sleep,
+    attempts: int = 30,
+    delay_seconds: float = 2.0,
+) -> dict[str, Any]:
+    """Wait for Funnel relay propagation while retaining the last redacted probe."""
+    last: dict[str, Any] = {"ok": False, "error": "DEVSPACE_PUBLIC_ENDPOINT_NOT_READY"}
+    for index in range(max(1, attempts)):
+        last = http_probe(config.registration_url, opener=opener)
+        if last.get("ok"):
+            return last
+        if index + 1 < attempts:
+            sleeper(delay_seconds)
+    raise SetupError(
+        "DEVSPACE_PUBLIC_ENDPOINT_NOT_READY:" + json.dumps(last, ensure_ascii=True, sort_keys=True)
+    )
+
+
 def ensure_public_route(
     config: SetupConfig,
     *,
@@ -425,9 +554,7 @@ def ensure_public_route(
     final = funnel_status(config, runner=runner)
     if not final.get("ok"):
         raise SetupError("TAILSCALE_FUNNEL_RESTORE_FAILED")
-    public = http_probe(config.registration_url, opener=opener)
-    if not public.get("ok"):
-        raise SetupError("DEVSPACE_PUBLIC_ENDPOINT_NOT_READY")
+    public = wait_for_public_service(config, opener=opener, sleeper=sleeper)
     return {"ok": True, "changed": changed, "local": local, "funnel": final, "public": public}
 
 
@@ -580,6 +707,8 @@ def funnel_status(
             check=False,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="strict",
             **windows_subprocess_kwargs(),
         )
     except OSError as error:
@@ -614,6 +743,8 @@ def discover_tailscale_hostname(*, runner: Callable[..., Any] = subprocess.run) 
             check=False,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="strict",
             **windows_subprocess_kwargs(),
         )
     except OSError as exc:
@@ -735,12 +866,18 @@ def parser() -> argparse.ArgumentParser:
     setup.add_argument("--dry-run", action="store_true")
     setup.add_argument("--apply", action="store_true")
     sub.choices["doctor"].add_argument("--chatgpt-call-failed", action="store_true")
+    owner = sub.add_parser("owner-password")
+    owner.add_argument("--auth-path", type=Path)
     return value
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
+        if args.command == "owner-password":
+            result = review_owner_password_interactive(auth_path=args.auth_path)
+            print(json.dumps(result, ensure_ascii=True, indent=2))
+            return 0
         hostname = args.hostname or discover_tailscale_hostname()
         config = validate_config(args.root, hostname, args.local_port, args.public_port)
         if args.command == "setup":

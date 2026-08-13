@@ -47,13 +47,14 @@ def workflow_manifest(tmp_path: Path) -> Path:
     return path
 
 
-def test_ultra_economy_skill_has_fail_closed_current_runtime_gate() -> None:
+def test_ultra_economy_skill_has_one_time_user_activation_handshake() -> None:
     text = SKILL.read_text(encoding="utf-8")
     compact = " ".join(text.split())
-    assert "current task runtime" in text
-    assert "Do not infer them from `~/.codex/config.toml`" in text
+    assert "first" in text and "exactly one concise instruction" in compact
     assert "gpt-5.6-luna" in text and "`max`" in text
-    assert "stop before creating a subagent, browser, Oracle, Pro, or web session" in compact
+    assert "Do not inspect, infer, or verify" in text
+    assert "including after compaction, recovery, stage transitions" in compact
+    assert "asking again" in text
     assert "Never rewrite the user's global model defaults" in text
 
 
@@ -73,39 +74,24 @@ def test_ultra_economy_skill_ui_metadata_is_discoverable() -> None:
     assert "$ultra-economy-mode" in text
 
 
-def test_ultra_economy_runtime_rejects_non_luna_or_non_max(tmp_path: Path, monkeypatch) -> None:
+def test_ultra_economy_runtime_does_not_reinspect_model_or_reasoning(tmp_path: Path, monkeypatch) -> None:
     module = load_comprehensive()
     path = workflow_manifest(tmp_path)
-    monkeypatch.setattr(module.RUNTIME_IDENTITY, "current_runtime_identity", lambda: {
-        "model": "gpt-5.6-sol", "reasoning_effort": "max"
-    })
-    with pytest.raises(module.WorkflowError, match="ULTRA_ECONOMY_MAIN_MODEL_REQUIRED"):
-        module.run_workflow(path, dry_run=True)
+    assert not hasattr(module, "RUNTIME_IDENTITY")
 
+    seen: dict[str, object] = {}
 
-def test_ultra_economy_runtime_fails_before_state_when_identity_is_unavailable(tmp_path: Path, monkeypatch) -> None:
-    module = load_comprehensive()
-    path = workflow_manifest(tmp_path)
+    def preview(oracle_manifest: Path, *, dry_run: bool):
+        seen.update(json.loads(oracle_manifest.read_text(encoding="utf-8")))
+        return {"ok": True}
 
-    def unavailable():
-        raise module.RUNTIME_IDENTITY.RuntimeIdentityError("matching Codex runtime turn context is unavailable")
-
-    monkeypatch.setattr(module.RUNTIME_IDENTITY, "current_runtime_identity", unavailable)
-    with pytest.raises(module.WorkflowError, match="ULTRA_ECONOMY_MAIN_MODEL_UNVERIFIED"):
-        module.run_workflow(path, dry_run=True)
-    assert not (tmp_path / "workflow").exists()
-    monkeypatch.setattr(module.RUNTIME_IDENTITY, "current_runtime_identity", lambda: {
-        "model": "gpt-5.6-luna", "reasoning_effort": "high"
-    })
-    with pytest.raises(module.WorkflowError, match="ULTRA_ECONOMY_MAIN_MODEL_REQUIRED"):
-        module.run_workflow(path, dry_run=True)
+    result = module.run_workflow(path, dry_run=True, oracle_execute=preview)
+    assert result["stage"] == "pro"
+    assert seen["transport"] == "pro-devspace-readonly"
 
 
 def test_ultra_economy_runtime_dry_run_is_pro_first_and_read_only(tmp_path: Path, monkeypatch) -> None:
     module = load_comprehensive()
-    monkeypatch.setattr(module.RUNTIME_IDENTITY, "current_runtime_identity", lambda: {
-        "model": "gpt-5.6-luna", "reasoning_effort": "max"
-    })
     seen: dict[str, object] = {}
 
     def preview(path: Path, *, dry_run: bool):

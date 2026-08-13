@@ -50,8 +50,9 @@ Use this routing in the Codex global `AGENTS.md` after installing the package.
   release authority.
 - Ultra Economy Mode keeps the local commander and native subagents on exact
   Luna Max while separate Oracle sessions own Pro design, review,
-  implementation, and web verification. It fails closed when current runtime
-  identity cannot prove Luna Max.
+  implementation, and web verification. Its first request in each Codex task
+  always produces one Luna/Max selection instruction; after user confirmation,
+  that task never re-inspects the runtime or asks again.
 
 ## Standalone Pro versus comprehensive
 

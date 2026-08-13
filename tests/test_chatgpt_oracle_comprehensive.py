@@ -51,7 +51,7 @@ def ultra_economy_manifest(tmp_path: Path) -> Path:
     return path
 
 
-def test_ultra_economy_manifest_rejects_untrusted_runtime_self_declaration(tmp_path: Path) -> None:
+def test_ultra_economy_manifest_rejects_handshake_self_declaration(tmp_path: Path) -> None:
     module = load()
     path = ultra_economy_manifest(tmp_path)
     payload = json.loads(path.read_text(encoding="utf-8"))
@@ -61,14 +61,11 @@ def test_ultra_economy_manifest_rejects_untrusted_runtime_self_declaration(tmp_p
         "source": "current-task-runtime",
     }
     path.write_text(json.dumps(payload), encoding="utf-8")
-    with pytest.raises(module.WorkflowError, match="local_runtime_contract is not accepted"):
+    with pytest.raises(module.WorkflowError, match="one-time conversational handshake"):
         module.load_manifest(path)
 
 def test_ultra_economy_dry_run_starts_with_read_only_pro_design(tmp_path: Path, monkeypatch) -> None:
     module = load()
-    monkeypatch.setattr(module.RUNTIME_IDENTITY, "current_runtime_identity", lambda: {
-        "model": "gpt-5.6-luna", "reasoning_effort": "max"
-    })
     seen: dict[str, object] = {}
 
     def preview(oracle_manifest: Path, *, dry_run: bool):

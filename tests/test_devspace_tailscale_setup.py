@@ -414,9 +414,10 @@ def test_post_register_always_recycles_service_and_preserves_oauth_state(
     assert report["funnel_recycle_scope"] == "https:443"
     assert report["next_action"] == "VERIFY_REGISTERED_CHATGPT_APP_WITH_ORACLE"
     assert "different connector" in report["verification_boundary"]
-    assert calls[0] == module.devspace_compat_argv()
-    assert calls[1] == module.devspace_compat_argv(stop_exact_service=True)
-    assert calls[2] == module.devspace_compat_argv(confirm_restarted=True)
+    assert calls[0] == module.devspace_native_argv()
+    assert calls[1] == module.devspace_compat_argv()
+    assert calls[2] == module.devspace_compat_argv(stop_exact_service=True)
+    assert calls[3] == module.devspace_compat_argv(confirm_restarted=True)
     assert ["tailscale", "funnel", "--bg", "--https=443", "off"] in calls
     assert [
         "tailscale", "funnel", "--bg", "--https=443", f"http://127.0.0.1:{current.local_port}"
@@ -486,6 +487,7 @@ def test_setup_applies_hash_validated_devspace_compat_before_service_start(
     bash.write_text("", encoding="utf-8")
     monkeypatch.setenv("DEVSPACE_GIT_BASH", str(bash))
     calls: list[list[str]] = []
+    call_kwargs: list[dict] = []
     launched: list[tuple[list[str], dict[str, str] | None]] = []
     funnel_reads = 0
 
@@ -499,6 +501,7 @@ def test_setup_applies_hash_validated_devspace_compat_before_service_start(
     def runner(argv, **kwargs):
         nonlocal funnel_reads
         calls.append(list(argv))
+        call_kwargs.append(dict(kwargs))
         if argv == ["tailscale", "funnel", "status", "--json"]:
             funnel_reads += 1
             web = {} if funnel_reads < 3 else {
@@ -514,21 +517,126 @@ def test_setup_applies_hash_validated_devspace_compat_before_service_start(
         popen_factory=lambda argv, **kwargs: launched.append((list(argv), kwargs.get("env"))),
         sleeper=lambda _: None,
         platform_name="nt",
+        owner_password_reviewer=lambda: {"ok": True},
+        terminal_check=lambda: True,
     )
 
     assert calls[1][1:3] == [
         "-lc",
         "exec npx --yes @waishnav/devspace@1.0.4 init",
     ]
-    assert calls[2] == module.devspace_compat_argv()
-    assert calls[3] == module.devspace_compat_argv(stop_exact_service=True)
-    assert calls[4] == module.devspace_compat_argv(confirm_restarted=True)
+    assert "creationflags" not in call_kwargs[1]
+    assert "startupinfo" not in call_kwargs[1]
+    assert calls[2] == module.devspace_native_argv()
+    assert calls[3] == module.devspace_compat_argv()
+    assert calls[4] == module.devspace_compat_argv(stop_exact_service=True)
+    assert calls[5] == module.devspace_compat_argv(confirm_restarted=True)
     assert launched and launched[0][0][1:3] == [
         "-lc",
         "exec npx --yes @waishnav/devspace@1.0.4 serve",
     ]
     assert launched[0][1]["DEVSPACE_TOOL_MODE"] == "full"
     assert launched[0][1]["DEVSPACE_OAUTH_SCOPES"] == "devspace,offline_access"
+
+
+def test_first_init_refuses_noninteractive_secret_capture_before_launch(tmp_path: Path) -> None:
+    module, current = config(tmp_path)
+    calls: list[list[str]] = []
+
+    def runner(argv, **kwargs):
+        calls.append(list(argv))
+        return SimpleNamespace(returncode=0, stdout=json.dumps({"Web": {}}), stderr="")
+
+    with pytest.raises(module.SetupError, match="FIRST_INIT_REQUIRES_INTERACTIVE_TTY"):
+        module.apply_setup(
+            current,
+            runner=runner,
+            terminal_check=lambda: False,
+        )
+    assert calls == [["tailscale", "funnel", "status", "--json"]]
+
+
+def test_public_route_retries_bounded_funnel_propagation(tmp_path: Path) -> None:
+    module, current = config(tmp_path)
+    public_calls = 0
+    sleeps: list[float] = []
+
+    class Response:
+        status = 401
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+
+    def opener(request, timeout):
+        nonlocal public_calls
+        if request.full_url == current.local_mcp_url:
+            return Response()
+        public_calls += 1
+        if public_calls == 1:
+            raise OSError("relay still propagating")
+        return Response()
+
+    status = json.dumps({"Web": {current.hostname + ":443": {
+        "Proxy": f"http://127.0.0.1:{current.local_port}"
+    }}})
+    report = module.ensure_public_route(
+        current,
+        opener=opener,
+        runner=lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout=status, stderr=""),
+        sleeper=sleeps.append,
+    )
+
+    assert report["ok"] is True
+    assert public_calls == 2
+    assert sleeps == [2.0]
+
+
+def test_owner_password_review_keeps_or_atomically_replaces_secret(tmp_path: Path) -> None:
+    module = load_module()
+    auth = tmp_path / "auth.json"
+    auth.write_text(json.dumps({"ownerToken": "generated-high-entropy-owner-token"}), encoding="utf-8")
+    shown: list[str] = []
+
+    kept = module.review_owner_password_interactive(
+        auth_path=auth,
+        input_fn=lambda _prompt: "",
+        output_fn=shown.append,
+        interactive=True,
+    )
+    assert kept["changed"] is False
+    assert "ownerToken" not in json.dumps(kept)
+    assert shown.count("generated-high-entropy-owner-token") == 1
+
+    answers = iter(["Better-Owner-Password-2026!", "Better-Owner-Password-2026!"])
+    shown.clear()
+    changed = module.review_owner_password_interactive(
+        auth_path=auth,
+        input_fn=lambda _prompt: "custom",
+        getpass_fn=lambda _prompt: next(answers),
+        output_fn=shown.append,
+        interactive=True,
+    )
+    assert changed["changed"] is True
+    assert json.loads(auth.read_text(encoding="utf-8"))["ownerToken"] == "Better-Owner-Password-2026!"
+    assert shown.count("Better-Owner-Password-2026!") == 1
+    assert not list(tmp_path.glob("*.tmp-*"))
+
+
+def test_owner_password_review_requires_tty_and_rejects_numeric_only(tmp_path: Path) -> None:
+    module = load_module()
+    auth = tmp_path / "auth.json"
+    auth.write_text(json.dumps({"ownerToken": "generated-high-entropy-owner-token"}), encoding="utf-8")
+    with pytest.raises(module.SetupError, match="REQUIRES_INTERACTIVE_TTY"):
+        module.review_owner_password_interactive(auth_path=auth, interactive=False)
+    with pytest.raises(module.SetupError, match="STRENGTH_INVALID"):
+        module.review_owner_password_interactive(
+            auth_path=auth,
+            input_fn=lambda _prompt: "custom",
+            getpass_fn=lambda _prompt: "0" * 16,
+            output_fn=lambda _value: None,
+            interactive=True,
+        )
 
 
 def test_posix_setup_invokes_pinned_devspace_directly(tmp_path: Path) -> None:
@@ -540,8 +648,19 @@ def test_posix_setup_invokes_pinned_devspace_directly(tmp_path: Path) -> None:
 
 def test_tailscale_hostname_is_discovered_from_status_json() -> None:
     module = load_module()
-    result = SimpleNamespace(returncode=0, stdout=json.dumps({"Self": {"DNSName": "macmini.tailnet.ts.net."}}), stderr="")
-    assert module.discover_tailscale_hostname(runner=lambda *args, **kwargs: result) == "macmini.tailnet.ts.net"
+    result = SimpleNamespace(returncode=0, stdout=json.dumps({
+        "Self": {"DNSName": "macmini.tailnet.ts.net."},
+        "Peer": {"peer": {"HostName": "오사카-PC"}},
+    }, ensure_ascii=False), stderr="")
+    seen: dict[str, object] = {}
+
+    def runner(*args, **kwargs):
+        seen.update(kwargs)
+        return result
+
+    assert module.discover_tailscale_hostname(runner=runner) == "macmini.tailnet.ts.net"
+    assert seen["encoding"] == "utf-8"
+    assert seen["errors"] == "strict"
 
 
 def test_ensure_public_route_restores_missing_mapping_after_exact_local_health(tmp_path: Path) -> None:

@@ -386,6 +386,7 @@ def doctor(codex_home: Path) -> dict[str, Any]:
     warnings: list[dict[str, Any]] = []
     receipt_path: Path | None = None
     local_multi_gpt: dict[str, Any] = {"enabled": False, "doctor": None}
+    devspace_native_runtime: dict[str, Any] | None = None
     try:
         receipt_path = latest_receipt(codex_home)
         receipt = _read_json(receipt_path)
@@ -414,6 +415,38 @@ def doctor(codex_home: Path) -> dict[str, Any]:
     for name, path in required.items():
         if path is None:
             issues.append({"code": "TOOL_MISSING", "tool": name})
+    compat_helper = codex_home / "bin" / "chatgpt_devspace_compat.py"
+    if compat_helper.is_file() and required.get("node"):
+        native = subprocess.run(
+            [
+                sys.executable,
+                str(compat_helper),
+                "--check-native-runtime",
+                "--allow-package-absent",
+            ],
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            check=False,
+            timeout=45,
+        )
+        try:
+            devspace_native_runtime = json.loads(native.stdout)
+        except json.JSONDecodeError:
+            devspace_native_runtime = None
+        if native.returncode != 0 or not isinstance(devspace_native_runtime, dict) or not devspace_native_runtime.get("ok"):
+            error = (
+                devspace_native_runtime.get("error")
+                if isinstance(devspace_native_runtime, dict)
+                else None
+            )
+            issues.append(
+                {
+                    "code": "DEVSPACE_NATIVE_RUNTIME_INVALID",
+                    "detail": error or (native.stderr or "invalid native-runtime probe").strip()[-1200:],
+                }
+            )
     if os.name != "nt" and shutil.which("rsync") is None:
         issues.append({"code": "ORACLE_PROFILE_COPY_RSYNC_MISSING"})
     if sys.platform == "darwin":
@@ -434,6 +467,7 @@ def doctor(codex_home: Path) -> dict[str, Any]:
         "warnings": warnings,
         "tools": required,
         "local_multi_gpt": local_multi_gpt,
+        "devspace_native_runtime": devspace_native_runtime,
     }
 
 

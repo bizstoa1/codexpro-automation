@@ -1526,6 +1526,7 @@ def test_cdp_disconnect_with_exact_unsent_oracle_ledger_is_pre_submit(
 ) -> None:
     isolated_default_oracle_profile(tmp_path, monkeypatch)
     runner = load_runner()
+    monkeypatch.setattr(runner.STATE, "profile_copy_is_supported", lambda **kwargs: True)
     session_root = tmp_path / "oracle-sessions"
     monkeypatch.setenv("ORACLE_SESSION_ROOT", str(session_root))
 
@@ -1534,7 +1535,6 @@ def test_cdp_disconnect_with_exact_unsent_oracle_ledger_is_pre_submit(
         pro_readonly_manifest(tmp_path, run_id="c" * 32),
         run_factory=version_0171_runner,
         popen_factory=cdp_disconnect_pre_submit_popen(session_root),
-        platform_name="nt",
     )
     state = runner.STATE.load_state(Path(result["run_dir"]) / "state.json")
 
@@ -1559,6 +1559,7 @@ def test_cdp_disconnect_keeps_lock_when_unsent_proof_is_incomplete(
 ) -> None:
     isolated_default_oracle_profile(tmp_path, monkeypatch)
     runner = load_runner()
+    monkeypatch.setattr(runner.STATE, "profile_copy_is_supported", lambda **kwargs: True)
     session_root = tmp_path / "oracle-sessions"
     monkeypatch.setenv("ORACLE_SESSION_ROOT", str(session_root))
 
@@ -1567,7 +1568,6 @@ def test_cdp_disconnect_keeps_lock_when_unsent_proof_is_incomplete(
         pro_readonly_manifest(tmp_path, run_id=(variation[0] * 32)),
         run_factory=version_0171_runner,
         popen_factory=cdp_disconnect_pre_submit_popen(session_root, variation=variation),
-        platform_name="nt",
     )
     state = runner.STATE.load_state(Path(result["run_dir"]) / "state.json")
 
@@ -1583,6 +1583,7 @@ def test_recovery_repairs_legacy_unsent_cdp_disconnect_without_oracle_call(
 ) -> None:
     isolated_default_oracle_profile(tmp_path, monkeypatch)
     runner = load_runner()
+    monkeypatch.setattr(runner.STATE, "profile_copy_is_supported", lambda **kwargs: True)
     session_root = tmp_path / "oracle-sessions"
     monkeypatch.setenv("ORACLE_SESSION_ROOT", str(session_root))
     initial = execute_run(
@@ -1590,7 +1591,6 @@ def test_recovery_repairs_legacy_unsent_cdp_disconnect_without_oracle_call(
         pro_readonly_manifest(tmp_path, run_id="e" * 32),
         run_factory=version_0171_runner,
         popen_factory=cdp_disconnect_pre_submit_popen(session_root),
-        platform_name="nt",
     )
     run_dir = Path(initial["run_dir"])
     state_path = run_dir / "state.json"

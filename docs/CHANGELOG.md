@@ -1,5 +1,22 @@
 # 기술 변경 기록
 
+## 1.13.0 - 첫 설치와 DevSpace 진단 완결
+
+- 기존 DevSpace 설정의 root 병합, Windows 재부팅 root 영속성, Unicode root의
+  PowerShell 5.1 안전 직렬화를 하나의 source-of-truth 계약으로 통합했습니다.
+- 첫 `devspace init`을 현재 터미널에 표시하고, 생성 Owner 암호 유지 또는 강한
+  custom 암호 선택을 TTY 전용·숨김 입력으로 안내합니다.
+- Funnel public endpoint에 bounded propagation retry를 추가하고 마지막 redacted
+  probe를 오류에 포함합니다.
+- Tailscale status JSON은 Windows ANSI locale과 무관하게 UTF-8로 읽어 Unicode
+  장치명이 있어도 setup doctor가 중단되지 않습니다.
+- DevSpace 시작과 lifecycle doctor가 active Node에서 `better-sqlite3` 메모리 DB를
+  실제로 열어 npm 12 install-script 차단을 사전에 발견합니다.
+- onboarding plan/status/configure가 기본 `codex`뿐 아니라 검증된 임의 ChatGPT
+  app name을 일관되게 지원합니다.
+- 초절약모드는 새 Codex 작업의 최초 요청에서만 Luna/Max 선택을 한 번 안내하고,
+  사용자 확인 뒤에는 런타임 모델을 읽거나 작업 중간에 다시 묻지 않습니다.
+
 ## 1.12.1 - Oracle 사전제출 CDP 복구
 
 - Oracle 0.17.1의 정확한 CDP 연결 해제 오류와 외부 session ledger의
@@ -69,11 +86,10 @@
 - 로컬 지휘관과 모든 네이티브 서브에이전트를 `gpt-5.6-luna` / `max`로
   제한하고, Pro 설계와 regular 웹 검토·구현·최종 검증을 분리하는 선택형
   `ultra-economy` comprehensive 프로필을 추가했습니다.
-- 현재 작업 런타임 모델을 관찰할 수 없거나 Luna Max가 아니면 세션 생성 전에
-  중단합니다. 전역 `config.toml` 기본값은 현재 작업 모델의 증거로 인정하지 않고
-  자동 변경하지 않습니다.
-- Pro-first, 최소 4단계, task-bound rollout runtime evidence를 코드와 회귀 테스트로
-  fail-closed 고정했습니다.
+- 최초 구현은 task-bound rollout runtime evidence로 Luna Max를 검증했으나,
+  1.13.0부터는 화면·런타임 판독 오류를 피하기 위해 새 작업 최초 1회 사용자
+  안내·확인 계약으로 대체했습니다. 전역 `config.toml`은 자동 변경하지 않습니다.
+- Pro-first와 최소 4단계 계약은 코드와 회귀 테스트로 fail-closed 고정했습니다.
 
 ## 1.9.1 - ChatGPT 앱 등록 후 연결 안정화
 

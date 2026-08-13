@@ -24,10 +24,12 @@ plan -> optional Pro or Oracle Web Multi -> review
 
 The optional `ultra-economy` profile instead starts with qualified read-only
 Pro design, then uses separate regular web review, implementation, and final
-gate sessions. It is valid only after the current Codex task runtime is
-observed as exact `gpt-5.6-luna` with `max` reasoning; a global config default
-is not current-task evidence. Follow `skills/ultra-economy-mode/SKILL.md` for
-the local commander and Luna Max subagent contract.
+gate sessions. On the first activation request in a Codex task, the local
+commander gives one unconditional instruction to select `gpt-5.6-luna` with
+`max` reasoning and waits for confirmation. It does not inspect the runtime or
+repeat that question later in the same task. Follow
+`skills/ultra-economy-mode/SKILL.md` for the local commander and Luna Max
+subagent contract.
 
 Comprehensive mode is a staged workflow, not a prompt variant. Its
 implementation stage carries the same orchestrator ownership contract used by

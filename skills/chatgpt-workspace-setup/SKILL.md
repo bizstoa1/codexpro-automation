@@ -31,7 +31,14 @@ Only after the user approves the interactive DevSpace initialization and public 
 python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py setup --root C:\projects\example --hostname your-device.your-tailnet.ts.net --apply
 ```
 
-`--apply` runs DevSpace through Git Bash without a visible Windows console, starts `devspace serve`, and creates an HTTPS Funnel to `127.0.0.1:7676`. During `devspace init`, enter only the listed roots and the public origin `https://<hostname>` (without `/mcp`).
+On a first installation, `--apply` attaches `devspace init` to the current
+terminal, then performs the TTY-only Owner password keep/custom review. The
+generated high-entropy value is the recommended default; custom values are
+hidden-input, confirmed, and written only to DevSpace's private `auth.json`.
+Existing installations never enter this secret flow while adding roots.
+Afterward the helper starts `devspace serve` hidden and creates an HTTPS Funnel
+to `127.0.0.1:7676`. During `devspace init`, enter only the listed roots and
+the public origin `https://<hostname>` (without `/mcp`).
 
 Before starting or restarting DevSpace 1.0.4, run the installed
 `bin/chatgpt_devspace_compat.py`. It hash-validates the exact upstream
@@ -60,6 +67,11 @@ Managed launches also set
 tokens; advertising `offline_access` lets ChatGPT request and renew them. If an
 older app registration was created before this metadata was exposed, the user
 must reconnect or recreate that app once. Never automate that settings action.
+
+Before every managed service launch, the helper loads `better-sqlite3` with the
+active Node runtime and opens an in-memory database. A missing npm 12 native
+binding fails closed with `DEVSPACE_NATIVE_BINDING_UNAVAILABLE`; never approve
+an unbounded list of install scripts automatically.
 
 The only app information to enter manually in ChatGPT Developer Mode is:
 

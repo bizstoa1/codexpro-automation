@@ -30,8 +30,6 @@ STATE_SCHEMA = "codex.chatgpt.oracle-comprehensive-state/v1"
 SCOPE_SCHEMA = "codex.chatgpt.oracle-comprehensive-scope/v1"
 STANDARD_PROFILE = "standard"
 ULTRA_ECONOMY_PROFILE = "ultra-economy"
-ULTRA_ECONOMY_LOCAL_MODEL = "gpt-5.6-luna"
-ULTRA_ECONOMY_LOCAL_REASONING = "max"
 MAX_PLAN_REVISIONS = 2
 REVIEW_STATUSES = {"PASS", "PASS_WITH_NOTES", "REVISE", "FAIL"}
 UNAMBIGUOUS_PRE_SUBMIT_MARKERS = (
@@ -69,7 +67,6 @@ def _load(name: str, path: Path):
 RUNNER = _load("oracle_comprehensive_runner", BIN / "chatgpt_oracle_run.py")
 MULTI = _load("oracle_comprehensive_multi", BIN / "chatgpt_oracle_multi.py")
 WORKSPACE_CONFIG = _load("oracle_comprehensive_workspace_config", BIN / "chatgpt_workspace_config.py")
-RUNTIME_IDENTITY = _load("oracle_comprehensive_runtime_identity", BIN / "codex_runtime_identity.py")
 
 
 class WorkflowError(RuntimeError):
@@ -137,7 +134,7 @@ def load_manifest(path: Path) -> dict[str, Any]:
     ).strip().casefold()
     if "local_runtime_contract" in value:
         raise WorkflowError(
-            "local_runtime_contract is not accepted; ultra-economy verifies the current Codex runtime directly"
+            "local_runtime_contract is not accepted; ultra-economy activation is a one-time conversational handshake"
         )
     if workflow_profile == ULTRA_ECONOMY_PROFILE:
         if initial_stage != "pro":
@@ -176,26 +173,6 @@ def load_manifest(path: Path) -> dict[str, Any]:
         "manifest_sha256": sha(path.resolve(strict=True)),
         "workflow_id": workflow_id,
     }
-
-
-def _verify_ultra_economy_runtime(config: dict[str, Any]) -> dict[str, Any] | None:
-    if config["workflow_profile"] != ULTRA_ECONOMY_PROFILE:
-        return None
-    try:
-        identity = RUNTIME_IDENTITY.current_runtime_identity()
-    except RUNTIME_IDENTITY.RuntimeIdentityError as exc:
-        raise WorkflowError(
-            f"ULTRA_ECONOMY_MAIN_MODEL_UNVERIFIED: {exc}; select gpt-5.6-luna with max reasoning and retry"
-        ) from exc
-    if (
-        identity["model"] != ULTRA_ECONOMY_LOCAL_MODEL
-        or identity["reasoning_effort"] != ULTRA_ECONOMY_LOCAL_REASONING
-    ):
-        raise WorkflowError(
-            "ULTRA_ECONOMY_MAIN_MODEL_REQUIRED: select gpt-5.6-luna with max reasoning for the current task "
-            f"(observed {identity['model']} / {identity['reasoning_effort']})"
-        )
-    return identity
 
 
 def _write(path: Path, value: dict[str, Any]) -> None:
@@ -1209,7 +1186,6 @@ def _run_workflow_locked(
     local_gate_runner: Callable[..., Any] = subprocess.run,
 ) -> dict[str, Any]:
     config = load_manifest(manifest_path)
-    _verify_ultra_economy_runtime(config)
     workflow_id = config["workflow_id"]
     config["_review_policy"] = _review_policy_from_history(config)
     config["_parallel_parent_id"] = hashlib.sha256(workflow_id.encode("utf-8")).hexdigest()

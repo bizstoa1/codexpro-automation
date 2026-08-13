@@ -104,6 +104,48 @@ def test_status_requires_exact_root_order_and_bootstrap_match(tmp_path: Path) ->
 
 
 def test_configure_app_name_is_atomic_and_contains_only_public_name(tmp_path: Path) -> None:
-    target = module.configure_app_name(codex_home=tmp_path)
-    assert json.loads(target.read_text(encoding="utf-8")) == {"app_name": "codex"}
+    target = module.configure_app_name(codex_home=tmp_path, app_name="dongju")
+    assert json.loads(target.read_text(encoding="utf-8")) == {"app_name": "dongju"}
     assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_plan_status_and_cli_share_the_same_arbitrary_app_name(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    project.mkdir()
+    plan = module.onboarding_plan(
+        provider="custom",
+        registration_url="https://mcp.example.com/mcp",
+        roots=[str(project)],
+        app_name="dongju",
+    )
+    assert plan["app_name"] == "dongju"
+    assert "--app-name dongju" in plan["stages"][-1]["command"]
+
+    codex_home = tmp_path / ".codex"
+    devspace_home = tmp_path / ".devspace"
+    (codex_home / "config").mkdir(parents=True)
+    devspace_home.mkdir()
+    (devspace_home / "config.json").write_text(
+        json.dumps({"allowedRoots": [str(project)]}), encoding="utf-8"
+    )
+    (codex_home / "config" / "codexpro-devspace-bootstrap.json").write_text(
+        json.dumps({"roots": [str(project)]}), encoding="utf-8"
+    )
+    module.configure_app_name(codex_home=codex_home, app_name="dongju")
+    status = module.readiness_status(
+        provider="custom",
+        registration_url="https://mcp.example.com/mcp",
+        roots=[str(project)],
+        app_name="dongju",
+        codex_home=codex_home,
+        devspace_home=devspace_home,
+        http_probe=lambda _url: {"ok": True, "status": 401},
+    )
+    assert status["checks"]["app_name_matches_expected"] is True
+    assert status["expected_app_name"] == "dongju"
+
+
+@pytest.mark.parametrize("value", ["", "@dongju", "bad/name", "bad\\name", "bad\nname"])
+def test_app_name_validation_fails_closed(value: str) -> None:
+    with pytest.raises(module.OnboardingError, match="APP_NAME_INVALID"):
+        module.normalize_app_name(value)

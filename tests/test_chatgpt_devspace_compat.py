@@ -5,6 +5,7 @@ import importlib.util
 import json
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -23,6 +24,31 @@ def load_compat():
 
 def digest(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
+
+
+def test_native_runtime_probe_loads_exact_binding_and_fails_actionably(tmp_path: Path) -> None:
+    compat = load_compat()
+    package = tmp_path / "devspace"
+    package.mkdir()
+    (package / "package.json").write_text(json.dumps({"version": "1.0.4"}), encoding="utf-8")
+    calls: list[tuple[list[str], dict]] = []
+
+    def passing(argv, **kwargs):
+        calls.append((list(argv), dict(kwargs)))
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    report = compat.check_native_runtime(package_root=package, runner=passing)
+    assert report["status"] == "loadable"
+    assert "better-sqlite3" in calls[0][0][2]
+    assert calls[0][1]["cwd"] == str(package.resolve())
+
+    def failing(argv, **kwargs):
+        return SimpleNamespace(returncode=1, stdout="", stderr="Could not locate the bindings file")
+
+    with pytest.raises(compat.DevSpaceCompatError) as failure:
+        compat.check_native_runtime(package_root=package, runner=failing)
+    assert failure.value.code == "DEVSPACE_NATIVE_BINDING_UNAVAILABLE"
+    assert "install-scripts" in failure.value.evidence["next_action"]
 
 
 def test_exact_devspace_patch_is_hash_gated_idempotent_and_backed_up(

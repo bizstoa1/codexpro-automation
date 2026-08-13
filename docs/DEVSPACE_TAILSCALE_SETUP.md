@@ -121,6 +121,10 @@ python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py recove
 The command is idempotent, never overwrites a conflicting Funnel mapping, and
 does not contain or print the DevSpace Owner credential.
 
+New Funnel mappings use a bounded public `/mcp` readiness retry after the exact
+local endpoint and mapping are healthy. A timeout reports the last redacted
+probe instead of treating normal propagation delay as a configuration error.
+
 The shipped `scripts/start_devspace_bootstrap.ps1` wrapper reads the current
 root list from `%USERPROFILE%\.devspace\config.json` on every launch. It reads
 only the non-secret host, ports, and Python path from the diagnostic mirror at

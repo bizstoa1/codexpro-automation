@@ -27,6 +27,18 @@ class OnboardingError(ValueError):
     pass
 
 
+def normalize_app_name(value: str) -> str:
+    name = value.strip()
+    if (
+        not name
+        or len(name) > 64
+        or name.startswith("@")
+        or any(ord(character) < 32 or character in "@/\\" for character in name)
+    ):
+        raise OnboardingError("APP_NAME_INVALID")
+    return name
+
+
 def _is_volume_root(path: Path) -> bool:
     return bool(path.anchor) and path == Path(path.anchor)
 
@@ -96,9 +108,7 @@ def onboarding_plan(
     normalized_roots = normalize_roots(roots)
     registration_url = normalize_registration_url(registration_url)
     validate_provider_url(provider, registration_url)
-    app_name = app_name.strip()
-    if not app_name or app_name.startswith("@") or any(ch in app_name for ch in "\r\n"):
-        raise OnboardingError("APP_NAME_INVALID")
+    app_name = normalize_app_name(app_name)
     root_args = [part for root in normalized_roots for part in ("--root", str(root))]
     setup_script = "skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py"
     host = urllib.parse.urlsplit(registration_url).hostname or ""
@@ -189,6 +199,9 @@ def onboarding_plan(
             "complete_when": "ChatGPT discovers the tools and Owner approval succeeds",
             "app_name": app_name,
             "mcp_url": registration_url,
+            "configure_command": _quoted_command(
+                [python_executable, "onboard.py", "configure-app-name", "--app-name", app_name]
+            ),
             "rule": "Do not automate ChatGPT settings, app creation, permissions, or tool selection.",
         },
         {
@@ -196,7 +209,9 @@ def onboarding_plan(
             "owner": "agent",
             "complete_when": "status is ready and first exact project-root qualification passes before submission",
             "command": f"{python_executable} onboard.py status --provider {provider} --public-url {registration_url} "
-            + " ".join(_quoted_command(["--root", str(root)]) for root in normalized_roots),
+            + " ".join(_quoted_command(["--root", str(root)]) for root in normalized_roots)
+            + " "
+            + _quoted_command(["--app-name", app_name]),
         },
     ]
     return {
@@ -241,11 +256,17 @@ def readiness_status(
     provider: str,
     registration_url: str,
     roots: Sequence[str],
+    app_name: str = APP_NAME,
     codex_home: Path | None = None,
     devspace_home: Path | None = None,
     http_probe: Any = probe_http,
 ) -> dict[str, Any]:
-    plan = onboarding_plan(provider=provider, registration_url=registration_url, roots=roots)
+    plan = onboarding_plan(
+        provider=provider,
+        registration_url=registration_url,
+        roots=roots,
+        app_name=app_name,
+    )
     codex_home = (codex_home or Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))).resolve()
     devspace_home = (devspace_home or (Path.home() / ".devspace")).resolve()
     devspace_config = _load_json(devspace_home / "config.json") or {}
@@ -263,7 +284,7 @@ def readiness_status(
     checks = {
         "exact_roots_configured": exact_roots_configured,
         "bootstrap_matches_config": bootstrap_matches,
-        "app_name_is_codex": workspace.get("app_name") == APP_NAME,
+        "app_name_matches_expected": workspace.get("app_name") == plan["app_name"],
         "local_mcp_oauth_challenge": bool(local.get("ok")),
         "public_mcp_oauth_challenge": bool(public.get("ok")),
         "oracle_profile_initialized": browser_profile_initialized,
@@ -273,6 +294,8 @@ def readiness_status(
         "ready": all(checks.values()),
         "checks": checks,
         "registration_url": plan["registration_url"],
+        "expected_app_name": plan["app_name"],
+        "configured_app_name": workspace.get("app_name"),
         "configured_roots": [str(value) for value in devspace_config.get("allowedRoots") or []],
         "bootstrap_roots": [str(value) for value in bootstrap.get("roots") or []],
         "local_endpoint": local,
@@ -282,12 +305,11 @@ def readiness_status(
 
 
 def configure_app_name(*, codex_home: Path | None = None, app_name: str = APP_NAME) -> Path:
-    if app_name != APP_NAME:
-        raise OnboardingError("ONBOARDING_APP_NAME_MUST_BE_CODEX")
+    app_name = normalize_app_name(app_name)
     root = (codex_home or Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))).resolve()
     root.mkdir(parents=True, exist_ok=True)
     target = root / "chatgpt-workspace.json"
-    payload = json.dumps({"app_name": APP_NAME}, ensure_ascii=False, indent=2) + "\n"
+    payload = json.dumps({"app_name": app_name}, ensure_ascii=True, indent=2) + "\n"
     fd, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=str(root))
     try:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
@@ -309,8 +331,10 @@ def _parser() -> argparse.ArgumentParser:
         current.add_argument("--provider", choices=PROVIDERS, required=True)
         current.add_argument("--public-url", required=True, help="Stable public HTTPS URL ending in /mcp")
         current.add_argument("--root", action="append", required=True, dest="roots")
+        current.add_argument("--app-name", default=APP_NAME)
     configure = commands.add_parser("configure-app-name")
     configure.add_argument("--codex-home", type=Path)
+    configure.add_argument("--app-name", default=APP_NAME)
     return parser
 
 
@@ -318,12 +342,22 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         if args.command == "plan":
-            result = onboarding_plan(provider=args.provider, registration_url=args.public_url, roots=args.roots)
+            result = onboarding_plan(
+                provider=args.provider,
+                registration_url=args.public_url,
+                roots=args.roots,
+                app_name=args.app_name,
+            )
         elif args.command == "status":
-            result = readiness_status(provider=args.provider, registration_url=args.public_url, roots=args.roots)
+            result = readiness_status(
+                provider=args.provider,
+                registration_url=args.public_url,
+                roots=args.roots,
+                app_name=args.app_name,
+            )
         else:
-            path = configure_app_name(codex_home=args.codex_home)
-            result = {"ok": True, "app_name": APP_NAME, "path": str(path)}
+            path = configure_app_name(codex_home=args.codex_home, app_name=args.app_name)
+            result = {"ok": True, "app_name": normalize_app_name(args.app_name), "path": str(path)}
     except OnboardingError as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
         return 2

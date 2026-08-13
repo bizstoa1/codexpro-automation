@@ -11,15 +11,20 @@ reasoning surface. Use the existing Oracle comprehensive engine with the
 
 ## Activation gate
 
-1. Read the **current task runtime** model and reasoning effort from explicit
-   runtime metadata. Do not infer them from `~/.codex/config.toml`, an agent
-   role file, a previous task, or the user's statement.
-2. Continue only when the current task is exactly `gpt-5.6-luna` with `max`
-   reasoning.
-3. If either value differs or is not observable, stop before creating a
-   subagent, browser, Oracle, Pro, or web session. Ask the user to select Luna
-   and Max for this task, then invoke 초절약모드 again.
-4. Never rewrite the user's global model defaults to activate this mode.
+1. On the **first** Ultra Economy Mode request in a Codex task, always stop
+   before creating a subagent, browser, Oracle, Pro, or web session and give
+   exactly one concise instruction: select `GPT-5.6 Luna` and reasoning effort
+   `Max`, then confirm completion.
+2. Give that instruction even when the user says the model is already selected.
+   Do not inspect, infer, or verify the current model or reasoning effort from
+   runtime metadata, screenshots, `~/.codex/config.toml`, role files, prompts,
+   tool output, or previous tasks.
+3. After the user confirms the selection, treat the activation handshake as
+   satisfied for the rest of the same Codex task. Continue the workflow without
+   asking again, including after compaction, recovery, stage transitions, or
+   follow-up requests in that task.
+4. Ask once again only for a new Codex task's first Ultra Economy Mode request.
+   Never rewrite the user's global model defaults to activate this mode.
 
 ## Local commander contract
 
@@ -62,14 +67,14 @@ Use `bin/chatgpt_oracle_comprehensive.py` with these manifest fields:
 ```
 
 Add the normal absolute project, workflow, mission, app, and local gate fields.
-The engine resolves `CODEX_THREAD_ID` to the matching Codex rollout and reads
-the latest runtime-authored `turn_context`. A manifest, environment-only model
-claim, `config.toml`, prompt, or child-agent report is not accepted as proof.
+The local commander owns the one-time conversational activation handshake; the
+engine does not re-read or re-verify the task model at later stages. A manifest
+self-declaration is not a substitute for the handshake.
 
 The engine must fail closed before submission when the profile, Pro-first
-stage, trusted Luna Max runtime evidence, exact root qualification, or minimum four-stage
-budget is missing. Do not substitute an attachment for readable DevSpace, and
-do not use Pro as the first connector-health probe.
+stage, exact root qualification, or minimum four-stage budget is missing. Do
+not substitute an attachment for readable DevSpace, and do not use Pro as the
+first connector-health probe.
 
 ## Failure and residual work
 

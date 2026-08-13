@@ -125,7 +125,9 @@ python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py setup 
 
 `devspace init` 화면에는 표시된 **전체 exact root**와 public origin
 `https://your-device.your-tailnet.ts.net`을 입력합니다. 여기에는 `/mcp`를 붙이지
-않습니다.
+않습니다. 첫 설치의 `init`은 숨겨진 서비스 창이 아니라 현재 터미널에 표시됩니다.
+초기화 직후 Owner 암호 검토도 같은 TTY에서 이어집니다. 기존 설정에 root만 추가할
+때는 `auth.json`을 읽거나 바꾸지 않습니다.
 
 ### Cloudflare/ngrok/custom 경로
 
@@ -147,6 +149,17 @@ DEVSPACE_OAUTH_SCOPES=devspace,offline_access
 
 DevSpace는 `init` 중 Owner 암호를 생성해 자체 로컬 `auth.json`에 저장합니다.
 
+- 생성된 고엔트로피 암호를 유지하는 것이 기본 권장값입니다.
+- 첫 설치 안내에서 `K`를 선택하면 기존 값을 유지하고, `C`를 선택한 경우에만 숨김
+  입력으로 custom 암호와 확인값을 받습니다. custom 값은 16자 이상, 공백 없음,
+  문자 종류 3개 이상이어야 하며 숫자 전용 값은 거부합니다.
+- 별도로 다시 확인해야 하면 사용자 본인이 열린 터미널에서만 아래 명령을 실행합니다.
+
+```powershell
+python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py owner-password
+```
+
+- 최종 Owner 암호는 대화형 TTY에 한 번만 표시되므로 즉시 암호 관리자에 저장합니다.
 - CLI 인자, 환경 파일, 스크립트, Git, 이슈, 로그에 복사하지 않습니다.
 - ChatGPT의 최초 OAuth 승인 페이지에서만 직접 입력합니다.
 - 암호를 바꾸거나 재생성하면 기존 ChatGPT 연결도 다시 승인해야 합니다.
@@ -187,7 +200,7 @@ throwaway copy를 사용하므로 동시 프로젝트가 같은 브라우저 상
 
 1. ChatGPT `Settings` → `Security and login`에서 Developer mode를 켭니다.
 2. ChatGPT Plugins 화면에서 `+`를 선택합니다.
-3. 이름을 **`codex`**로 입력합니다.
+3. 이름은 기본값 **`codex`** 또는 사용자가 정한 이름(예: `dongju`)을 입력합니다.
 4. Connection URL에 `https://고정주소/mcp`를 입력합니다.
 5. 발견된 도구와 metadata를 확인하고 연결을 생성합니다.
 6. 표시되는 DevSpace Owner 승인 화면에서 암호를 직접 입력합니다.
@@ -204,7 +217,7 @@ python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py post-r
   --hostname your-device.your-tailnet.ts.net
 ```
 
-그 다음 새 일반(non-Pro) Oracle `@codex` 읽기 전용 검사로 exact 프로젝트를 열고
+그 다음 새 일반(non-Pro) Oracle `@<앱이름>` 읽기 전용 검사로 exact 프로젝트를 열고
 작은 디렉터리 목록을 읽습니다. Codex Desktop에 내장된 `DevSpace` 플러그인은 수동
 등록한 ChatGPT 앱과 다른 연결이므로 그 도구 결과로 앱 등록을 판정하지 않습니다.
 첫 연결 검증에 Pro 세션을 사용하지 않습니다.
@@ -212,7 +225,7 @@ python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py post-r
 Oracle이 같은 이름을 사용하도록 로컬 공개 설정을 기록합니다.
 
 ```powershell
-python onboard.py configure-app-name
+python onboard.py configure-app-name --app-name codex
 ```
 
 ## 8. 최종 상태 확인
@@ -222,7 +235,8 @@ python onboard.py status `
   --provider tailscale `
   --public-url https://your-device.your-tailnet.ts.net/mcp `
   --root C:\projects\alpha `
-  --root D:\projects\beta
+  --root D:\projects\beta `
+  --app-name codex
 ```
 
 `ready: true`여야 최초 질문을 제출합니다. 새 프로젝트에서는 첫 Oracle 질문 전에
@@ -245,6 +259,9 @@ exact folder가 `allowedRoots`에 있는지만 가볍게 확인하고, config ha
 - `DEVSPACE_EXACT_ROOT_UNAVAILABLE`: Oracle/browser를 시작하지 말고 exact root부터 등록합니다.
 - local `/mcp` 실패: 터널이 아니라 DevSpace 서비스부터 복구합니다.
 - public `/mcp` 실패: 고정 터널 mapping과 OS 시작 서비스를 복구합니다.
+- `DEVSPACE_NATIVE_BINDING_UNAVAILABLE`: `npm install-scripts ls`에서 정확한 DevSpace
+  native dependency만 검토·승인한 뒤 `better-sqlite3`를 재빌드합니다. doctor가 실제
+  메모리 DB 로드에 성공하기 전에는 서비스를 시작하지 않습니다.
 - 앱이 도구를 찾지 못함: 동일 URL의 MCP/OAuth 상태를 확인합니다. 자동으로 앱을
   삭제하거나 다시 만들지 않습니다. 방금 등록·재연결했다면 `post-register`를 한 번만
   실행하고 일반 Oracle 읽기 검사를 반복합니다.
