@@ -13,9 +13,11 @@ The user must provide every allowed project root and the Tailscale MagicDNS host
 
 When setup is invoked with only a new root, the preview reads the current
 DevSpace `allowedRoots`, preserves every existing root, and displays the
-complete merged list. Interactive init must persist that complete list or the
-helper stops before restarting the service. This prevents a one-root setup
-from silently removing previously approved projects.
+complete merged list. For an existing installation, `--apply` backs up and
+atomically updates the non-secret DevSpace config while preserving its other
+fields. A first installation still uses DevSpace's interactive initialization.
+The helper verifies that the complete list persisted before restarting the
+service, preventing a one-root setup from silently removing approved projects.
 
 Preview the exact setup plan first:
 

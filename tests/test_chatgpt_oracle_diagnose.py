@@ -160,6 +160,32 @@ def test_settled_thinking_time_failure_remains_retry_safe(tmp_path: Path) -> Non
     assert run["signature"] == "thinking-time-selection-unverified"
 
 
+def test_settled_cdp_disconnect_before_prompt_submit_remains_retry_safe(tmp_path: Path) -> None:
+    module = load()
+    state_root = tmp_path / "oracle-state"
+    run_dir = write_run(
+        state_root,
+        "c" * 8,
+        status="attention_required",
+        session_authority="pre_submit",
+    )
+    state_path = run_dir / "state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["pre_submit_failure"] = {
+        "code": "ORACLE_CDP_DISCONNECT_PRE_SUBMIT_FAILED",
+        "output_absent": True,
+        "conversation_url_absent": True,
+        "prompt_submitted": False,
+    }
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    report = module.diagnose(state_root)
+    run = report["unresolved_runs"][0]
+
+    assert run["bucket"] == "pre-submit-ui-contract"
+    assert run["signature"] == "cdp-disconnected-before-prompt-submit"
+
+
 def test_durable_terminal_run_is_complete_and_not_executed_is_separated(tmp_path: Path) -> None:
     module = load()
     state_root = tmp_path / "oracle-state"

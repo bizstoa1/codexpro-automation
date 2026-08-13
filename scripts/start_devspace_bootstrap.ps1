@@ -1,13 +1,16 @@
 [CmdletBinding()]
 param(
   [string]$CodexHome = $(if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERPROFILE '.codex' }),
-  [string]$ConfigPath = ''
+  [string]$ConfigPath = '',
+  [string]$DevSpaceConfigPath = ''
 )
 
 $ErrorActionPreference = 'Stop'
 $CodexRoot = [IO.Path]::GetFullPath($CodexHome)
 if (!$ConfigPath) { $ConfigPath = Join-Path $CodexRoot 'config/codexpro-devspace-bootstrap.json' }
 $ConfigPath = [IO.Path]::GetFullPath($ConfigPath)
+if (!$DevSpaceConfigPath) { $DevSpaceConfigPath = Join-Path $env:USERPROFILE '.devspace/config.json' }
+$DevSpaceConfigPath = [IO.Path]::GetFullPath($DevSpaceConfigPath)
 $LogRoot = Join-Path $CodexRoot 'logs/codexpro-devspace'
 New-Item -ItemType Directory -Force -Path $LogRoot | Out-Null
 $LogPath = Join-Path $LogRoot ("bootstrap-{0}.log" -f (Get-Date -Format 'yyyy-MM'))
@@ -25,6 +28,15 @@ try {
   if (!(Test-Path -LiteralPath $ConfigPath)) { throw "Bootstrap config missing: $ConfigPath" }
   $Config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
   if ([string]$Config.schema -ne 'codexpro.devspace-bootstrap/v1') { throw 'Unsupported bootstrap config schema.' }
+  if (!(Test-Path -LiteralPath $DevSpaceConfigPath)) { throw "DevSpace config missing: $DevSpaceConfigPath" }
+  $DevSpaceConfig = Get-Content -LiteralPath $DevSpaceConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
+  $AllowedRoots = @($DevSpaceConfig.allowedRoots)
+  if ($AllowedRoots.Count -eq 0) { throw 'DevSpace config allowedRoots is missing or empty.' }
+  foreach ($Root in $AllowedRoots) {
+    if (![IO.Path]::IsPathRooted([string]$Root)) {
+      throw "DevSpace config allowedRoot is not absolute: $Root"
+    }
+  }
   $Python = [string]$Config.python_path
   if (!$Python) {
     $PythonCommand = Get-Command python.exe,python -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -38,10 +50,11 @@ try {
     $env:PATH = 'C:\Program Files\Tailscale;' + $env:PATH
   }
   $Arguments = @($Helper, 'recover')
-  foreach ($Root in @($Config.roots)) { $Arguments += @('--root', [string]$Root) }
+  foreach ($Root in $AllowedRoots) { $Arguments += @('--root', [IO.Path]::GetFullPath([string]$Root)) }
   $Arguments += @('--hostname', [string]$Config.hostname)
   if ($Config.local_port) { $Arguments += @('--local-port', [string]$Config.local_port) }
   if ($Config.public_port) { $Arguments += @('--public-port', [string]$Config.public_port) }
+  Write-BootstrapLog ("Loaded {0} allowed roots from {1}." -f $AllowedRoots.Count, $DevSpaceConfigPath)
 
   for ($Attempt = 1; $Attempt -le 6; $Attempt++) {
     $PreviousPreference = $ErrorActionPreference

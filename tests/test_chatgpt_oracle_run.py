@@ -195,6 +195,104 @@ def recovery_binding_unavailable_popen(command, **kwargs):
     return Process(1, [])
 
 
+def cdp_disconnect_pre_submit_popen(session_root: Path, *, variation: str | None = None):
+    def popen(command, **kwargs):
+        slug = command[command.index("--slug") + 1]
+        output_path = Path(command[command.index("--write-output") + 1]).resolve()
+        expected_profile = (Path.home() / ".oracle" / "browser-profile").resolve()
+        error_message = (
+            "Chrome DevTools client disconnected before oracle finished; "
+            "the browser target appears still alive."
+        )
+        if variation == "different-error":
+            error_message = "Chrome DevTools client disconnected after an unknown browser event."
+        lines = [
+            "? oracle 0.17.1 deterministic fixture",
+            f"Session: {slug}",
+            "Mode: browser foreground",
+            "Models: 1",
+            "Detach: no",
+            f"Reattach: oracle session {slug}",
+            "Launching browser mode (target=GPT-5.6 Sol; requested=gpt-5.6-sol) with ~135 tokens.",
+            "This run can take up to an hour (usually ~10 minutes).",
+            "[browser] Browser control: launch Chrome in hidden-window mode; may focus/control the browser UI.",
+            "[browser] Browser guidance: On macOS, Oracle launches Chrome off-screen while keeping the page rendered.",
+            "[browser] Browser guidance: For the calmest shared-desktop flow, prefer --browser-attach-running or --remote-chrome.",
+            f"ERROR: {error_message}",
+            f"User error (browser-automation): {error_message}",
+        ]
+        kwargs["stdout"].write(("\n".join(lines) + "\n").encode())
+        kwargs["stdout"].flush()
+        prompt_submitted = variation == "prompt-submitted"
+        tab_url = (
+            "https://chatgpt.com/c/existing-conversation"
+            if variation == "conversation-url"
+            else "https://chatgpt.com/"
+        )
+        meta = {
+            "id": slug,
+            "createdAt": "2026-08-13T00:23:55.772Z",
+            "status": "error",
+            "model": "gpt-5.6-sol",
+            "models": [{"model": "gpt-5.6-sol", "status": "running"}],
+            "cwd": str(Path(kwargs["cwd"]).resolve()),
+            "mode": "browser",
+            "browser": {
+                "config": {
+                    "copyProfileSource": str(expected_profile),
+                    "desiredModel": "GPT-5.6 Sol",
+                    "modelStrategy": "select",
+                    "thinkingTime": "heavy",
+                },
+                "runtime": {
+                    "chromePid": 12816,
+                    "chromePort": 9222,
+                    "chromeHost": "127.0.0.1",
+                    "promptSubmitted": prompt_submitted,
+                    "controllerPid": 30236,
+                },
+            },
+            "options": {
+                "model": "gpt-5.6-sol",
+                "slug": slug,
+                "writeOutputPath": str(output_path),
+                "browserConfig": {
+                    "copyProfileSource": str(expected_profile),
+                    "desiredModel": "GPT-5.6 Sol",
+                    "modelStrategy": "select",
+                    "thinkingTime": "heavy",
+                },
+            },
+            "completedAt": "2026-08-13T00:24:24.835Z",
+            "errorMessage": error_message,
+            "error": {
+                "category": "browser-automation",
+                "message": error_message,
+                "details": {
+                    "stage": "connection-lost",
+                    "recoverableDisconnect": True,
+                    "disconnectCause": "cdp-client-disconnect",
+                    "runtime": {
+                        "chromePid": 12816,
+                        "chromePort": 9222,
+                        "chromeHost": "127.0.0.1",
+                        "tabUrl": tab_url,
+                        "promptSubmitted": prompt_submitted,
+                        "controllerPid": 30236,
+                    },
+                },
+            },
+        }
+        meta_path = session_root / slug / "meta.json"
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
+        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+        if variation == "output-present":
+            output_path.write_text("contradictory output", encoding="utf-8")
+        return Process(1, [])
+
+    return popen
+
+
 def duplicate_prompt_popen(command, **kwargs):
     kwargs["stdout"].write(
         b'oracle 0.17.1\nA session with the same prompt is already running '
@@ -1406,6 +1504,104 @@ def test_recovery_repairs_legacy_manual_login_profile_lock_without_oracle_call(
         settled["pre_submit_failure"]["code"]
         == "ORACLE_MANUAL_LOGIN_PROFILE_UNINITIALIZED_PRELAUNCH_FAILED"
     )
+    assert calls == []
+
+
+def test_cdp_disconnect_with_exact_unsent_oracle_ledger_is_pre_submit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = load_runner()
+    session_root = tmp_path / "oracle-sessions"
+    monkeypatch.setenv("ORACLE_SESSION_ROOT", str(session_root))
+
+    result = execute_run(
+        runner,
+        pro_readonly_manifest(tmp_path, run_id="c" * 32),
+        run_factory=version_0171_runner,
+        popen_factory=cdp_disconnect_pre_submit_popen(session_root),
+    )
+    state = runner.STATE.load_state(Path(result["run_dir"]) / "state.json")
+
+    assert result["status"] == "pre_submit_failed"
+    assert result["safe_for_fresh_run"] is True
+    assert state["session_authority"] == "pre_submit"
+    assert state["transport_status"] == "failed_pre_submit"
+    assert state["task_outcome"] == "not_executed"
+    assert state["task_outcome_reason"] == "oracle-cdp-disconnect-pre-submit"
+    assert state["pre_submit_failure"]["code"] == "ORACLE_CDP_DISCONNECT_PRE_SUBMIT_FAILED"
+    assert state["pre_submit_failure"]["prompt_submitted"] is False
+
+
+@pytest.mark.parametrize(
+    "variation",
+    ["prompt-submitted", "conversation-url", "output-present", "different-error"],
+)
+def test_cdp_disconnect_keeps_lock_when_unsent_proof_is_incomplete(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    variation: str,
+) -> None:
+    runner = load_runner()
+    session_root = tmp_path / "oracle-sessions"
+    monkeypatch.setenv("ORACLE_SESSION_ROOT", str(session_root))
+
+    result = execute_run(
+        runner,
+        pro_readonly_manifest(tmp_path, run_id=(variation[0] * 32)),
+        run_factory=version_0171_runner,
+        popen_factory=cdp_disconnect_pre_submit_popen(session_root, variation=variation),
+    )
+    state = runner.STATE.load_state(Path(result["run_dir"]) / "state.json")
+
+    assert result["ok"] is False
+    assert result["result"]["status"] == "attention_required"
+    assert state["session_authority"] == "submitted_unknown"
+    assert "pre_submit_failure" not in state
+
+
+def test_recovery_repairs_legacy_unsent_cdp_disconnect_without_oracle_call(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = load_runner()
+    session_root = tmp_path / "oracle-sessions"
+    monkeypatch.setenv("ORACLE_SESSION_ROOT", str(session_root))
+    initial = execute_run(
+        runner,
+        pro_readonly_manifest(tmp_path, run_id="e" * 32),
+        run_factory=version_0171_runner,
+        popen_factory=cdp_disconnect_pre_submit_popen(session_root),
+    )
+    run_dir = Path(initial["run_dir"])
+    state_path = run_dir / "state.json"
+    legacy = runner.STATE.load_state(state_path)
+    legacy.update(
+        {
+            "status": "attention_required",
+            "session_authority": "submitted_unknown",
+            "transport_status": "failed",
+            "task_outcome": "pending",
+            "task_outcome_reason": None,
+        }
+    )
+    legacy.pop("pre_submit_failure", None)
+    runner.STATE.write_json_atomic(state_path, legacy)
+    calls: list[bool] = []
+
+    recovered = runner.recover_run(
+        run_dir,
+        action="harvest",
+        oracle_command=["oracle"],
+        popen_factory=lambda *args, **kwargs: calls.append(True),
+    )
+    settled = runner.STATE.load_state(state_path)
+
+    assert recovered["status"] == "pre_submit_failed"
+    assert recovered["safe_for_fresh_run"] is True
+    assert settled["session_authority"] == "pre_submit"
+    assert settled["task_outcome"] == "not_executed"
+    assert settled["pre_submit_failure"]["code"] == "ORACLE_CDP_DISCONNECT_PRE_SUBMIT_FAILED"
     assert calls == []
 
 

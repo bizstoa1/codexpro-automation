@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -82,10 +84,10 @@ def test_setup_subset_preview_preserves_every_persisted_allowed_root(tmp_path: P
     assert plan["root_merge_applied"] is True
 
 
-def test_setup_apply_stops_if_interactive_init_drops_a_preserved_root(tmp_path: Path) -> None:
+def test_existing_setup_config_is_backed_up_and_atomically_replaced_without_init(tmp_path: Path) -> None:
     module = load_module()
     existing = tmp_path / "existing"
-    requested = tmp_path / "requested"
+    requested = tmp_path / "오사카여행"
     existing.mkdir()
     requested.mkdir()
     current = module.validate_config(
@@ -93,31 +95,78 @@ def test_setup_apply_stops_if_interactive_init_drops_a_preserved_root(tmp_path: 
         "device.tailnet.ts.net",
     )
     config_path = tmp_path / "config.json"
-    config_path.write_text(json.dumps({"allowedRoots": [str(requested)]}), encoding="utf-8")
-    calls: list[list[str]] = []
+    original = {"allowedRoots": [str(requested)], "toolMode": "full", "custom": "preserved"}
+    config_path.write_text(json.dumps(original), encoding="utf-8")
 
-    def runner(argv, **kwargs):
-        calls.append(list(argv))
-        if argv == ["tailscale", "funnel", "status", "--json"]:
-            return SimpleNamespace(returncode=0, stdout=json.dumps({"Web": {}}), stderr="")
-        return SimpleNamespace(returncode=0, stdout="", stderr="")
+    backup = module.persist_existing_setup_config(config_path, current)
+    persisted = json.loads(config_path.read_text(encoding="utf-8"))
 
-    with pytest.raises(
-        module.SetupError,
-        match="DEVSPACE_SETUP_DID_NOT_PERSIST_COMPLETE_ALLOWED_ROOTS",
-    ):
-        module.apply_setup(
-            current,
-            runner=runner,
-            popen_factory=lambda *args, **kwargs: None,
-            config_path=config_path,
-            platform_name="posix",
-        )
+    assert backup.is_file()
+    assert config_path.read_bytes().isascii()
+    assert json.loads(backup.read_text(encoding="utf-8")) == original
+    assert persisted["allowedRoots"] == [str(existing.resolve()), str(requested.resolve())]
+    assert persisted["publicBaseUrl"] == "https://device.tailnet.ts.net"
+    assert persisted["port"] == 7676
+    assert persisted["toolMode"] == "full"
+    assert persisted["custom"] == "preserved"
 
-    assert calls == [
-        ["tailscale", "funnel", "status", "--json"],
-        ["npx", "--yes", "@waishnav/devspace@1.0.4", "init"],
-    ]
+
+@pytest.mark.skipif(shutil.which("powershell.exe") is None, reason="PowerShell is unavailable")
+def test_unicode_setup_config_parses_with_windows_powershell_default_get_content(tmp_path: Path) -> None:
+    module = load_module()
+    root = tmp_path / "오사카여행"
+    root.mkdir()
+    current = module.validate_config([str(root)], "device.tailnet.ts.net")
+    config_path = tmp_path / "config.json"
+    config_path.write_text(json.dumps({"allowedRoots": []}), encoding="utf-8")
+
+    module.persist_existing_setup_config(config_path, current)
+    literal_path = str(config_path).replace("'", "''")
+    completed = subprocess.run(
+        [
+            "powershell.exe",
+            "-NoProfile",
+            "-Command",
+            f"$parsed = Get-Content -Raw -LiteralPath '{literal_path}' | ConvertFrom-Json; "
+            "if ($parsed.allowedRoots.Count -ne 1) { exit 2 }",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+
+
+def test_existing_bootstrap_config_is_only_a_synchronized_mirror(tmp_path: Path) -> None:
+    module = load_module()
+    roots = [tmp_path / "one", tmp_path / "오사카여행"]
+    for root in roots:
+        root.mkdir()
+    current = module.validate_config([str(root) for root in roots], "device.tailnet.ts.net")
+    bootstrap = tmp_path / "bootstrap.json"
+    original = {
+        "schema": "codexpro.devspace-bootstrap/v1",
+        "python_path": sys.executable,
+        "roots": [str(tmp_path / "stale")],
+        "hostname": "old.tailnet.ts.net",
+        "local_port": 7000,
+        "public_port": 8443,
+    }
+    bootstrap.write_text(json.dumps(original), encoding="utf-8")
+
+    backup = module.synchronize_existing_bootstrap_config(bootstrap, current)
+    persisted = json.loads(bootstrap.read_text(encoding="utf-8"))
+
+    assert backup is not None and backup.is_file()
+    assert bootstrap.read_bytes().isascii()
+    assert json.loads(backup.read_text(encoding="utf-8")) == original
+    assert persisted["roots"] == [str(root.resolve()) for root in roots]
+    assert persisted["hostname"] == "device.tailnet.ts.net"
+    assert persisted["local_port"] == 7676
+    assert persisted["public_port"] == 443
+    assert persisted["python_path"] == sys.executable
 
 
 def test_doctor_orders_local_funnel_public_and_manual_failure_branch(tmp_path: Path) -> None:

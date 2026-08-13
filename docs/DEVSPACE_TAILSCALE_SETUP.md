@@ -121,12 +121,15 @@ python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py recove
 The command is idempotent, never overwrites a conflicting Funnel mapping, and
 does not contain or print the DevSpace Owner credential.
 
-The shipped `scripts/start_devspace_bootstrap.ps1` wrapper reads the non-secret
-host, root, port, and Python path from
+The shipped `scripts/start_devspace_bootstrap.ps1` wrapper reads the current
+root list from `%USERPROFILE%\.devspace\config.json` on every launch. It reads
+only the non-secret host, ports, and Python path from the diagnostic mirror at
 `%CODEX_HOME%\config\codexpro-devspace-bootstrap.json`, retries while the
 Tailscale service is still settling after login, and writes monthly logs under
 `%CODEX_HOME%\logs\codexpro-devspace`. Register that wrapper as a hidden
-per-user login command; do not place the Owner credential in its config.
+per-user login command; do not place the Owner credential in its config. The
+mirror is synchronized during setup, but it is never the runtime authority for
+`allowedRoots`.
 
 It also reports the required managed tool mode (`full`) and any persisted
 `toolMode`. A configured non-`full` value is advisory failure because a

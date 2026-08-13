@@ -1,5 +1,23 @@
 # 기술 변경 기록
 
+## 1.12.1 - Oracle 사전제출 CDP 복구
+
+- Oracle 0.17.1의 정확한 CDP 연결 해제 오류와 외부 session ledger의
+  `promptSubmitted=false`가 함께 증명될 때만 qualified Pro run을
+  `pre_submit / not_executed`로 안전 정산합니다.
+- 출력, 대화 URL, 제출 플래그, 모델·프로필·버전 또는 오류 형태가
+  조금이라도 모순되면 기존 `submitted_unknown` 잠금을 유지합니다.
+- exact-slug recovery가 이 증거를 감지하면 Oracle을 다시 호출하지 않고
+  프로젝트 소유권을 해제하는 standalone Pro 회귀 테스트를 추가했습니다.
+- 기존 DevSpace 설정은 백업 후 전체 `allowedRoots`를 원자적으로 병합하며,
+  bootstrap JSON은 진단용 mirror로만 동기화합니다.
+- Windows 로그인 복구 wrapper는 매 실행마다 live
+  `%USERPROFILE%\.devspace\config.json`에서 root를 읽으므로, 재부팅 시 오래된
+  bootstrap 배열이 새 프로젝트를 제거하지 않습니다.
+- Unicode root가 있는 설정은 ASCII-safe JSON escape로 원자 저장해, BOM 없는
+  UTF-8을 ANSI로 읽는 Windows PowerShell 5.1 기본 `Get-Content`에서도 손상
+  없이 파싱됩니다.
+
 ## 1.12.0 - 브랜드와 릴리스 체계
 
 - 포털·코드 괄호·연결 노드를 결합한 프로젝트 로고, README 배너, GitHub

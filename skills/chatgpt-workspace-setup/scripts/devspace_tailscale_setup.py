@@ -12,6 +12,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import time
@@ -227,7 +228,13 @@ def apply_setup(
     slot = funnel_status(config, runner=runner, allow_absent=True)
     if slot.get("mapping") == "conflict":
         raise SetupError("TAILSCALE_FUNNEL_PORT_IN_USE")
-    run_checked(command_argv(["npx", "--yes", DEVSPACE_PACKAGE, "init"], platform_name=platform_name), runner=runner)
+    if config_path is not None and config_path.exists():
+        persist_existing_setup_config(config_path, config)
+    else:
+        run_checked(
+            command_argv(["npx", "--yes", DEVSPACE_PACKAGE, "init"], platform_name=platform_name),
+            runner=runner,
+        )
     if config_path is not None:
         persisted = persisted_allowed_roots(config_path)
         missing = [
@@ -459,6 +466,70 @@ def persisted_allowed_roots(config_path: Path) -> tuple[Path, ...]:
     return tuple(roots)
 
 
+def persist_existing_setup_config(config_path: Path, config: SetupConfig) -> Path:
+    """Atomically update non-secret DevSpace config while preserving auth state."""
+    if config_path.is_symlink():
+        raise SetupError("DEVSPACE_CONFIG_SYMLINK_UNSUPPORTED")
+    payload = persisted_config(config_path)
+    backup_path = config_path.with_name(f"{config_path.name}.bak-{time.time_ns()}")
+    shutil.copy2(config_path, backup_path)
+    payload.update(
+        {
+            "host": payload.get("host") or "127.0.0.1",
+            "port": config.local_port,
+            "allowedRoots": [str(root) for root in config.roots],
+            "publicBaseUrl": f"https://{config.hostname}",
+        }
+    )
+    temporary = config_path.with_name(f".{config_path.name}.tmp-{time.time_ns()}")
+    try:
+        temporary.write_text(
+            # Keep persisted configuration ASCII-only. Windows PowerShell 5.1
+            # decodes BOM-less Get-Content input with the active ANSI code page;
+            # JSON escapes preserve Unicode roots under both that reader and UTF-8.
+            json.dumps(payload, ensure_ascii=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        # Parse the staged bytes strictly before replacing the live file.
+        persisted_config(temporary)
+        os.replace(temporary, config_path)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return backup_path
+
+
+def synchronize_existing_bootstrap_config(bootstrap_path: Path, config: SetupConfig) -> Path | None:
+    """Keep the diagnostic bootstrap mirror aligned without making it runtime authority."""
+    if not bootstrap_path.exists():
+        return None
+    if bootstrap_path.is_symlink():
+        raise SetupError("DEVSPACE_BOOTSTRAP_CONFIG_SYMLINK_UNSUPPORTED")
+    payload = persisted_config(bootstrap_path)
+    if payload.get("schema") != "codexpro.devspace-bootstrap/v1":
+        raise SetupError("DEVSPACE_BOOTSTRAP_CONFIG_SCHEMA_UNSUPPORTED")
+    backup_path = bootstrap_path.with_name(f"{bootstrap_path.name}.bak-{time.time_ns()}")
+    shutil.copy2(bootstrap_path, backup_path)
+    payload.update(
+        {
+            "roots": [str(root) for root in config.roots],
+            "hostname": config.hostname,
+            "local_port": config.local_port,
+            "public_port": config.public_port,
+        }
+    )
+    temporary = bootstrap_path.with_name(f".{bootstrap_path.name}.tmp-{time.time_ns()}")
+    try:
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        persisted_config(temporary)
+        os.replace(temporary, bootstrap_path)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return backup_path
+
+
 def persisted_tool_mode(config_path: Path) -> str | None:
     payload = persisted_config(config_path)
     value = payload.get("toolMode") if "toolMode" in payload else payload.get("tool_mode")
@@ -686,6 +757,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(json.dumps(plan, ensure_ascii=False, indent=2))
             if args.apply:
                 apply_setup(config, config_path=config_path)
+                synchronize_existing_bootstrap_config(
+                    Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))
+                    / "config"
+                    / "codexpro-devspace-bootstrap.json",
+                    config,
+                )
             return 0
         if args.command == "ensure":
             print(json.dumps(ensure_public_route(config), ensure_ascii=False, indent=2))
