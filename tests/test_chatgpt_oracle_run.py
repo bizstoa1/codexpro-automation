@@ -293,6 +293,19 @@ def cdp_disconnect_pre_submit_popen(session_root: Path, *, variation: str | None
     return popen
 
 
+def isolated_default_oracle_profile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> Path:
+    """Create the exact default copied profile without relying on the CI host."""
+    home = tmp_path.parent / f"{tmp_path.name}-oracle-home"
+    profile = home / ".oracle" / "browser-profile"
+    profile.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    return profile
+
+
 def duplicate_prompt_popen(command, **kwargs):
     kwargs["stdout"].write(
         b'oracle 0.17.1\nA session with the same prompt is already running '
@@ -1511,6 +1524,7 @@ def test_cdp_disconnect_with_exact_unsent_oracle_ledger_is_pre_submit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    isolated_default_oracle_profile(tmp_path, monkeypatch)
     runner = load_runner()
     session_root = tmp_path / "oracle-sessions"
     monkeypatch.setenv("ORACLE_SESSION_ROOT", str(session_root))
@@ -1520,6 +1534,7 @@ def test_cdp_disconnect_with_exact_unsent_oracle_ledger_is_pre_submit(
         pro_readonly_manifest(tmp_path, run_id="c" * 32),
         run_factory=version_0171_runner,
         popen_factory=cdp_disconnect_pre_submit_popen(session_root),
+        platform_name="nt",
     )
     state = runner.STATE.load_state(Path(result["run_dir"]) / "state.json")
 
@@ -1542,6 +1557,7 @@ def test_cdp_disconnect_keeps_lock_when_unsent_proof_is_incomplete(
     monkeypatch: pytest.MonkeyPatch,
     variation: str,
 ) -> None:
+    isolated_default_oracle_profile(tmp_path, monkeypatch)
     runner = load_runner()
     session_root = tmp_path / "oracle-sessions"
     monkeypatch.setenv("ORACLE_SESSION_ROOT", str(session_root))
@@ -1551,6 +1567,7 @@ def test_cdp_disconnect_keeps_lock_when_unsent_proof_is_incomplete(
         pro_readonly_manifest(tmp_path, run_id=(variation[0] * 32)),
         run_factory=version_0171_runner,
         popen_factory=cdp_disconnect_pre_submit_popen(session_root, variation=variation),
+        platform_name="nt",
     )
     state = runner.STATE.load_state(Path(result["run_dir"]) / "state.json")
 
@@ -1564,6 +1581,7 @@ def test_recovery_repairs_legacy_unsent_cdp_disconnect_without_oracle_call(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    isolated_default_oracle_profile(tmp_path, monkeypatch)
     runner = load_runner()
     session_root = tmp_path / "oracle-sessions"
     monkeypatch.setenv("ORACLE_SESSION_ROOT", str(session_root))
@@ -1572,6 +1590,7 @@ def test_recovery_repairs_legacy_unsent_cdp_disconnect_without_oracle_call(
         pro_readonly_manifest(tmp_path, run_id="e" * 32),
         run_factory=version_0171_runner,
         popen_factory=cdp_disconnect_pre_submit_popen(session_root),
+        platform_name="nt",
     )
     run_dir = Path(initial["run_dir"])
     state_path = run_dir / "state.json"
