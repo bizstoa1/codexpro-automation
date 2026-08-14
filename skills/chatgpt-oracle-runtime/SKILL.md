@@ -119,6 +119,12 @@ direct Web Multi child, or standalone qualified-Pro identity and immutable
 mission evidence and does not launch Oracle. Comprehensive mode may consume
 only one replacement for its binding; standalone qualified Pro permits only
 the separately authorized single fresh retry with identical mission bytes.
+For `pro-attachment-only`, the supported Oracle 0.17.1 attachment-upload
+timeout additionally requires an exact immutable attachment manifest (path,
+size, and SHA-256 for every file), the upload-timeout marker, matching
+stdout/transcript, no stderr, and exact no-live-tab/no-saved-URL recovery hashes.
+It remains ineligible without the same explicit user token or if any artifact
+has changed.
 
 Direct same-project runs hold one cross-process mutex for the entire Oracle
 process lifetime. A Multi parent owns that project mutex while authorized

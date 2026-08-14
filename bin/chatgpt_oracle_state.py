@@ -98,6 +98,9 @@ ORACLE_NO_SESSION_RE = re.compile(
 ORACLE_PROMPT_NOT_OBSERVED_MARKER = (
     "Prompt did not appear in conversation before timeout (send may have failed)"
 )
+ORACLE_ATTACHMENTS_UPLOAD_TIMEOUT_MARKER = (
+    "Attachments did not finish uploading before timeout."
+)
 ORACLE_NO_LIVE_TAB_MARKER = "No live ChatGPT tab matched session"
 ORACLE_NO_RECOVERABLE_URL_MARKER = (
     "session metadata has no recoverable ChatGPT conversation URL"
@@ -1307,6 +1310,227 @@ def _settlement_logs_have_conversation_url(state_path: Path) -> bool:
     return False
 
 
+def _standalone_pro_attachment_no_submission_evidence(
+    state_path: Path,
+) -> dict[str, Any] | None:
+    """Return bounded user-adjudication evidence for attachment upload timeout.
+
+    Oracle 0.17.1 reports this exact error before it can submit the prompt, but
+    the local observer alone is not allowed to release ownership.  This helper
+    therefore only establishes eligibility: the exact user confirmation token
+    remains mandatory, and every run, mission, attachment, log, recovery, and
+    locator binding is revalidated whenever the settlement is consumed.
+    """
+    state = load_state(state_path)
+    run_dir = state_path.parent
+    run_id = str(state.get("run_id") or "")
+    profile = state.get("profile") if isinstance(state.get("profile"), dict) else {}
+    if (
+        state.get("schema") != "codex.chatgpt.oracle-run-state/v1"
+        or str(state.get("session_authority") or "") not in {"submitted_unknown", "pre_submit"}
+        or state.get("status") != "attention_required"
+        or state.get("transport_status") not in {"failed", "not_submitted_user_confirmed"}
+        or state.get("task_outcome") != "pending"
+        or state.get("terminal_harvested") is True
+        or _state_has_conversation_url(state)
+        or int(state.get("exit_code") or 0) == 0
+        or str(state.get("mode") or "") != "browser"
+        or not is_attachment_transport(str(state.get("transport") or ""))
+        or state.get("app_name") is not None
+        or state.get("parallel_parent_id") is not None
+        or state.get("requested_run_id") not in (None, run_id)
+        or state.get("web_multi_child_provenance") is not None
+        or run_dir.name != run_id
+        or str(profile.get("model") or "") != "gpt-5.6-sol"
+        or str(profile.get("model_strategy") or "") != "select"
+        or str(profile.get("thinking_time") or "") != "heavy"
+    ):
+        return None
+
+    oracle = state.get("oracle") if isinstance(state.get("oracle"), dict) else {}
+    version = str(oracle.get("resolved_version") or "").removeprefix("oracle ").strip()
+    locator = str(oracle.get("session_locator") or "").strip()
+    slug = str(oracle.get("slug") or "").strip()
+    project_words = (re.findall(r"[a-z0-9]+", Path(str(state.get("project_root") or "")).name.casefold()) or ["project"])[:3]
+    expected_locator = f"oracle-{'-'.join(word[:10] for word in project_words)}-{run_id.rsplit('-', 1)[-1][:10]}"
+    if (
+        version not in ORACLE_STANDALONE_PRO_NO_SUBMISSION_VERSIONS
+        or not locator
+        or locator != slug
+        or locator != expected_locator
+    ):
+        return None
+
+    artifacts = state.get("artifacts") if isinstance(state.get("artifacts"), dict) else {}
+    output = Path(str(artifacts.get("output") or ""))
+    if output.resolve() != (run_dir / "output.md").resolve() or output.is_symlink() or output_is_nonempty(output):
+        return None
+    records = {name: _artifact_bytes(state, name) for name in ("stdout", "stderr", "transcript")}
+    if any(record is None for record in records.values()):
+        return None
+    stdout_path, stdout_bytes = records["stdout"]  # type: ignore[misc]
+    stderr_path, stderr_bytes = records["stderr"]  # type: ignore[misc]
+    transcript_path, transcript_bytes = records["transcript"]  # type: ignore[misc]
+    if (
+        stdout_path.resolve() != (run_dir / "stdout.log").resolve()
+        or stderr_path.resolve() != (run_dir / "stderr.log").resolve()
+        or transcript_path.resolve() != (run_dir / "transcript.md").resolve()
+        or any(path.is_symlink() for path in (stdout_path, stderr_path, transcript_path))
+        or stderr_bytes
+        or transcript_bytes != stdout_bytes
+    ):
+        return None
+    try:
+        stdout_text = stdout_bytes.decode("utf-8", errors="strict")
+    except UnicodeDecodeError:
+        return None
+    expected_marker_lines = {
+        f"ERROR: {ORACLE_ATTACHMENTS_UPLOAD_TIMEOUT_MARKER}",
+        f"User error (browser-automation): {ORACLE_ATTACHMENTS_UPLOAD_TIMEOUT_MARKER}",
+    }
+    observed_marker_lines = {
+        line.strip()
+        for line in stdout_text.splitlines()
+        if ORACLE_ATTACHMENTS_UPLOAD_TIMEOUT_MARKER in line
+    }
+    if (
+        observed_marker_lines != expected_marker_lines
+        or stdout_text.count(ORACLE_ATTACHMENTS_UPLOAD_TIMEOUT_MARKER) != 2
+        or ORACLE_PROMPT_NOT_OBSERVED_MARKER in stdout_text
+        or f"Session: {locator}" not in stdout_text
+        or CHATGPT_CONVERSATION_URL_RE.search(stdout_text)
+    ):
+        return None
+
+    mission = state.get("mission") if isinstance(state.get("mission"), dict) else {}
+    source_path = Path(str(mission.get("path") or ""))
+    transport_path = Path(str(mission.get("transport_path") or ""))
+    try:
+        project_root = Path(str(state.get("project_root") or "")).resolve(strict=True)
+        source_path = source_path.resolve(strict=True)
+        transport_path = transport_path.resolve(strict=True)
+        if (
+            not project_root.is_dir()
+            or not source_path.is_file()
+            or source_path.is_symlink()
+            or transport_path.is_symlink()
+            or transport_path != (run_dir / "mission.md").resolve()
+        ):
+            return None
+        source_bytes = source_path.read_bytes()
+        transport_bytes = transport_path.read_bytes()
+    except OSError:
+        return None
+    mission_sha256 = str(mission.get("sha256") or "")
+    source_sha256 = hashlib.sha256(source_bytes).hexdigest()
+    transport_sha256 = hashlib.sha256(transport_bytes).hexdigest()
+    if (
+        not re.fullmatch(r"[a-f0-9]{64}", mission_sha256)
+        or source_sha256 != mission_sha256
+        or transport_sha256 != mission_sha256
+        or source_bytes != transport_bytes
+    ):
+        return None
+
+    attachments = state.get("attachments")
+    if not isinstance(attachments, list) or not attachments:
+        return None
+    attachment_evidence: list[dict[str, Any]] = []
+    seen_paths: set[str] = set()
+    mission_attachment_found = False
+    for item in attachments:
+        if not isinstance(item, dict):
+            return None
+        recorded_path = Path(str(item.get("path") or ""))
+        recorded_sha256 = str(item.get("sha256") or "")
+        try:
+            recorded_size = int(item.get("size_bytes"))
+            attachment_path = recorded_path.resolve(strict=True)
+            if (
+                not attachment_path.is_file()
+                or attachment_path.is_symlink()
+                or not re.fullmatch(r"[a-f0-9]{64}", recorded_sha256)
+                or recorded_size < 0
+            ):
+                return None
+            attachment_bytes = attachment_path.read_bytes()
+        except (OSError, TypeError, ValueError):
+            return None
+        normalized_path = os.path.normcase(str(attachment_path))
+        if normalized_path in seen_paths:
+            return None
+        seen_paths.add(normalized_path)
+        actual_sha256 = hashlib.sha256(attachment_bytes).hexdigest()
+        if actual_sha256 != recorded_sha256 or len(attachment_bytes) != recorded_size:
+            return None
+        if attachment_path == source_path:
+            mission_attachment_found = (
+                recorded_sha256 == mission_sha256 and recorded_size == len(source_bytes)
+            )
+        attachment_evidence.append({
+            "path": str(attachment_path),
+            "sha256": actual_sha256,
+            "size_bytes": recorded_size,
+        })
+    if not mission_attachment_found:
+        return None
+    attachment_manifest_sha256 = hashlib.sha256(
+        json.dumps(attachment_evidence, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+    recovery_records: list[dict[str, str]] = []
+    for recovery_stdout in sorted(run_dir.glob("recovery-*-stdout.log"), key=lambda item: item.name):
+        recovery_stderr = recovery_stdout.with_name(recovery_stdout.name.replace("-stdout.log", "-stderr.log"))
+        try:
+            if recovery_stdout.is_symlink() or recovery_stderr.is_symlink():
+                return None
+            recovery_stdout_bytes = recovery_stdout.read_bytes()
+            recovery_stderr_bytes = recovery_stderr.read_bytes()
+            recovery_text = b"\n".join((recovery_stdout_bytes, recovery_stderr_bytes)).decode("utf-8", errors="strict")
+        except (OSError, UnicodeDecodeError):
+            return None
+        if (
+            CHATGPT_CONVERSATION_URL_RE.search(recovery_text)
+            or ORACLE_RECOVERY_STATE_RE.search(recovery_text)
+            or ORACLE_NO_LIVE_TAB_MARKER not in recovery_text
+            or f'"{locator}"' not in recovery_text
+            or ORACLE_NO_RECOVERABLE_URL_MARKER not in recovery_text
+        ):
+            return None
+        recovery_records.append({
+            "stdout_name": recovery_stdout.name,
+            "stdout_sha256": hashlib.sha256(recovery_stdout_bytes).hexdigest(),
+            "stderr_name": recovery_stderr.name,
+            "stderr_sha256": hashlib.sha256(recovery_stderr_bytes).hexdigest(),
+        })
+    if not recovery_records:
+        return None
+    return {
+        "settlement_eligibility": "oracle-standalone-pro-attachment/v1",
+        "project_root": str(project_root),
+        "run_id": run_id,
+        "transport": "pro-attachment-only",
+        "source_mission_path": str(source_path),
+        "source_mission_sha256": source_sha256,
+        "transport_mission_path": str(transport_path),
+        "transport_mission_sha256": transport_sha256,
+        "mission_sha256": mission_sha256,
+        "attachment_evidence": attachment_evidence,
+        "attachment_manifest_sha256": attachment_manifest_sha256,
+        "oracle_locator": locator,
+        "oracle_version": version,
+        "oracle_command": list(oracle.get("command") or []),
+        "pre_submit_marker": ORACLE_ATTACHMENTS_UPLOAD_TIMEOUT_MARKER,
+        "stdout_sha256": hashlib.sha256(stdout_bytes).hexdigest(),
+        "stderr_sha256": hashlib.sha256(stderr_bytes).hexdigest(),
+        "recovery_evidence": recovery_records,
+        "output_absent": True,
+        "conversation_url_absent": True,
+        "_source_mission_path": str(source_path),
+        "_transport_mission_path": str(transport_path),
+    }
+
+
 def _standalone_pro_no_submission_evidence(state_path: Path) -> dict[str, Any] | None:
     """Return bounded evidence for user adjudication of one qualified Pro run."""
     state = load_state(state_path)
@@ -1688,6 +1912,9 @@ def _user_confirmable_no_submission_evidence(state_path: Path) -> dict[str, Any]
     )
     if direct_devspace is not None:
         return direct_devspace
+    standalone_attachment = _standalone_pro_attachment_no_submission_evidence(state_path)
+    if standalone_attachment is not None:
+        return standalone_attachment
     standalone_pro = _standalone_pro_no_submission_evidence(state_path)
     if standalone_pro is not None:
         return standalone_pro
@@ -1744,7 +1971,14 @@ def proven_user_confirmed_no_submission(state_path: Path) -> dict[str, Any] | No
     ):
         if recorded.get(key) != current.get(key):
             return None
-    if current.get("settlement_eligibility") == "oracle-standalone-qualified-pro/v1":
+    if current.get("settlement_eligibility") == "oracle-standalone-pro-attachment/v1":
+        required = (
+            "settlement_eligibility", "transport", "source_mission_path",
+            "source_mission_sha256", "transport_mission_path", "transport_mission_sha256",
+            "attachment_evidence", "attachment_manifest_sha256", "oracle_version",
+            "oracle_command", "pre_submit_marker",
+        )
+    elif current.get("settlement_eligibility") == "oracle-standalone-qualified-pro/v1":
         required = (
             "settlement_eligibility", "transport", "source_mission_path",
             "source_mission_sha256", "transport_mission_path", "transport_mission_sha256",

@@ -182,6 +182,19 @@ def prompt_not_observed_popen(command, **kwargs):
     return Process(1, [])
 
 
+def attachment_upload_timeout_popen(command, **kwargs):
+    slug = command[command.index("--slug") + 1]
+    kwargs["stdout"].write(
+        (
+            f"Session: {slug}\n"
+            "ERROR: Attachments did not finish uploading before timeout.\n"
+            "User error (browser-automation): Attachments did not finish uploading before timeout.\n"
+        ).encode()
+    )
+    kwargs["stdout"].flush()
+    return Process(1, [])
+
+
 def recovery_binding_unavailable_popen(command, **kwargs):
     slug = command[command.index("session") + 1]
     kwargs["stdout"].write(
@@ -1985,6 +1998,123 @@ def test_standalone_qualified_pro_prompt_timeout_can_be_user_settled_and_unlocks
     assert proof["transport"] == "pro-devspace"
     assert proof["oracle_version"] == "0.17.1"
     assert proof["source_mission_sha256"] == proof["transport_mission_sha256"]
+
+
+def test_standalone_pro_attachment_upload_timeout_is_hash_bound_and_user_settled(tmp_path: Path) -> None:
+    runner = load_runner()
+    initial = execute_run(
+        runner,
+        pro_manifest(tmp_path, run_id="a" * 32),
+        run_factory=version_0171_runner,
+        popen_factory=attachment_upload_timeout_popen,
+    )
+    run_dir = Path(initial["run_dir"])
+    recovered = runner.recover_run(
+        run_dir,
+        action="harvest",
+        oracle_command=["oracle"],
+        popen_factory=recovery_binding_unavailable_popen,
+    )
+
+    assert recovered["status"] == "recovery_binding_unavailable"
+    with pytest.raises(runner.STATE.OracleStateError) as exc:
+        runner.settle_user_confirmed_no_submission(
+            run_dir,
+            confirmation="not-the-user-token",
+            reason="user inspected the exact ChatGPT history",
+        )
+    assert exc.value.code == "NO_SUBMISSION_CONFIRMATION_REQUIRED"
+
+    settled = runner.settle_user_confirmed_no_submission(
+        run_dir,
+        confirmation=runner.STATE.USER_CONFIRMED_NO_SUBMISSION,
+        reason="user inspected the exact ChatGPT history and confirmed no prompt or response",
+    )
+    proof = runner.STATE.proven_user_confirmed_no_submission(run_dir / "state.json")
+
+    assert settled["safe_for_fresh_run"] is True
+    assert settled["unresolved_owners"] == []
+    assert settled["result"]["session_authority"] == "pre_submit"
+    assert proof is not None
+    assert proof["settlement_eligibility"] == "oracle-standalone-pro-attachment/v1"
+    assert proof["transport"] == "pro-attachment-only"
+    assert proof["oracle_version"] == "0.17.1"
+    assert proof["pre_submit_marker"] == "Attachments did not finish uploading before timeout."
+    assert proof["source_mission_sha256"] == proof["transport_mission_sha256"]
+    assert len(proof["attachment_evidence"]) == 2
+    assert len(proof["attachment_manifest_sha256"]) == 64
+
+
+@pytest.mark.parametrize(
+    "contradiction",
+    (
+        "output", "conversation_url", "version", "locator", "mission_transport",
+        "attachment_bytes", "attachment_hash", "attachment_size", "recovery_state",
+        "stderr", "marker",
+    ),
+)
+def test_standalone_pro_attachment_upload_timeout_keeps_lock_on_any_contradiction(
+    tmp_path: Path,
+    contradiction: str,
+) -> None:
+    runner = load_runner()
+    initial = execute_run(
+        runner,
+        pro_manifest(tmp_path, run_id="d" * 32),
+        run_factory=version_0171_runner,
+        popen_factory=attachment_upload_timeout_popen,
+    )
+    run_dir = Path(initial["run_dir"])
+    runner.recover_run(
+        run_dir,
+        action="harvest",
+        oracle_command=["oracle"],
+        popen_factory=recovery_binding_unavailable_popen,
+    )
+    state_path = run_dir / "state.json"
+    state = runner.STATE.load_state(state_path)
+    if contradiction == "output":
+        (run_dir / "output.md").write_text("unexpected durable answer", encoding="utf-8")
+    elif contradiction == "conversation_url":
+        state["oracle"]["conversation_url"] = "https://chatgpt.com/c/submitted"
+        runner.STATE.write_json_atomic(state_path, state)
+    elif contradiction == "version":
+        state["oracle"]["resolved_version"] = "0.17.2"
+        runner.STATE.write_json_atomic(state_path, state)
+    elif contradiction == "locator":
+        state["oracle"]["session_locator"] = "oracle-other-deadbeef00"
+        runner.STATE.write_json_atomic(state_path, state)
+    elif contradiction == "mission_transport":
+        (run_dir / "mission.md").write_text("changed transport mission", encoding="utf-8")
+    elif contradiction == "attachment_bytes":
+        Path(state["attachments"][1]["path"]).write_bytes(b"changed attachment")
+    elif contradiction == "attachment_hash":
+        state["attachments"][1]["sha256"] = "0" * 64
+        runner.STATE.write_json_atomic(state_path, state)
+    elif contradiction == "attachment_size":
+        state["attachments"][1]["size_bytes"] += 1
+        runner.STATE.write_json_atomic(state_path, state)
+    elif contradiction == "recovery_state":
+        (run_dir / "recovery-harvest-stdout.log").write_text("State: running\n", encoding="utf-8")
+    elif contradiction == "stderr":
+        (run_dir / "stderr.log").write_text("unexpected browser error\n", encoding="utf-8")
+    elif contradiction == "marker":
+        changed = (run_dir / "stdout.log").read_text(encoding="utf-8").replace(
+            "Attachments did not finish uploading before timeout.",
+            "Attachments may still be uploading.",
+        )
+        (run_dir / "stdout.log").write_text(changed, encoding="utf-8")
+        (run_dir / "transcript.md").write_text(changed, encoding="utf-8")
+
+    with pytest.raises(runner.STATE.OracleStateError) as exc:
+        runner.settle_user_confirmed_no_submission(
+            run_dir,
+            confirmation=runner.STATE.USER_CONFIRMED_NO_SUBMISSION,
+            reason="user inspected the exact ChatGPT history and confirmed no prompt or response",
+        )
+
+    assert exc.value.code == "NO_SUBMISSION_EVIDENCE_INCOMPLETE"
+    assert runner.STATE.load_state(state_path)["session_authority"] == "submitted_unknown"
 
 
 @pytest.mark.parametrize(

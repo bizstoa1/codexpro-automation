@@ -1,5 +1,17 @@
 # 기술 변경 기록
 
+## 1.14.1 - Pro 첨부 무전송 정산
+
+- Oracle 0.17.1이 프롬프트 전송 전에 정확한 첨부 업로드 타임아웃을
+  보고한 경우에만 사용할 수 있는 fail-closed 사용자 확인 정산 경로를
+  추가했습니다.
+- 정산 영수증은 run/project, 원본·운송 mission 해시, 모든 첨부파일의
+  경로·크기·SHA-256, Oracle 버전·exact locator, 업로드 타임아웃 marker,
+  stdout/transcript, recovery 바이트와 출력·대화 URL 부재를 결속합니다.
+- 사용자 확인 token 누락, 첨부 변경, 출력·URL·live recovery, 미지원 Oracle
+  버전, locator 불일치 또는 다른 오류가 하나라도 있으면 잠금을 유지하고
+  replacement 제출을 금지합니다.
+
 ## 1.14.0 - 명시적 Pro 읽기·쓰기 정책
 
 - 일반 웹 작업은 `gpt-5.6`의 최고 지원 비-Pro 추론 강도 `extra-high`를

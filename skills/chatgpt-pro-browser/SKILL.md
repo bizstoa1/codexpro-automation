@@ -128,5 +128,14 @@ run. Only then may an explicitly authorized single retry reuse the identical
 mission bytes; no output, URL, mismatched hash, conflicting recovery state, or
 ordinary trailing browser error may be treated as proof.
 
+The same user-confirmed, fail-closed settlement is available to an explicit
+`pro-attachment` run only when Oracle 0.17.1 reports the exact attachment-upload
+timeout before prompt submission. It binds every attachment path, size, and
+SHA-256; the source and transport mission copies; Oracle locator/version; exact
+stdout/transcript and recovery bytes; and the absence of output and a
+conversation URL. The user confirmation token is still mandatory. Any changed
+attachment, live recovery state, URL, output, or unrecognized error keeps the
+project locked.
+
 For an already persisted agbrowse Pro run only, former recovery commands remain
 available. They must never create a new run.
