@@ -144,7 +144,7 @@ def test_install_inventory_contains_new_active_runtime_and_keeps_legacy_recovery
     assert manifest["routing"] == {
         "new_work_engine": "oracle",
         "regular_workspace_transport": "devspace",
-        "pro_transport": "oracle-devspace-readonly",
+        "pro_transport": "oracle-devspace-readwrite-explicit",
         "pro_attachment_transport": "oracle-attachment-only-explicit",
         "agbrowse": "persisted-run-recovery-only",
         "codexpro": "persisted-run-recovery-only",

@@ -166,8 +166,11 @@ python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py owner-
 
 ## 5. 재부팅 복구와 endpoint 확인
 
-Tailscale 경로는 로그인 시작 wrapper가 현재 `.devspace/config.json`을 매번 읽어
-서비스를 복구합니다. root 목록을 wrapper에 별도로 하드코딩하지 않습니다.
+Tailscale 경로의 `setup --apply`는 로그인 시 시작되는 숨김 watchdog을 등록하고
+즉시 실행합니다. watchdog은 현재 `.devspace/config.json`을 5분마다 다시 읽고,
+DevSpace가 로그인 후 예기치 않게 종료돼도 서비스와 정확한 Funnel을 복구합니다.
+root 목록을 wrapper나 시작 명령에 별도로 하드코딩하지 않습니다. 로그인 때 한 번만
+실행하고 끝나는 시작 명령은 지속 복구로 인정하지 않습니다.
 
 ```powershell
 python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py doctor `

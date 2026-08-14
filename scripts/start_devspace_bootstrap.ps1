@@ -2,7 +2,17 @@
 param(
   [string]$CodexHome = $(if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $env:USERPROFILE '.codex' }),
   [string]$ConfigPath = '',
-  [string]$DevSpaceConfigPath = ''
+  [string]$DevSpaceConfigPath = '',
+  [ValidateSet('Once', 'Watch')]
+  [string]$Mode = 'Once',
+  [ValidateRange(0, 86400)]
+  [int]$WatchIntervalSeconds = 300,
+  [ValidateRange(0, 86400)]
+  [int]$FailureRetrySeconds = 60,
+  [ValidateRange(0, 1000000)]
+  [int]$MaxCycles = 0,
+  [ValidatePattern('^[A-Za-z0-9_.-]{1,120}$')]
+  [string]$MutexName = 'CodexProDevSpaceBootstrap'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -19,12 +29,12 @@ function Write-BootstrapLog([string]$Message) {
   Add-Content -LiteralPath $LogPath -Encoding UTF8 -Value ("[{0}] {1}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), $Message)
 }
 
-$Mutex = New-Object Threading.Mutex($false, 'Local\CodexProDevSpaceBootstrap')
+$Mutex = New-Object Threading.Mutex($false, ("Local\{0}" -f $MutexName))
 $Acquired = $false
 try {
   $Acquired = $Mutex.WaitOne(0)
   if (!$Acquired) { exit 0 }
-  Write-BootstrapLog 'Bootstrap started.'
+  Write-BootstrapLog ("Bootstrap started in {0} mode." -f $Mode)
   if (!(Test-Path -LiteralPath $ConfigPath)) { throw "Bootstrap config missing: $ConfigPath" }
   $Config = Get-Content -LiteralPath $ConfigPath -Raw -Encoding UTF8 | ConvertFrom-Json
   if ([string]$Config.schema -ne 'codexpro.devspace-bootstrap/v1') { throw 'Unsupported bootstrap config schema.' }
@@ -56,23 +66,44 @@ try {
   if ($Config.public_port) { $Arguments += @('--public-port', [string]$Config.public_port) }
   Write-BootstrapLog ("Loaded {0} allowed roots from {1}." -f $AllowedRoots.Count, $DevSpaceConfigPath)
 
-  for ($Attempt = 1; $Attempt -le 6; $Attempt++) {
-    $PreviousPreference = $ErrorActionPreference
-    try {
-      $ErrorActionPreference = 'Continue'
-      & $Python @Arguments *> $null
-      $ExitCode = $LASTEXITCODE
-    } finally {
-      $ErrorActionPreference = $PreviousPreference
+  $Cycle = 0
+  $PreviouslyHealthy = $false
+  while ($true) {
+    $Cycle++
+    $Healthy = $false
+    for ($Attempt = 1; $Attempt -le 6; $Attempt++) {
+      $PreviousPreference = $ErrorActionPreference
+      try {
+        $ErrorActionPreference = 'Continue'
+        & $Python @Arguments *> $null
+        $ExitCode = $LASTEXITCODE
+      } finally {
+        $ErrorActionPreference = $PreviousPreference
+      }
+      if ($ExitCode -eq 0) {
+        $Healthy = $true
+        break
+      }
+      Write-BootstrapLog "Recovery cycle $Cycle attempt $Attempt failed with exit code $ExitCode."
+      if ($Attempt -lt 6) { Start-Sleep -Seconds 15 }
     }
-    if ($ExitCode -eq 0) {
-      Write-BootstrapLog "DevSpace and Funnel are healthy (attempt $Attempt)."
-      exit 0
+
+    if ($Healthy) {
+      if (!$PreviouslyHealthy) {
+        Write-BootstrapLog "DevSpace and Funnel are healthy (cycle $Cycle, attempt $Attempt)."
+      }
+      $PreviouslyHealthy = $true
+      if ($Mode -eq 'Once' -or ($MaxCycles -gt 0 -and $Cycle -ge $MaxCycles)) { exit 0 }
+      Start-Sleep -Seconds $WatchIntervalSeconds
+      continue
     }
-    Write-BootstrapLog "Recovery attempt $Attempt failed with exit code $ExitCode."
-    if ($Attempt -lt 6) { Start-Sleep -Seconds 15 }
+
+    $PreviouslyHealthy = $false
+    if ($Mode -eq 'Once') { throw 'DevSpace recovery retries exhausted.' }
+    Write-BootstrapLog ("Recovery cycle {0} exhausted; watchdog remains active." -f $Cycle)
+    if ($MaxCycles -gt 0 -and $Cycle -ge $MaxCycles) { exit 1 }
+    Start-Sleep -Seconds $FailureRetrySeconds
   }
-  throw 'DevSpace recovery retries exhausted.'
 } catch {
   Write-BootstrapLog ("Bootstrap failed: {0}" -f $_.Exception.Message)
   exit 1

@@ -54,6 +54,11 @@ def test_setup_plan_has_no_secrets_and_is_explicit_only(tmp_path: Path, monkeypa
         "DEVSPACE_TOOL_MODE": "full",
         "DEVSPACE_OAUTH_SCOPES": "devspace,offline_access",
     }
+    assert plan["startup_watchdog"] == {
+        "windows_mode": "per-user login watchdog",
+        "health_interval_seconds": 300,
+        "runtime_root_source": str(Path.home() / ".devspace" / "config.json"),
+    }
     assert plan["devspace_init"][1:3] == [
         "-lc",
         "exec npx --yes @waishnav/devspace@1.0.4 init",
@@ -537,6 +542,46 @@ def test_setup_applies_hash_validated_devspace_compat_before_service_start(
     ]
     assert launched[0][1]["DEVSPACE_TOOL_MODE"] == "full"
     assert launched[0][1]["DEVSPACE_OAUTH_SCOPES"] == "devspace,offline_access"
+
+
+def test_windows_startup_watchdog_registration_is_hidden_and_deterministic(tmp_path: Path) -> None:
+    module = load_module()
+    script = tmp_path / "scripts" / "start_devspace_bootstrap.ps1"
+    script.parent.mkdir(parents=True)
+    script.write_text("exit 0\n", encoding="utf-8")
+    runs: list[tuple[list[str], dict]] = []
+    launches: list[tuple[list[str], dict]] = []
+
+    def runner(argv, **kwargs):
+        runs.append((list(argv), kwargs))
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    def popen(argv, **kwargs):
+        launches.append((list(argv), kwargs))
+        return SimpleNamespace(pid=123)
+
+    result = module.register_windows_bootstrap_watchdog(
+        codex_home=tmp_path,
+        runner=runner,
+        popen_factory=popen,
+        platform_name="nt",
+    )
+
+    assert result["mode"] == "per-user-login-watchdog"
+    assert result["watch_interval_seconds"] == 300
+    assert runs[0][0][:3] == [
+        "reg.exe",
+        "ADD",
+        r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
+    ]
+    assert module.WINDOWS_BOOTSTRAP_RUN_NAME in runs[0][0]
+    command = runs[0][0][runs[0][0].index("/d") + 1]
+    assert "-Mode Watch -WatchIntervalSeconds 300" in command
+    assert str(script.resolve()) in command
+    assert launches[0][0][-4:] == ["-Mode", "Watch", "-WatchIntervalSeconds", "300"]
+    assert launches[0][1]["stdin"] is subprocess.DEVNULL
+    assert launches[0][1]["stdout"] is subprocess.DEVNULL
+    assert launches[0][1]["stderr"] is subprocess.DEVNULL
 
 
 def test_first_init_refuses_noninteractive_secret_capture_before_launch(tmp_path: Path) -> None:

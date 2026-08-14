@@ -126,13 +126,16 @@ local endpoint and mapping are healthy. A timeout reports the last redacted
 probe instead of treating normal propagation delay as a configuration error.
 
 The shipped `scripts/start_devspace_bootstrap.ps1` wrapper reads the current
-root list from `%USERPROFILE%\.devspace\config.json` on every launch. It reads
-only the non-secret host, ports, and Python path from the diagnostic mirror at
-`%CODEX_HOME%\config\codexpro-devspace-bootstrap.json`, retries while the
-Tailscale service is still settling after login, and writes monthly logs under
-`%CODEX_HOME%\logs\codexpro-devspace`. Register that wrapper as a hidden
-per-user login command; do not place the Owner credential in its config. The
-mirror is synchronized during setup, but it is never the runtime authority for
+root list from `%USERPROFILE%\.devspace\config.json` on every health cycle. It
+reads only the non-secret host, ports, and Python path from the diagnostic
+mirror at `%CODEX_HOME%\config\codexpro-devspace-bootstrap.json`, retries while
+Tailscale is still settling, and writes monthly logs under
+`%CODEX_HOME%\logs\codexpro-devspace`. On Windows, `setup --apply` registers and
+starts the wrapper as a hidden per-user `Watch` process. The watcher checks the
+local service and exact Funnel every five minutes and restores them if the
+DevSpace child exits after login; a one-shot login command is not sufficient.
+Do not place the Owner credential in its command or config. The mirror is
+synchronized during setup, but it is never the runtime authority for
 `allowedRoots`.
 
 It also reports the required managed tool mode (`full`) and any persisted

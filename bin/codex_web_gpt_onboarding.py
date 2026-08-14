@@ -159,7 +159,16 @@ def onboarding_plan(
         {
             "id": "04_reboot_service",
             "owner": "agent",
-            "complete_when": "DevSpace and the stable tunnel recover after login with identical roots",
+            "complete_when": (
+                "the per-user login watchdog is registered and continuously restores DevSpace "
+                "and the stable tunnel with identical roots"
+            ),
+            "windows_watchdog": {
+                "registered_by": "the Tailscale setup --apply command",
+                "mode": "Watch",
+                "health_interval_seconds": 300,
+                "root_source": "%USERPROFILE%\\.devspace\\config.json",
+            },
             "environment": {
                 "DEVSPACE_TOOL_MODE": "full",
                 "DEVSPACE_OAUTH_SCOPES": "devspace,offline_access",

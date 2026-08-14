@@ -1,5 +1,17 @@
 # 기술 변경 기록
 
+## 1.14.2 - DevSpace 상주 복구
+
+- Windows DevSpace 부트스트랩을 로그인 시 한 번 실행하고 종료하는 방식에서
+  5분 간격의 숨김 per-user 감시 방식으로 변경했습니다. DevSpace 프로세스가
+  로그인 이후 종료돼도 현재 `~/.devspace/config.json`의 전체 root와 정확한
+  Tailscale Funnel을 자동 복구합니다.
+- `setup --apply`가 감시 명령을 등록하고 즉시 시작합니다. Owner 암호, OAuth
+  클라이언트·refresh token, ChatGPT 설정은 변경하거나 기록하지 않습니다.
+- 설치 manifest의 새 Pro transport 표기를 실제 정책과 같은 명시적
+  `pro-devspace` 읽기·쓰기 계약으로 정정했습니다. 기존 read-only run의 복구
+  의미는 그대로 유지합니다.
+
 ## 1.14.1 - Pro 첨부 무전송 정산
 
 - Oracle 0.17.1이 프롬프트 전송 전에 정확한 첨부 업로드 타임아웃을

@@ -31,6 +31,7 @@ DEVSPACE_TOOL_MODE = "full"
 DEVSPACE_OAUTH_SCOPES = "devspace,offline_access"
 SECRET_PATTERN = re.compile(r"(?i)(password|token|secret|authorization)\s*([:=])\s*[^\s,;]+")
 HOSTNAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9.-]*\.ts\.net$", re.IGNORECASE)
+WINDOWS_BOOTSTRAP_RUN_NAME = "Codex Web GPT DevSpace Bootstrap"
 
 
 class SetupError(ValueError):
@@ -175,6 +176,11 @@ def setup_plan(
         "managed_service_environment": {
             "DEVSPACE_TOOL_MODE": DEVSPACE_TOOL_MODE,
             "DEVSPACE_OAUTH_SCOPES": DEVSPACE_OAUTH_SCOPES,
+        },
+        "startup_watchdog": {
+            "windows_mode": "per-user login watchdog",
+            "health_interval_seconds": 300,
+            "runtime_root_source": str(Path.home() / ".devspace" / "config.json"),
         },
         "tailscale_funnel": [
             "tailscale",
@@ -490,6 +496,77 @@ def refresh_exact_public_route(
         **result,
         "exact_funnel_recycled": recycled,
         "funnel_recycle_scope": f"https:{config.public_port}" if recycled else None,
+    }
+
+
+def windows_bootstrap_watchdog_command(codex_home: Path | None = None) -> str:
+    root = (codex_home or Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))).resolve()
+    script = root / "scripts" / "start_devspace_bootstrap.ps1"
+    powershell = Path(os.environ.get("SystemRoot") or r"C:\Windows") / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    return (
+        f'"{powershell}" -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass '
+        f'-File "{script}" -Mode Watch -WatchIntervalSeconds 300'
+    )
+
+
+def register_windows_bootstrap_watchdog(
+    *,
+    codex_home: Path | None = None,
+    runner: Callable[..., Any] = subprocess.run,
+    popen_factory: Callable[..., Any] = subprocess.Popen,
+    platform_name: str | None = None,
+) -> dict[str, Any]:
+    platform = platform_name or os.name
+    if platform != "nt":
+        return {"ok": True, "changed": False, "platform": platform, "mode": "external-login-service"}
+    root = (codex_home or Path(os.environ.get("CODEX_HOME") or (Path.home() / ".codex"))).resolve()
+    script = root / "scripts" / "start_devspace_bootstrap.ps1"
+    if not script.is_file():
+        raise SetupError("DEVSPACE_BOOTSTRAP_WATCHDOG_SCRIPT_MISSING")
+    command = windows_bootstrap_watchdog_command(root)
+    runner(
+        [
+            "reg.exe",
+            "ADD",
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
+            "/v",
+            WINDOWS_BOOTSTRAP_RUN_NAME,
+            "/t",
+            "REG_SZ",
+            "/d",
+            command,
+            "/f",
+        ],
+        check=True,
+        text=True,
+        capture_output=True,
+        **windows_subprocess_kwargs(platform),
+    )
+    launch_hidden(
+        [
+            str(Path(os.environ.get("SystemRoot") or r"C:\Windows") / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"),
+            "-NoProfile",
+            "-WindowStyle",
+            "Hidden",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(script),
+            "-Mode",
+            "Watch",
+            "-WatchIntervalSeconds",
+            "300",
+        ],
+        popen_factory=popen_factory,
+        platform_name=platform,
+    )
+    return {
+        "ok": True,
+        "changed": True,
+        "platform": platform,
+        "mode": "per-user-login-watchdog",
+        "run_name": WINDOWS_BOOTSTRAP_RUN_NAME,
+        "watch_interval_seconds": 300,
     }
 
 
@@ -900,6 +977,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     / "codexpro-devspace-bootstrap.json",
                     config,
                 )
+                register_windows_bootstrap_watchdog()
             return 0
         if args.command == "ensure":
             print(json.dumps(ensure_public_route(config), ensure_ascii=False, indent=2))
