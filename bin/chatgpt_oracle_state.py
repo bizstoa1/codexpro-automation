@@ -1418,6 +1418,224 @@ def _standalone_pro_no_submission_evidence(state_path: Path) -> dict[str, Any] |
     }
 
 
+def _direct_devspace_no_submission_evidence(
+    state_path: Path,
+    *,
+    require_persisted_recovery: bool,
+) -> dict[str, Any] | None:
+    """Validate one ordinary DevSpace prompt-observation failure.
+
+    This intentionally remains only *eligibility* evidence.  Oracle's local
+    observer cannot prove that a browser send never happened; a user must
+    still explicitly attest no submission before the project lock is released.
+    The recovery receipt prevents that attestation from being based on mutable
+    ad-hoc recovery logs.
+    """
+    state = load_state(state_path)
+    run_dir = state_path.parent
+    run_id = str(state.get("run_id") or "")
+    profile = state.get("profile") if isinstance(state.get("profile"), dict) else {}
+    if (
+        state.get("schema") != "codex.chatgpt.oracle-run-state/v1"
+        or str(state.get("session_authority") or "") not in {"submitted_unknown", "pre_submit"}
+        or state.get("status") != "attention_required"
+        or str(state.get("transport") or "") != "devspace"
+        or str(state.get("mode") or "") != "browser"
+        or state.get("parallel_parent_id") is not None
+        or state.get("requested_run_id") not in (None, run_id)
+        or state.get("web_multi_child_provenance") is not None
+        or state.get("attachments") not in (None, [])
+        or state.get("transport_status") not in {"failed", "not_submitted_user_confirmed"}
+        or state.get("task_outcome") != "pending"
+        or state.get("terminal_harvested") is True
+        or _state_has_conversation_url(state)
+        or int(state.get("exit_code") or 0) == 0
+        or run_dir.name != run_id
+    ):
+        return None
+    if not all(isinstance(profile.get(key), str) for key in ("model", "model_strategy", "thinking_time", "research")):
+        return None
+    artifacts = state.get("artifacts") if isinstance(state.get("artifacts"), dict) else {}
+    output = Path(str(artifacts.get("output") or ""))
+    if output.resolve() != (run_dir / "output.md").resolve() or output.is_symlink() or output_is_nonempty(output):
+        return None
+    records = {name: _artifact_bytes(state, name) for name in ("stdout", "stderr", "transcript")}
+    if any(record is None for record in records.values()):
+        return None
+    stdout_path, stdout_bytes = records["stdout"]  # type: ignore[misc]
+    stderr_path, stderr_bytes = records["stderr"]  # type: ignore[misc]
+    transcript_path, transcript_bytes = records["transcript"]  # type: ignore[misc]
+    if (
+        stdout_path.resolve() != (run_dir / "stdout.log").resolve()
+        or stderr_path.resolve() != (run_dir / "stderr.log").resolve()
+        or transcript_path.resolve() != (run_dir / "transcript.md").resolve()
+        or any(path.is_symlink() for path in (stdout_path, stderr_path, transcript_path))
+        or stderr_bytes
+        or transcript_bytes != stdout_bytes
+    ):
+        return None
+    try:
+        stdout_text = stdout_bytes.decode("utf-8", errors="strict")
+    except UnicodeDecodeError:
+        return None
+    oracle = state.get("oracle") if isinstance(state.get("oracle"), dict) else {}
+    locator = str(oracle.get("session_locator") or oracle.get("slug") or "").strip()
+    marker_lines = {
+        line.strip() for line in stdout_text.splitlines()
+        if ORACLE_PROMPT_NOT_OBSERVED_MARKER in line
+    }
+    allowed_marker_lines = {
+        f"ERROR: {ORACLE_PROMPT_NOT_OBSERVED_MARKER}",
+        f"User error (browser-automation): {ORACLE_PROMPT_NOT_OBSERVED_MARKER}",
+    }
+    if (
+        not locator
+        or not marker_lines
+        or not marker_lines.issubset(allowed_marker_lines)
+        or stdout_text.count(ORACLE_PROMPT_NOT_OBSERVED_MARKER) != len(marker_lines)
+        or f"Session: {locator}" not in stdout_text
+        or CHATGPT_CONVERSATION_URL_RE.search(stdout_text)
+    ):
+        return None
+    mission = state.get("mission") if isinstance(state.get("mission"), dict) else {}
+    source_path = Path(str(mission.get("path") or ""))
+    transport_path = Path(str(mission.get("transport_path") or ""))
+    try:
+        project_root = Path(str(state.get("project_root") or "")).resolve(strict=True)
+        source_path = source_path.resolve(strict=True)
+        transport_path = transport_path.resolve(strict=True)
+        if (
+            not project_root.is_dir()
+            or not source_path.is_file()
+            or source_path.is_symlink()
+            or transport_path.is_symlink()
+            or not is_within(project_root, source_path)
+            or transport_path != (run_dir / "mission.md").resolve()
+        ):
+            return None
+        source_bytes = source_path.read_bytes()
+        transport_bytes = transport_path.read_bytes()
+    except OSError:
+        return None
+    mission_sha256 = str(mission.get("sha256") or "")
+    source_sha256 = hashlib.sha256(source_bytes).hexdigest()
+    transport_sha256 = hashlib.sha256(transport_bytes).hexdigest()
+    if (
+        not re.fullmatch(r"[a-f0-9]{64}", mission_sha256)
+        or source_sha256 != mission_sha256
+        or transport_sha256 != mission_sha256
+        or source_bytes != transport_bytes
+    ):
+        return None
+    expected_recovery = {
+        "stdout_name": "recovery-harvest-stdout.log",
+        "stderr_name": "recovery-harvest-stderr.log",
+    }
+    recovery_paths = [
+        run_dir / expected_recovery["stdout_name"],
+        run_dir / expected_recovery["stderr_name"],
+    ]
+    try:
+        if any(path.is_symlink() for path in recovery_paths):
+            return None
+        recovery_stdout, recovery_stderr = (path.read_bytes() for path in recovery_paths)
+        recovery_text = b"\n".join((recovery_stdout, recovery_stderr)).decode("utf-8", errors="strict")
+    except (OSError, UnicodeDecodeError):
+        return None
+    if (
+        CHATGPT_CONVERSATION_URL_RE.search(recovery_text)
+        or ORACLE_RECOVERY_STATE_RE.search(recovery_text)
+        or ORACLE_NO_LIVE_TAB_MARKER not in recovery_text
+        or f'"{locator}"' not in recovery_text
+        or ORACLE_NO_RECOVERABLE_URL_MARKER not in recovery_text
+    ):
+        return None
+    recovery_records = [{
+        **expected_recovery,
+        "stdout_sha256": hashlib.sha256(recovery_stdout).hexdigest(),
+        "stderr_sha256": hashlib.sha256(recovery_stderr).hexdigest(),
+    }]
+    evidence = {
+        "settlement_eligibility": "oracle-direct-devspace/v1",
+        "project_root": str(project_root),
+        "run_id": run_id,
+        "transport": "devspace",
+        "profile": {key: profile[key] for key in ("model", "model_strategy", "thinking_time", "research")},
+        "source_mission_path": str(source_path),
+        "source_mission_sha256": source_sha256,
+        "transport_mission_path": str(transport_path),
+        "transport_mission_sha256": transport_sha256,
+        "mission_sha256": mission_sha256,
+        "oracle_locator": locator,
+        "oracle_version": str(oracle.get("resolved_version") or "").removeprefix("oracle ").strip(),
+        "stdout_sha256": hashlib.sha256(stdout_bytes).hexdigest(),
+        "stderr_sha256": hashlib.sha256(stderr_bytes).hexdigest(),
+        "recovery_evidence": recovery_records,
+        "output_absent": True,
+        "conversation_url_absent": True,
+        "_source_mission_path": str(source_path),
+        "_transport_mission_path": str(transport_path),
+    }
+    if not require_persisted_recovery:
+        return evidence
+    reference = state.get("prompt_not_observed_recovery")
+    expected_path = run_dir / "prompt-not-observed-recovery.json"
+    if (
+        not isinstance(reference, dict)
+        or reference.get("schema") != "codex.chatgpt.oracle-prompt-not-observed-recovery-reference/v1"
+        or Path(str(reference.get("path") or "")).resolve() != expected_path.resolve()
+        or expected_path.is_symlink()
+    ):
+        return None
+    try:
+        raw = expected_path.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != str(reference.get("sha256") or ""):
+            return None
+        recorded = json.loads(raw.decode("utf-8", errors="strict"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    expected_recorded = {
+        "schema": "codex.chatgpt.oracle-prompt-not-observed-recovery/v1",
+        "code": "ORACLE_PROMPT_NOT_OBSERVED_RECOVERY_BINDING_UNAVAILABLE",
+        **{key: value for key, value in evidence.items() if not key.startswith("_")},
+    }
+    if recorded != expected_recorded:
+        return None
+    return evidence
+
+
+def persist_direct_devspace_prompt_not_observed_recovery(state_path: Path) -> dict[str, Any] | None:
+    """Persist a hash-bound exact recovery receipt without releasing ownership."""
+    evidence = _direct_devspace_no_submission_evidence(
+        state_path, require_persisted_recovery=False
+    )
+    if evidence is None:
+        return None
+    if _direct_devspace_no_submission_evidence(state_path, require_persisted_recovery=True) is not None:
+        return evidence
+    payload = load_state(state_path)
+    if payload.get("prompt_not_observed_recovery") is not None:
+        return None
+    receipt_path = state_path.parent / "prompt-not-observed-recovery.json"
+    if receipt_path.exists() or receipt_path.is_symlink():
+        return None
+    recorded = {
+        "schema": "codex.chatgpt.oracle-prompt-not-observed-recovery/v1",
+        "code": "ORACLE_PROMPT_NOT_OBSERVED_RECOVERY_BINDING_UNAVAILABLE",
+        **{key: value for key, value in evidence.items() if not key.startswith("_")},
+    }
+    write_json_atomic(receipt_path, recorded)
+    payload["prompt_not_observed_recovery"] = {
+        "schema": "codex.chatgpt.oracle-prompt-not-observed-recovery-reference/v1",
+        "path": str(receipt_path),
+        "sha256": sha256_file(receipt_path),
+    }
+    write_json_atomic(state_path, payload)
+    return _direct_devspace_no_submission_evidence(
+        state_path, require_persisted_recovery=True
+    )
+
+
 def _user_confirmable_no_submission_evidence(state_path: Path) -> dict[str, Any] | None:
     """Return exact evidence for supported user-adjudicable Oracle runs."""
     if _settlement_logs_have_conversation_url(state_path):
@@ -1425,6 +1643,11 @@ def _user_confirmable_no_submission_evidence(state_path: Path) -> dict[str, Any]
     comprehensive = _comprehensive_no_submission_evidence(state_path)
     if comprehensive is not None:
         return comprehensive
+    direct_devspace = _direct_devspace_no_submission_evidence(
+        state_path, require_persisted_recovery=True
+    )
+    if direct_devspace is not None:
+        return direct_devspace
     standalone_pro = _standalone_pro_no_submission_evidence(state_path)
     if standalone_pro is not None:
         return standalone_pro
@@ -1487,6 +1710,12 @@ def proven_user_confirmed_no_submission(state_path: Path) -> dict[str, Any] | No
             "source_mission_sha256", "transport_mission_path", "transport_mission_sha256",
             "oracle_version",
         )
+    elif current.get("settlement_eligibility") == "oracle-direct-devspace/v1":
+        required = (
+            "settlement_eligibility", "transport", "profile", "source_mission_path",
+            "source_mission_sha256", "transport_mission_path", "transport_mission_sha256",
+            "oracle_version",
+        )
     elif current.get("settlement_eligibility") == "oracle-web-multi-child/v1":
         required = (
             "settlement_eligibility", "parallel_parent_id", "source_mission_path",
@@ -1534,6 +1763,14 @@ def settle_user_confirmed_no_submission(
             "only a submitted_unknown run may be adjudicated as not submitted",
         )
     evidence = _user_confirmable_no_submission_evidence(state_path)
+    if evidence is None:
+        # Legacy prompt-observation failures predate the durable recovery
+        # receipt.  Only this explicit, exact user-attestation command may
+        # backfill it, and only after strict immutable-artifact validation.
+        evidence = persist_direct_devspace_prompt_not_observed_recovery(state_path)
+        # The receipt helper atomically augments state.  Reload before writing
+        # the settlement so that its hash-bound reference is never lost.
+        payload = load_state(state_path)
     if evidence is None:
         raise OracleStateError(
             "NO_SUBMISSION_EVIDENCE_INCOMPLETE",

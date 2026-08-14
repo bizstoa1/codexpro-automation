@@ -2078,6 +2078,101 @@ def test_user_confirmation_cannot_replace_missing_recovery_evidence(tmp_path: Pa
     assert exc.value.code == "NO_SUBMISSION_EVIDENCE_INCOMPLETE"
 
 
+def test_direct_devspace_prompt_not_observed_recovery_is_hash_bound_before_user_settlement(tmp_path: Path) -> None:
+    runner = load_runner()
+    failed = execute_run(
+        runner,
+        manifest(tmp_path),
+        run_factory=version_0171_runner,
+        popen_factory=prompt_not_observed_popen,
+    )
+    run_dir = Path(failed["run_dir"])
+    state_path = run_dir / "state.json"
+
+    recovered = runner.recover_run(
+        run_dir,
+        action="harvest",
+        oracle_command=["oracle"],
+        popen_factory=recovery_binding_unavailable_popen,
+    )
+
+    assert recovered["status"] == "recovery_binding_unavailable"
+    state = runner.STATE.load_state(state_path)
+    assert state["session_authority"] == "submitted_unknown"
+    receipt = run_dir / "prompt-not-observed-recovery.json"
+    assert receipt.is_file()
+    assert state["prompt_not_observed_recovery"]["sha256"] == runner.STATE.sha256_file(receipt)
+
+    settled = runner.settle_user_confirmed_no_submission(
+        run_dir,
+        confirmation=runner.STATE.USER_CONFIRMED_NO_SUBMISSION,
+        reason="user inspected the exact ChatGPT history and confirmed no prompt or response",
+    )
+    proof = runner.STATE.proven_user_confirmed_no_submission(state_path)
+
+    assert settled["result"]["session_authority"] == "pre_submit"
+    assert proof is not None
+    assert proof["settlement_eligibility"] == "oracle-direct-devspace/v1"
+    original = (run_dir / "recovery-harvest-stdout.log").read_text(encoding="utf-8")
+    (run_dir / "recovery-harvest-stdout.log").write_text(
+        original + "https://chatgpt.com/c/observed-after-the-fact\n", encoding="utf-8"
+    )
+    assert runner.STATE.proven_user_confirmed_no_submission(state_path) is None
+
+
+def test_direct_devspace_user_confirmation_backfills_only_exact_legacy_recovery_evidence(tmp_path: Path) -> None:
+    runner = load_runner()
+    failed = execute_run(
+        runner,
+        manifest(tmp_path),
+        run_factory=version_0171_runner,
+        popen_factory=prompt_not_observed_popen,
+    )
+    run_dir = Path(failed["run_dir"])
+    state_path = run_dir / "state.json"
+    slug = runner.STATE.load_state(state_path)["oracle"]["slug"]
+    (run_dir / "recovery-harvest-stdout.log").write_text(
+        f'No live ChatGPT tab matched session "{slug}". Attempting recovery.\n', encoding="utf-8"
+    )
+    (run_dir / "recovery-harvest-stderr.log").write_text(
+        "Cannot recover conversation: session metadata has no recoverable ChatGPT conversation URL.\n",
+        encoding="utf-8",
+    )
+
+    settled = runner.settle_user_confirmed_no_submission(
+        run_dir,
+        confirmation=runner.STATE.USER_CONFIRMED_NO_SUBMISSION,
+        reason="user confirmed this exact legacy run has no conversation",
+    )
+
+    assert settled["result"]["session_authority"] == "pre_submit"
+    assert (run_dir / "prompt-not-observed-recovery.json").is_file()
+    assert runner.STATE.proven_user_confirmed_no_submission(state_path) is not None
+
+
+def test_direct_devspace_live_recovery_stays_fail_closed_even_with_user_confirmation(tmp_path: Path) -> None:
+    runner = load_runner()
+    failed = execute_run(
+        runner,
+        manifest(tmp_path),
+        run_factory=version_0171_runner,
+        popen_factory=prompt_not_observed_popen,
+    )
+    run_dir = Path(failed["run_dir"])
+    (run_dir / "recovery-harvest-stdout.log").write_text("State: running\n", encoding="utf-8")
+    (run_dir / "recovery-harvest-stderr.log").write_text("", encoding="utf-8")
+
+    with pytest.raises(runner.STATE.OracleStateError) as exc:
+        runner.settle_user_confirmed_no_submission(
+            run_dir,
+            confirmation=runner.STATE.USER_CONFIRMED_NO_SUBMISSION,
+            reason="user confirmation cannot override observed live session",
+        )
+
+    assert exc.value.code == "NO_SUBMISSION_EVIDENCE_INCOMPLETE"
+    assert runner.STATE.load_state(run_dir / "state.json")["session_authority"] == "submitted_unknown"
+
+
 def test_direct_web_multi_child_no_submission_settlement_is_hash_bound(tmp_path: Path) -> None:
     runner = load_runner()
     parent_id = "d" * 64

@@ -1097,6 +1097,12 @@ def _recover_run_locked(
     if exact_recovery_binding_unavailable(stdout_path, stderr_path):
         if argv_output.exists():
             argv_output.unlink()
+        # Preserve the exact no-live-tab/no-saved-URL observation as immutable
+        # evidence.  This does not settle or release the submitted-unknown
+        # lock; a later explicit user attestation is still required.
+        STATE.persist_direct_devspace_prompt_not_observed_recovery(
+            directory / "state.json"
+        )
         updated = STATE.update_state(
             directory / "state.json",
             status="attention_required",
@@ -1115,8 +1121,8 @@ def _recover_run_locked(
             "stdout_path": str(stdout_path),
             "stderr_path": str(stderr_path),
             "next_action": (
-                "restore the exact persisted ChatGPT conversation URL for this slug, "
-                "then resume exact-slug recovery; never replace or resubmit"
+                "preserve the exact run; only an explicit user confirmation of no submission "
+                "may settle this no-binding observation, otherwise never replace or resubmit"
             ),
         }
     if provider_delivery_timed_out(stdout_path, stderr_path):
