@@ -49,6 +49,11 @@ Authority is monotonic. A post-submit timeout never creates a replacement run;
 recovery uses the persisted Oracle slug and conversation URL. A proven
 pre-submit failure can be settled only through its supported evidence path.
 
+The 80-minute mark is a caution/status-audit threshold, not a deadline. The
+host records exact-run liveness and artifact/terminal evidence and continues
+the same process or exact-slug live observation. Elapsed time alone cannot
+terminate a run, release its lock, mark it failed, or authorize a replacement.
+
 ## Staged workflows
 
 - `orchestrator` is one authorized web implementation pass.

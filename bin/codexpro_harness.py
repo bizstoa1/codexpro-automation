@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Durable 75/80-minute CodexPro harness and exact-session resume supervisor."""
+"""Durable Oracle status-audit and exact-session resume supervisor."""
 
 from __future__ import annotations
 
@@ -20,11 +20,14 @@ SCHEMA = "codex.codexpro.harness/v1"
 INTERVIEW_SCHEMA = "codex.gjc.interview/v1"
 TERMINAL_PHASES = {"COMPLETE", "BLOCKED", "CANCELLED"}
 DEFAULT_POLICY = {
-    "soft_checkpoint_seconds": 4500,
+    # Compatibility names remain readable in persisted v1 state, but elapsed
+    # time never ends work, releases an owner, or authorizes a new episode.
+    "soft_checkpoint_seconds": 4800,
     "handoff_seconds": 4800,
     "observed_platform_limit_seconds": 6000,
     "max_total_concurrency": 5,
-    "web_answer_budget_seconds": 4200,
+    "web_answer_budget_seconds": 6000,
+    "status_audit_seconds": 4800,
 }
 SPAWN_TOOLS = {"spawn_agent", "collaborationspawn_agent", "collaboration.spawn_agent"}
 
@@ -300,25 +303,33 @@ def _evaluate_unlocked(path: Path, *, now: datetime | None = None) -> dict[str, 
         return state
     elapsed = max(0.0, (current - parse_time(state.get("episode_started_at"))).total_seconds())
     policy = {**DEFAULT_POLICY, **(state.get("policy") or {})}
-    if elapsed >= float(policy["soft_checkpoint_seconds"]) and state["phase"] == "RUNNING":
-        state["phase"] = "CHECKPOINT_DUE"
-        state["fanout_locked"] = True
-        state["checkpoint_due_at"] = iso(current)
-        _save(path, state, "soft_checkpoint_due", elapsed_seconds=elapsed)
-    if elapsed >= float(policy["handoff_seconds"]) and state["phase"] in {"RUNNING", "CHECKPOINT_DUE", "HANDOFF_PENDING"}:
-        live = [item for item in state.get("oracle_sessions") or [] if not _oracle_terminal(item)]
-        if live:
-            state["phase"] = "RECOVER_SAME_SESSION"
-            state["recovery_targets"] = [
-                {key: item.get(key) for key in ("run_dir", "slug", "conversation_url")}
-                for item in live
-            ]
-        elif state.get("owner_released"):
-            state["phase"] = "READY_NEXT_EPISODE"
-        else:
-            state["phase"] = "HANDOFF_PENDING"
-        state["handoff_due_at"] = iso(current)
-        _save(path, state, "handoff_evaluated", elapsed_seconds=elapsed)
+    if elapsed >= float(policy["status_audit_seconds"]):
+        prior = state.get("status_audit") if isinstance(state.get("status_audit"), dict) else {}
+        threshold = float(policy["status_audit_seconds"])
+        audit_count = max(1, int(elapsed // threshold))
+        if int(prior.get("audit_count") or 0) < audit_count:
+            live = [item for item in state.get("oracle_sessions") or [] if not _oracle_terminal(item)]
+            if live:
+                state["phase"] = "RECOVER_SAME_SESSION"
+                state["recovery_targets"] = [
+                    {key: item.get(key) for key in ("run_dir", "slug", "conversation_url")}
+                    for item in live
+                ]
+            state["status_audit"] = {
+                "threshold_kind": "caution-status-audit",
+                "threshold_seconds": threshold,
+                "audit_count": audit_count,
+                "observed_at": iso(current),
+                "phase_observed": state["phase"],
+                "decision": (
+                    "continue-exact-session-recovery"
+                    if live
+                    else "preserve-current-owner-and-exact-sessions"
+                ),
+                "time_alone_is_terminal": False,
+                "new_submission_authorized": False,
+            }
+            _save(path, state, "status_audit_recorded", elapsed_seconds=elapsed)
     if state["phase"] == "RECOVER_SAME_SESSION":
         live = [item for item in state.get("oracle_sessions") or [] if not _oracle_terminal(item)]
         if not live:
@@ -453,10 +464,8 @@ def doctor(root: Path) -> dict[str, Any]:
             state = _load(path)
             policy = {**DEFAULT_POLICY, **(state.get("policy") or {})}
             ordered = (
-                int(policy["web_answer_budget_seconds"])
-                <= int(policy["soft_checkpoint_seconds"])
-                < int(policy["handoff_seconds"])
-                < int(policy["observed_platform_limit_seconds"])
+                60 <= int(policy["status_audit_seconds"]) <= int(policy["observed_platform_limit_seconds"])
+                and 60 <= int(policy["web_answer_budget_seconds"]) <= int(policy["observed_platform_limit_seconds"])
             )
             concurrency_ok = 1 <= int(policy["max_total_concurrency"]) <= 5
             reports.append({

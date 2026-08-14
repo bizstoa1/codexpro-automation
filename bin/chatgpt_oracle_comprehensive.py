@@ -1126,10 +1126,10 @@ def _recover_exact_oracle_stage(
         return {"ok": False, "error": "ORACLE_RECOVERY_RUN_UNAVAILABLE", "detail": str(exc)}
     if str(run_state.get("run_id") or "") != expected_run_id:
         return {"ok": False, "error": "ORACLE_RECOVERY_IDENTITY_MISMATCH"}
-    # Oracle harvest reports the exact saved conversation state.  The runner
-    # discards a candidate when that state is still running and publishes it
-    # only when the same bounded call proves terminal completion.
-    return oracle_recover(directory, action="harvest", dry_run=False)
+    # Continue one exact-slug live observation.  The runner audits at the
+    # caution threshold and automatically reconnects the same saved session;
+    # it never submits a replacement merely because time elapsed.
+    return oracle_recover(directory, action="live", dry_run=False)
 
 
 def _recover_oracle_under_workflow_mutex(

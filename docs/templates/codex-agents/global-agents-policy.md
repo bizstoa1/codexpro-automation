@@ -14,4 +14,11 @@
 - Use the operating-system temp directory under a task-specific `Codex` child first. If Windows path length requires a shorter location, use the active repository's gitignored `.codex-tmp\<task>` directory, never `D:\pytest-*` or another drive-root scratch path.
 - Put reusable third-party source checkouts under `%LOCALAPPDATA%\Codex\Sources`. Keep explicit user project roots separate and never repurpose them as scratch space.
 - Before cleanup, verify ownership and active references. Preserve user projects, system folders, credentials, and ambiguous items; move confirmed automation artifacts to a recoverable archive instead of deleting them.
+
+## Oracle long-run observation
+
+- Treat 80 minutes as a caution/status-audit threshold, never as a forced stop, failure, handoff, ownership release, or replacement-submission deadline.
+- At the threshold inspect the exact run's process liveness, response/log/output progress, known conversation binding, and provider terminal evidence. If it is live, streaming, progressing, or uncertain, continue the same process or exact-slug live recovery.
+- If a host observer must return, preserve the Oracle process/session and automatically continue observation through the same exact slug. Never create a fresh prompt or release the project lock because elapsed time alone.
+- Only a real provider hard limit, explicit terminal evidence, an explicit user stop, or verified inability may end observation. Keep prompt-not-observed fail-closed and no-duplicate rules unchanged.
 <!-- END CODEX WEB GPT SUBAGENT POLICY -->

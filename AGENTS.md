@@ -20,10 +20,14 @@
   DevSpace/Tailscale Funnel, and `com.ventianima.codexpro-automation.*`
   LaunchAgents. It must never reuse, overwrite, or stop `com.openclaw.codexpro*`
   services or mutate `~/.codexpro`.
-- Harness episodes use a 4,200-second web answer budget, 4,500-second soft
-  checkpoint, and 4,800-second handoff boundary. A live or uncertain Oracle
-  slug always owns the mission; recovery may harvest that exact session but
-  must not resubmit it.
+- The 4,800-second mark is only a caution/status-audit threshold. At that
+  threshold inspect the exact run's process liveness, output/log progress,
+  known conversation binding, and terminal evidence, then continue the same
+  process or exact-slug live recovery while it remains live or uncertain.
+  Elapsed time alone never stops work, releases ownership, marks failure, or
+  authorizes a replacement submission. Only a real provider hard limit,
+  explicit terminal evidence, user stop, or verified inability may end an
+  observation path; prompt-not-observed and no-duplicate rules remain strict.
 - Do not blanket-fan-out Codex native subagents. Normal operation starts with
   at most two concurrent workers and the global hard cap is three spawned
   threads. Concurrent writers require explicit, non-overlapping file lists or

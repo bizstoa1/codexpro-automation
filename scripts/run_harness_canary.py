@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise the 75/80-minute harness policy with a compressed or real clock."""
+"""Prove that the 80-minute threshold audits without ending or releasing work."""
 
 from __future__ import annotations
 
@@ -62,29 +62,38 @@ def run_canary(*, state_root: Path, real_time: bool) -> dict[str, Any]:
     timeline: list[dict[str, Any]] = []
     monotonic_start = time.monotonic()
 
-    def observe(elapsed: int, *, release: bool = False) -> None:
+    def observe(elapsed: int) -> None:
         if real_time:
             _wait_until(monotonic_start, float(elapsed))
             observed_at = datetime.now(timezone.utc)
         else:
             observed_at = started + timedelta(seconds=elapsed)
-        if release:
-            harness.release_owner(run_path, session_id=state["codex_session_id"])
         current = harness.evaluate(run_path, now=observed_at)
-        timeline.append({"elapsed_seconds": elapsed, "phase": current["phase"], "fanout_locked": current["fanout_locked"]})
+        timeline.append({
+            "elapsed_seconds": elapsed,
+            "phase": current["phase"],
+            "fanout_locked": current["fanout_locked"],
+            "status_audit": current.get("status_audit"),
+        })
 
-    observe(4499)
-    observe(4500)
-    observe(4800, release=True)
+    observe(4799)
+    observe(4800)
+    observe(5100)
     if real_time:
         _wait_until(monotonic_start, 5100.0)
     final = json.loads(run_path.read_text(encoding="utf-8"))
-    expected = ["RUNNING", "CHECKPOINT_DUE", "READY_NEXT_EPISODE"]
+    expected = ["RUNNING", "RUNNING", "RUNNING"]
     actual = [item["phase"] for item in timeline]
+    audit = timeline[1]["status_audit"] or {}
     receipt = {
         "schema": "codex.codexpro.harness-canary/v1",
-        "ok": actual == expected,
-        "mode": "real-85-minute" if real_time else "compressed-clock",
+        "ok": (
+            actual == expected
+            and audit.get("threshold_kind") == "caution-status-audit"
+            and audit.get("time_alone_is_terminal") is False
+            and audit.get("new_submission_authorized") is False
+        ),
+        "mode": "real-status-audit" if real_time else "compressed-clock",
         "canary_id": canary_id,
         "run_id": state["run_id"],
         "timeline": timeline,

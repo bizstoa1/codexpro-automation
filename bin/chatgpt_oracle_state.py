@@ -65,23 +65,26 @@ SAFE_ORACLE_VALUE_OPTIONS = {
     "--heartbeat",
     "--timeout",
     "--zombie-timeout",
-    # Oracle 0.17.1 is compatibility-patched so this is one overall answer
-    # budget, including fallback capture.  The host also enforces the same
-    # wall-clock deadline with a short grace if CDP evaluation itself wedges.
+    # Oracle 0.17.1 is compatibility-patched so this is one browser observation
+    # window, including fallback capture.  Reaching it is not terminal evidence:
+    # the harness keeps the exact session binding and continues live recovery.
     "--browser-timeout",
     "--browser-recheck-timeout",
 }
-# Keep each web episode below the local 75/80-minute checkpoint boundary.
-DEFAULT_BROWSER_ANSWER_TIMEOUT = "70m"
-DEFAULT_BROWSER_ANSWER_CEILING_MINUTES = 70
+# The observed provider boundary is 100 minutes.  The 80-minute value below is
+# deliberately only a caution/status-audit threshold, never a stop deadline.
+DEFAULT_BROWSER_ANSWER_TIMEOUT = "100m"
+DEFAULT_BROWSER_ANSWER_CEILING_MINUTES = 100
 DEFAULT_EPISODE_POLICY = {
-    "soft_checkpoint_seconds": 4500,
+    # Retained as compatibility metadata for older manifests.  Neither field
+    # releases ownership, stops a process, or authorizes a replacement run.
+    "soft_checkpoint_seconds": 4800,
     "handoff_seconds": 4800,
     "observed_platform_limit_seconds": 6000,
     "max_total_concurrency": 5,
-    "web_answer_budget_seconds": 4200,
+    "web_answer_budget_seconds": 6000,
+    "status_audit_seconds": 4800,
 }
-HOST_WATCHDOG_GRACE_SECONDS = 30
 ORACLE_DUPLICATE_PROMPT_RE = re.compile(
     r'A session with the same prompt is already running '
     r'\((?P<locator>oracle-[a-z0-9-]+)\)\.\s*'
@@ -211,6 +214,7 @@ class OracleConfig:
     observed_platform_limit_seconds: int
     max_total_concurrency: int
     web_answer_budget_seconds: int
+    status_audit_seconds: int
     model: str
     model_strategy: str
     thinking_time: str
@@ -423,10 +427,19 @@ def load_manifest(path: Path, *, platform_name: str | None = None) -> OracleConf
         except (TypeError, ValueError) as exc:
             raise OracleStateError("EPISODE_POLICY_INVALID", f"{key} must be an integer") from exc
     if not (
-        60 <= policy["web_answer_budget_seconds"] <= policy["soft_checkpoint_seconds"]
-        <= policy["handoff_seconds"] < policy["observed_platform_limit_seconds"] <= 7 * 24 * 3600
+        60 <= policy["status_audit_seconds"] <= policy["observed_platform_limit_seconds"]
+        and 60 <= policy["web_answer_budget_seconds"] <= policy["observed_platform_limit_seconds"]
+        and policy["observed_platform_limit_seconds"] <= 7 * 24 * 3600
     ):
-        raise OracleStateError("EPISODE_POLICY_INVALID", "episode timing must satisfy answer <= checkpoint <= handoff < observed limit")
+        raise OracleStateError(
+            "EPISODE_POLICY_INVALID",
+            "status audit and browser observation must stay within the observed provider limit",
+        )
+    if policy["soft_checkpoint_seconds"] < 60 or policy["handoff_seconds"] < 60:
+        raise OracleStateError(
+            "EPISODE_POLICY_INVALID",
+            "legacy checkpoint metadata must be positive compatibility values",
+        )
     if not 1 <= policy["max_total_concurrency"] <= 5:
         raise OracleStateError("EPISODE_POLICY_INVALID", "max_total_concurrency must be within 1..5")
     model = str(payload.get("model") or "gpt-5.6").strip()
@@ -533,6 +546,7 @@ def load_manifest(path: Path, *, platform_name: str | None = None) -> OracleConf
         policy["observed_platform_limit_seconds"],
         policy["max_total_concurrency"],
         policy["web_answer_budget_seconds"],
+        policy["status_audit_seconds"],
         model,
         model_strategy,
         thinking_time,
@@ -637,6 +651,7 @@ def state_payload(config: OracleConfig, layout: RunLayout, *, status: str, resol
             "observed_platform_limit_seconds": config.observed_platform_limit_seconds,
             "max_total_concurrency": config.max_total_concurrency,
             "web_answer_budget_seconds": config.web_answer_budget_seconds,
+            "status_audit_seconds": config.status_audit_seconds,
         },
         "mission": {
             "path": str(config.mission_path),
@@ -783,6 +798,8 @@ def update_state(
     task_outcome: str | None = None,
     task_outcome_reason: str | None = None,
     host_watchdog: dict[str, Any] | None = None,
+    browser_observer: dict[str, Any] | None = None,
+    status_audit: dict[str, Any] | None = None,
     conversation_url: str | None = None,
     conversation_url_conflict: dict[str, str] | None = None,
     exact_live_observation: bool = False,
@@ -831,6 +848,10 @@ def update_state(
         payload["task_outcome_reason"] = task_outcome_reason
     if host_watchdog is not None:
         payload["host_watchdog"] = host_watchdog
+    if browser_observer is not None:
+        payload["browser_observer"] = browser_observer
+    if status_audit is not None:
+        payload["status_audit"] = status_audit
     if conversation_url is not None:
         oracle = payload.get("oracle") if isinstance(payload.get("oracle"), dict) else {}
         existing_url = str(oracle.get("conversation_url") or "").strip()

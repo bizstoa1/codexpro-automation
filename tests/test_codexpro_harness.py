@@ -34,16 +34,19 @@ def harness(tmp_path: Path):
     return module, project, started, path
 
 
-def test_75_80_state_machine_requires_explicit_owner_release(tmp_path: Path) -> None:
+def test_80_minute_threshold_only_records_a_status_audit(tmp_path: Path) -> None:
     module, _, started, path = harness(tmp_path)
-    assert module.evaluate(path, now=started + timedelta(seconds=4499))["phase"] == "RUNNING"
-    checkpoint = module.evaluate(path, now=started + timedelta(seconds=4500))
-    assert checkpoint["phase"] == "CHECKPOINT_DUE" and checkpoint["fanout_locked"]
-    assert module.evaluate(path, now=started + timedelta(seconds=4800))["phase"] == "HANDOFF_PENDING"
+    assert module.evaluate(path, now=started + timedelta(seconds=4799))["phase"] == "RUNNING"
+    audited = module.evaluate(path, now=started + timedelta(seconds=4800))
+    assert audited["phase"] == "RUNNING"
+    assert audited["fanout_locked"] is False
+    assert audited["status_audit"]["threshold_kind"] == "caution-status-audit"
+    assert audited["status_audit"]["time_alone_is_terminal"] is False
+    assert audited["status_audit"]["new_submission_authorized"] is False
 
     module.release_owner(path, session_id="session-1")
     ready = module.evaluate(path, now=started + timedelta(seconds=4801))
-    assert ready["phase"] == "READY_NEXT_EPISODE"
+    assert ready["phase"] == "RUNNING"
     assert (path.parent / "handoff.md").is_file()
 
 
@@ -78,12 +81,11 @@ def test_exact_recovery_finishes_before_next_episode_becomes_ready(tmp_path: Pat
     assert recovered["resume_attempt"] is None
 
 
-def test_checkpoint_hook_denies_only_new_subagent_fanout(tmp_path: Path) -> None:
+def test_status_audit_does_not_stop_local_subagent_work(tmp_path: Path) -> None:
     module, project, started, path = harness(tmp_path)
-    module.evaluate(path, now=started + timedelta(seconds=4500))
+    module.evaluate(path, now=started + timedelta(seconds=4800))
     payload = {"cwd": str(project), "session_id": "session-1", "tool_name": "spawn_agent"}
-    output = json.loads(module.run_hook("pre-tool-use", payload, root=tmp_path / "state"))
-    assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
+    assert module.run_hook("pre-tool-use", payload, root=tmp_path / "state") == ""
     payload["tool_name"] = "read_file"
     assert module.run_hook("pre-tool-use", payload, root=tmp_path / "state") == ""
 

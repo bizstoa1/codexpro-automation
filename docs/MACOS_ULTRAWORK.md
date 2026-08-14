@@ -1,4 +1,4 @@
-# macOS Ultrawork와 75/80분 안전 재개
+# macOS Ultrawork와 80분 상태 점검
 
 ## 경계
 
@@ -95,21 +95,20 @@ plist와 기존 Cloudflare 터널을 수정하지 않는다.
 
 압축 clock canary는 `python3 scripts/run_harness_canary.py`로 실행한다. 배포 전
 실제 85분 증거가 필요하면 같은 명령에 `--real-time`을 추가하며, 이 경로도
-75분 체크포인트와 80분 handoff 뒤 85분에 해시 영수증을 남긴다.
+80분 caution/status-audit 뒤 작업이 종료·해제되지 않았음을 85분 해시
+영수증으로 남긴다.
 
 ## 하네스 상태
 
 `codexpro_harness.py start`는 미션 해시, Codex session ID, OMO 경로,
 Oracle slug/URL, todo와 다음 지시를 host-only 상태에 저장한다.
 
-- 4,200초: 웹 답변 episode 예산
-- 4,500초: 새 fan-out 금지 및 체크포인트
-- 4,800초: exact handoff 평가
-- 6,000초: 환경에서 관측한 플랫폼 한계 메타데이터
+- 4,800초: exact run의 생존·진행·출력·terminal 증거를 확인하는 caution audit
+- 6,000초: 환경에서 관측한 provider 경계 및 기본 browser observation window
 
-살아 있는 Oracle run은 `RECOVER_SAME_SESSION`으로만 이동한다. Codex resume는
-Stop hook이 owner를 해제한 뒤에만 `codex exec resume <session-id>`로 한 번
-실행된다. 상태가 불명확하면 `HANDOFF_PENDING`을 유지한다.
+4,800초는 종료·실패·소유권 해제·replacement 제출 조건이 아니다. 살아 있는
+Oracle run은 동일 exact slug의 `RECOVER_SAME_SESSION` 관찰만 이어간다. 시간
+외의 terminal 증거와 명시적 owner release가 모두 있을 때만 다음 단계로 간다.
 
 ## GJC 인터뷰
 

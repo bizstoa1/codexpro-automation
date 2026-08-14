@@ -1,5 +1,13 @@
 # 기술 변경 기록
 
+## 1.13.1 - Oracle 장기 실행 상태 점검 안전성
+
+- 80분을 종료·실패·소유권 해제 시점이 아닌 caution/status-audit 임계값으로
+  정정했습니다. 동일 프로세스의 생존과 출력 진행을 기록한 뒤 계속 기다립니다.
+- 브라우저 관찰 프로세스가 응답 타임아웃으로 반환해도 동일 exact slug의 live
+  회수를 자동으로 이어가며, 시간만으로 새 제출이나 replacement를 만들지 않습니다.
+- 종합 모드와 legacy canary에도 같은 no-time-based-termination 계약을 적용했습니다.
+
 ## 1.13.0 - 첫 설치와 DevSpace 진단 완결
 
 - 기존 DevSpace 설정의 root 병합, Windows 재부팅 root 영속성, Unicode root의

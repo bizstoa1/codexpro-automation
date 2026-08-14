@@ -78,11 +78,12 @@ A nonzero Oracle exit after launch, including a browser response timeout, is
 `attention_required` rather than proof that the web session failed. It retains
 same-project ownership and permits only exact-slug `live` or `harvest`
 recovery; it never authorizes a replacement submission.
-For non-Pro runs, `--browser-timeout` is one overall answer budget. Oracle
-fallback capture consumes only the remaining time. A host wall-clock watchdog
-adds a short grace for a wedged CDP call; if it expires, the runner returns
-`post_submit_watchdog_timeout`, preserves the exact process/session and browser
-evidence, and remains unsafe for a fresh submission.
+`--browser-timeout` is a browser observation window, not proof that the web run
+ended. The default is aligned with the observed provider boundary. Separately,
+4,800 seconds is only a caution/status-audit threshold: the runner records the
+exact slug, process liveness, artifact progress, known conversation binding,
+and terminal evidence, then keeps waiting on the same process. It never kills,
+fails, releases, or replaces a run because that threshold elapsed.
 
 ## Recovery
 
@@ -93,15 +94,16 @@ python skills/chatgpt-oracle-runtime/scripts/run_chatgpt_oracle.py recover --run
 ```
 
 Use `--action live` only to keep following the same stored session. A successful recovery must write a nonempty stored `output.md`, update `state.json` to `complete`, and refresh `transcript.md`; exit code zero without output is `attention_required`.
-The CLI keeps `--action live` inside one exact-slug recovery process for up to
-90 minutes by default. Transient `stalled`, `running`, or observer disagreement
-states keep the same live authority and project lock; they do not return every
-few minutes for Codex-side polling. When the exact session becomes terminal,
-the same process performs one harvest and returns once.
+The CLI keeps `--action live` bound to the same exact slug. At each 80-minute
+caution interval it records a status audit and, if the observer process must
+return while the session is still live, automatically opens another live
+observer for that same saved session. Transient `stalled`, `running`, or
+provider-delivery-timeout states keep the same authority and project lock.
+There is no time-based replacement, ownership release, or new prompt.
 If Oracle proves both that no live tab matches the exact slug and that its
 metadata has no recoverable canonical conversation URL, the runner returns
 `recovery_binding_unavailable` immediately instead of repeating that invariant
-failure for 90 minutes. It preserves `submitted_unknown` ownership; restore the
+failure. It preserves `submitted_unknown` ownership; restore the
 exact persisted conversation URL before recovering the same slug, and never
 replace or resubmit it.
 

@@ -90,15 +90,14 @@ class OracleRunError(RuntimeError):
 
 def build_oracle_argv(config, layout, prompt: str) -> list[str]:
     lifecycle_args = [] if "--browser-hide-window" in config.oracle_args else ["--browser-hide-window"]
-    # Upstream waits `--browser-timeout` for the answer and then gives its
-    # recovery pass the same budget, so the effective ceiling is twice this
-    # value.  Oracle's upstream default can cut a submitted Pro response while
-    # ChatGPT is still visibly working, so every new Oracle lane gets the same
-    # explicit, bounded original-session budget.
-    answer_budget_seconds = int(getattr(config, "web_answer_budget_seconds", 4200))
+    # This is the browser observer's window, not a run termination deadline.
+    # If it expires, the exact slug retains ownership and the harness continues
+    # live recovery.  The default is aligned with the observed provider limit;
+    # the separate 80-minute status audit never changes session authority.
+    answer_budget_seconds = int(getattr(config, "web_answer_budget_seconds", 6000))
     answer_timeout_value = (
         STATE.DEFAULT_BROWSER_ANSWER_TIMEOUT
-        if answer_budget_seconds == 4200
+        if answer_budget_seconds == 6000
         else f"{answer_budget_seconds}s"
     )
     answer_timeout_args = (
@@ -141,7 +140,7 @@ def build_oracle_argv(config, layout, prompt: str) -> list[str]:
 
 
 _BROWSER_TIMEOUT_RE = re.compile(r"^(?P<value>[0-9]+(?:\.[0-9]+)?)(?P<unit>ms|s|m|h)?$", re.IGNORECASE)
-MAX_HOST_WATCHDOG_SECONDS = 7 * 24 * 60 * 60
+MAX_BROWSER_OBSERVER_SECONDS = 7 * 24 * 60 * 60
 # Oracle 0.17.1 rejects an individual browser attachment above this upstream
 # input limit before it can create a ChatGPT conversation.  Keep this narrow:
 # context-packet construction may retain its broader configured envelope.
@@ -165,13 +164,8 @@ def validate_oracle_attachment_sizes(config) -> None:
         )
 
 
-def host_watchdog_timeout_seconds(config, argv: Sequence[str]) -> float | None:
-    """Return one host wall-clock ceiling without changing Oracle's process.
-
-    Oracle 0.17.1 can remain inside a blocked CDP evaluation after its own
-    browser deadline.  The host deadline is therefore independent and only
-    releases the caller; it never terminates the submitted Oracle process.
-    """
+def browser_observer_timeout_seconds(config, argv: Sequence[str]) -> float:
+    """Validate the browser observer window without treating it as terminal."""
     values: list[str] = []
     for index, item in enumerate(argv):
         if item == "--browser-timeout":
@@ -197,34 +191,45 @@ def host_watchdog_timeout_seconds(config, argv: Sequence[str]) -> float | None:
     unit = (match.group("unit") or "ms").casefold()
     multiplier = {"ms": 0.001, "s": 1.0, "m": 60.0, "h": 3600.0}[unit]
     answer_seconds = value * multiplier
-    watchdog_seconds = answer_seconds + STATE.HOST_WATCHDOG_GRACE_SECONDS
     if (
         not math.isfinite(value)
         or not math.isfinite(answer_seconds)
-        or not math.isfinite(watchdog_seconds)
         or answer_seconds <= 0
-        or watchdog_seconds > MAX_HOST_WATCHDOG_SECONDS
+        or answer_seconds > MAX_BROWSER_OBSERVER_SECONDS
     ):
         raise OracleRunError(
             "BROWSER_TIMEOUT_OUT_OF_RANGE",
-            "browser timeout must produce a finite host deadline of at most seven days",
+            "browser observation window must be finite and at most seven days",
             {"value": values[0]},
         )
-    return watchdog_seconds
+    return answer_seconds
 
 
-def wait_for_oracle_process(process: Any, watchdog_timeout_seconds: float | None) -> tuple[int | None, bool]:
-    if watchdog_timeout_seconds is None:
-        return int(process.wait()), False
-    try:
-        return int(process.wait(timeout=watchdog_timeout_seconds)), False
-    except subprocess.TimeoutExpired:
-        poll = getattr(process, "poll", None)
-        if callable(poll):
-            raced_exit_code = poll()
-            if raced_exit_code is not None:
-                return int(raced_exit_code), False
-        return None, True
+def wait_for_oracle_process(
+    process: Any,
+    status_audit_seconds: float,
+    *,
+    on_status_audit: Callable[[int], None] | None = None,
+) -> int:
+    """Wait for one exact Oracle process; time alone never ends the wait."""
+    if not math.isfinite(status_audit_seconds) or status_audit_seconds <= 0:
+        raise OracleRunError(
+            "STATUS_AUDIT_INTERVAL_INVALID",
+            "status audit interval must be a positive finite duration",
+        )
+    audit_count = 0
+    while True:
+        try:
+            return int(process.wait(timeout=status_audit_seconds))
+        except subprocess.TimeoutExpired:
+            poll = getattr(process, "poll", None)
+            if callable(poll):
+                raced_exit_code = poll()
+                if raced_exit_code is not None:
+                    return int(raced_exit_code)
+            audit_count += 1
+            if on_status_audit is not None:
+                on_status_audit(audit_count)
 
 
 ORACLE_VERSION_RESOLUTION_TIMEOUT_SECONDS = 90
@@ -255,6 +260,7 @@ def resolve_oracle_version(command: Sequence[str], *, run_factory=subprocess.run
 
 
 def dry_run_payload(config, layout, argv: Sequence[str], prompt: str) -> dict[str, Any]:
+    observer_seconds = browser_observer_timeout_seconds(config, argv)
     return {
         "ok": True,
         "status": "dry-run",
@@ -274,7 +280,9 @@ def dry_run_payload(config, layout, argv: Sequence[str], prompt: str) -> dict[st
         "stdout_path": str(layout.stdout_path),
         "stderr_path": str(layout.stderr_path),
         "contains_file_flag": "--file" in argv,
-        "host_watchdog_timeout_seconds": host_watchdog_timeout_seconds(config, argv),
+        "browser_observer_timeout_seconds": observer_seconds,
+        "status_audit_seconds": config.status_audit_seconds,
+        "time_alone_is_terminal": False,
     }
 
 
@@ -282,6 +290,66 @@ def append_error(path: Path, message: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("ab") as handle:
         handle.write((message.rstrip() + "\n").encode("utf-8", errors="replace"))
+
+
+def _artifact_observation(path: Path, previous: dict[str, Any] | None) -> dict[str, Any]:
+    if not path.exists():
+        current = {"exists": False, "size_bytes": 0, "mtime_ns": None}
+    else:
+        stat = path.stat()
+        current = {"exists": True, "size_bytes": stat.st_size, "mtime_ns": stat.st_mtime_ns}
+    current["progress_since_prior_audit"] = previous is not None and any(
+        current.get(key) != previous.get(key) for key in ("exists", "size_bytes", "mtime_ns")
+    )
+    return current
+
+
+def record_exact_run_status_audit(
+    layout,
+    *,
+    process: Any,
+    audit_count: int,
+    status_audit_seconds: float,
+    prior_observations: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Persist non-terminal evidence at a caution threshold for one exact run."""
+    observations = {
+        "stdout": _artifact_observation(layout.stdout_path, prior_observations.get("stdout")),
+        "stderr": _artifact_observation(layout.stderr_path, prior_observations.get("stderr")),
+        "output": _artifact_observation(layout.output_path, prior_observations.get("output")),
+    }
+    prior_observations.clear()
+    prior_observations.update(observations)
+    poll = getattr(process, "poll", None)
+    poll_result = poll() if callable(poll) else None
+    pid = getattr(process, "pid", None)
+    state = STATE.load_state(layout.state_path)
+    exact_slug = str((state.get("oracle") or {}).get("slug") or layout.slug)
+    audit = {
+        "threshold_kind": "caution-status-audit",
+        "threshold_seconds": status_audit_seconds,
+        "audit_count": audit_count,
+        "observed_at_unix_seconds": time.time(),
+        "exact_slug": exact_slug,
+        "oracle_process_pid": int(pid) if isinstance(pid, int) else None,
+        "process_live": poll_result is None,
+        "process_poll_result": poll_result,
+        "artifacts": observations,
+        "conversation_url_known": bool(str((state.get("oracle") or {}).get("conversation_url") or "").strip()),
+        "live_tab_probe": "owned-by-running-oracle-process-not-concurrently-reopened",
+        "decision": "continue-observing-same-exact-session",
+        "time_alone_is_terminal": False,
+        "ownership_action": "preserve",
+        "submission_action": "none",
+    }
+    STATE.update_state(
+        layout.state_path,
+        status="running",
+        exit_code=None,
+        session_authority=str(state.get("session_authority") or "submitted_unknown"),
+        status_audit=audit,
+    )
+    return audit
 
 
 SESSION_STATE_RE = re.compile(r"(?im)^\s*State:\s*([a-z][a-z0-9_-]*)\s*$")
@@ -418,6 +486,10 @@ def run_owned_process_ids(run_dir: Path, state: dict[str, Any]) -> tuple[int, ..
     value = watchdog.get("oracle_process_pid")
     if isinstance(value, int) and value > 0:
         pids.add(value)
+    observer = state.get("browser_observer") if isinstance(state.get("browser_observer"), dict) else {}
+    observer_pid = observer.get("oracle_process_pid")
+    if isinstance(observer_pid, int) and observer_pid > 0:
+        pids.add(observer_pid)
     for path in run_dir.glob("*.log"):
         try:
             pids.update(int(match.group("pid")) for match in RECOVERY_BROWSER_PID_RE.finditer(
@@ -611,6 +683,7 @@ def execute_run(
     devspace_qualification_factory: Callable[[Path], dict[str, Any]] = (
         DEVSPACE_PREFLIGHT.ensure_exact_root_qualified
     ),
+    exact_recovery_factory: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     config = STATE.load_manifest(manifest_path, platform_name=platform_name)
     validate_oracle_attachment_sizes(config)
@@ -630,7 +703,8 @@ def execute_run(
             raise OracleRunError(exc.code, str(exc), exc.evidence) from exc
 
     STATE.cleanup_prior_boot_browser_temps(config.run_root, platform_name=platform_name)
-    watchdog_timeout_seconds = host_watchdog_timeout_seconds(config, argv)
+    browser_timeout_seconds = browser_observer_timeout_seconds(config, argv)
+    status_audit_seconds = float(config.status_audit_seconds)
     mission_bytes = config.mission_path.read_bytes()
     actual_mission_sha256 = hashlib.sha256(mission_bytes).hexdigest()
     if actual_mission_sha256 != config.mission_sha256:
@@ -654,8 +728,8 @@ def execute_run(
     layout.stderr_path.touch()
     oracle_env = STATE.browser_temp_environment(layout.browser_temp_path, platform_name=platform_name)
     exit_code: int | None = None
-    watchdog_expired = False
     oracle_process_pid: int | None = None
+    prior_audit_observations: dict[str, dict[str, Any]] = {}
     try:
         version = resolve_oracle_version(config.oracle_command, run_factory=run_factory, platform_name=platform_name)
         compat_factory(version)
@@ -750,24 +824,34 @@ def execute_run(
                     status="running",
                     resolved_version=version,
                     session_authority="submitted_unknown",
-                    host_watchdog=(
-                        {
-                            "status": "armed",
-                            "timeout_seconds": watchdog_timeout_seconds,
-                            "oracle_process_pid": oracle_process_pid,
-                            "process_action": "preserve",
-                        }
-                        if watchdog_timeout_seconds is not None
-                        else {"status": "disabled-for-pro"}
-                    ),
+                    browser_observer={
+                        "status": "running",
+                        "timeout_seconds": browser_timeout_seconds,
+                        "timeout_is_terminal": False,
+                        "oracle_process_pid": oracle_process_pid,
+                    },
+                    status_audit={
+                        "threshold_kind": "caution-status-audit",
+                        "threshold_seconds": status_audit_seconds,
+                        "audit_count": 0,
+                        "time_alone_is_terminal": False,
+                        "decision": "wait-for-first-audit-threshold",
+                    },
+                )
+                audit_callback = lambda count: record_exact_run_status_audit(
+                    layout,
+                    process=process,
+                    audit_count=count,
+                    status_audit_seconds=status_audit_seconds,
+                    prior_observations=prior_audit_observations,
                 )
                 if not config.parallel_parent_id:
-                    exit_code, watchdog_expired = wait_for_oracle_process(
-                        process, watchdog_timeout_seconds
+                    exit_code = wait_for_oracle_process(
+                        process, status_audit_seconds, on_status_audit=audit_callback
                     )
             if config.parallel_parent_id:
-                exit_code, watchdog_expired = wait_for_oracle_process(
-                    process, watchdog_timeout_seconds
+                exit_code = wait_for_oracle_process(
+                    process, status_audit_seconds, on_status_audit=audit_callback
                 )
     except Exception as exc:
         code = f"{exc.code}: " if isinstance(exc, OracleRunError) else ""
@@ -778,34 +862,6 @@ def execute_run(
             STATE.cleanup_owned_browser_temp(layout.browser_temp_path)
         return {"ok": False, "run_dir": str(layout.run_dir), "result": STATE.update_state(layout.state_path, status="failed")}
     STATE.write_transcript(layout)
-    if watchdog_expired:
-        state = STATE.update_state(
-            layout.state_path,
-            status="attention_required",
-            exit_code=None,
-            session_authority="submitted_unknown",
-            transport_status="post_submit_watchdog_timeout",
-            task_outcome="pending",
-            task_outcome_reason="host-wall-clock-expired-process-preserved",
-            host_watchdog={
-                "status": "expired",
-                "timeout_seconds": watchdog_timeout_seconds,
-                "oracle_process_pid": oracle_process_pid,
-                "process_action": "preserved",
-                "next_action": "observe-or-recover-exact-session-only",
-            },
-        )
-        return {
-            "ok": False,
-            "status": "post_submit_watchdog_timeout",
-            "safe_for_fresh_run": False,
-            "process_preserved": True,
-            "oracle_process_pid": oracle_process_pid,
-            "host_watchdog_timeout_seconds": watchdog_timeout_seconds,
-            "next_action": "observe the original process or recover the exact slug; never replace or resubmit",
-            "run_dir": str(layout.run_dir),
-            "result": state,
-        }
     pre_submit_failure = STATE.settle_proven_pre_submit_failure(layout.state_path)
     if pre_submit_failure is not None:
         STATE.cleanup_owned_browser_temp(layout.browser_temp_path)
@@ -858,11 +914,11 @@ def execute_run(
                 if task_outcome in {"executed", "not_executed", "blocked"}
                 else task_outcome
             ),
-            host_watchdog={
+            browser_observer={
                 "status": "process-exited",
-                "timeout_seconds": watchdog_timeout_seconds,
+                "timeout_seconds": browser_timeout_seconds,
                 "oracle_process_pid": oracle_process_pid,
-                "process_action": "none",
+                "timeout_is_terminal": False,
             },
         )
         STATE.cleanup_owned_browser_temp(layout.browser_temp_path)
@@ -890,26 +946,40 @@ def execute_run(
                 if delivery_timeout
                 else None
             ),
-            host_watchdog={
+            browser_observer={
                 "status": "process-exited",
-                "timeout_seconds": watchdog_timeout_seconds,
+                "timeout_seconds": browser_timeout_seconds,
                 "oracle_process_pid": oracle_process_pid,
-                "process_action": "none",
+                "timeout_is_terminal": False,
             },
         )
-    if not transport_complete and post_submit_response_timed_out(
-        layout.stdout_path, layout.stderr_path
-    ):
+    response_timeout = post_submit_response_timed_out(layout.stdout_path, layout.stderr_path)
+    if not transport_complete and (response_timeout or delivery_timeout):
+        recovery = exact_recovery_factory or recover_run
+        try:
+            recovered = recovery(
+                layout.run_dir,
+                action="live",
+                platform_name=platform_name,
+                settle_timeout_seconds=status_audit_seconds,
+            )
+        except Exception as exc:
+            append_error(layout.stderr_path, f"automatic exact-session live recovery failed: {exc}")
+            return {
+                "ok": False,
+                "status": "exact_session_recovery_unavailable",
+                "safe_for_fresh_run": False,
+                "run_dir": str(layout.run_dir),
+                "next_action": "preserve the exact slug and retry exact-session observation only; never replace or resubmit",
+                "result": STATE.load_state(layout.state_path),
+            }
         return {
-            "ok": False,
-            "status": "post_submit_response_timeout",
+            **recovered,
+            "automatic_exact_session_recovery": True,
             "safe_for_fresh_run": False,
-            "run_dir": str(layout.run_dir),
-            "next_action": (
-                "keep passive ownership of the original exact session until terminal output is "
-                "available; do not relaunch recovery, replace, or resubmit while ChatGPT is working"
+            "original_observer_status": (
+                "post_submit_response_timeout" if response_timeout else "post_submit_provider_delivery_timeout"
             ),
-            "result": state,
         }
     return {"ok": status == "complete", "run_dir": str(layout.run_dir), "result": state}
 
@@ -1564,30 +1634,47 @@ def recover_run(
         timeout_seconds=30,
         platform_name=platform_name,
     ):
-        result = _recover_run_locked(
-            directory,
-            action=action,
-            dry_run=dry_run,
-            oracle_command=oracle_command,
-            popen_factory=popen_factory,
-            platform_name=platform_name,
-            live_settle_timeout_seconds=settle_timeout_seconds if action == "live" else 0,
-        )
-        if (
-            action == "live"
-            and settle_timeout_seconds > 0
-            and result.get("status") in {"session_live", "terminal_settle_disagreement"}
-        ):
-            return {
-                **result,
-                "status": "live_settle_timeout",
-                "settle_timeout_seconds": settle_timeout_seconds,
-                "next_action": (
-                    "the one exact-slug live recovery connection reached its bounded deadline; "
-                    "preserve this session and do not relaunch, replace, or resubmit"
-                ),
-            }
-        return result
+        audit_count = 0
+        while True:
+            result = _recover_run_locked(
+                directory,
+                action=action,
+                dry_run=dry_run,
+                oracle_command=oracle_command,
+                popen_factory=popen_factory,
+                platform_name=platform_name,
+                live_settle_timeout_seconds=settle_timeout_seconds if action == "live" else 0,
+            )
+            continue_exact = (
+                action == "live"
+                and not dry_run
+                and settle_timeout_seconds > 0
+                and result.get("status") in {"session_live", "provider_delivery_timeout"}
+            )
+            if not continue_exact:
+                return result
+            audit_count += 1
+            latest = STATE.load_state(directory / "state.json")
+            STATE.update_state(
+                directory / "state.json",
+                status="running",
+                exit_code=latest.get("exit_code"),
+                session_authority="live",
+                status_audit={
+                    "threshold_kind": "caution-status-audit",
+                    "threshold_seconds": settle_timeout_seconds,
+                    "audit_count": audit_count,
+                    "observed_at_unix_seconds": time.time(),
+                    "exact_slug": str((latest.get("oracle") or {}).get("slug") or ""),
+                    "exact_session_state": result.get("exact_session_state"),
+                    "decision": "continue-exact-session-live-recovery",
+                    "time_alone_is_terminal": False,
+                    "ownership_action": "preserve",
+                    "submission_action": "none",
+                },
+            )
+            if settle_interval_seconds > 0:
+                sleep(settle_interval_seconds)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1603,9 +1690,14 @@ def build_parser() -> argparse.ArgumentParser:
     recover_parser.add_argument("--dry-run", action="store_true")
     recover_parser.add_argument(
         "--settle-timeout-seconds",
+        "--status-audit-seconds",
+        dest="settle_timeout_seconds",
         type=float,
-        default=5400,
-        help="For live recovery, keep the exact slug in one process until terminal or this bounded deadline.",
+        default=4800,
+        help=(
+            "For live recovery, audit the exact slug at this caution interval and automatically "
+            "continue the same-session observation; this is never a termination deadline."
+        ),
     )
     recover_parser.add_argument(
         "--settle-interval-seconds",

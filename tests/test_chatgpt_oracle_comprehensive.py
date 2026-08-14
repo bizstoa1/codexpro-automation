@@ -262,7 +262,7 @@ def test_pro_exact_recovery_materializes_output_without_resubmission(tmp_path: P
 
     def fake_recover(exact_run_dir: Path, *, action: str, dry_run: bool):
         assert exact_run_dir == run_dir
-        assert action == "harvest"
+        assert action == "live"
         return {"ok": True, "status": "complete", "run_dir": str(run_dir), "output_path": str(oracle_output)}
 
     result = module.run_workflow(
@@ -514,7 +514,7 @@ def test_running_oracle_stage_recovers_exact_run_without_resubmission(tmp_path: 
     second = module.run_workflow(path, oracle_execute=fake_execute, oracle_recover=fake_recover)
     assert second["status"] == "awaiting_receipt"
     assert submitted == 1
-    assert [item[1:] for item in recovered] == [("harvest", False)]
+    assert [item[1:] for item in recovered] == [("live", False)]
     assert second["recovery"]["status"] == "recovered"
 
 
@@ -570,7 +570,7 @@ def test_post_submit_watchdog_persists_same_attempt_and_only_exact_recovers(
     assert first["current_attempt_id"] == first["oracle_run_id"]
     assert first["oracle_run_dir"] == str(submissions[0])
     assert len(submissions) == 1
-    assert recoveries == [(submissions[0], "harvest")]
+    assert recoveries == [(submissions[0], "live")]
     assert second["status"] == "awaiting_receipt"
     assert second["recovery"]["status"] == "recovered"
 
@@ -959,7 +959,7 @@ def test_running_stage_does_not_trust_existing_receipt_before_terminal_authority
     assert second["current_stage"] == "plan"
     assert len(submitted) == 1
     assert len(recovered) == 1
-    assert recovered[0][1]["action"] == "harvest"
+    assert recovered[0][1]["action"] == "live"
 
 
 def test_review_revise_receipt_is_terminal_legacy_compatibility(tmp_path: Path) -> None:

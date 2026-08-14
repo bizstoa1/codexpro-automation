@@ -110,12 +110,12 @@ complete. A Pro selection launches the qualified read-only DevSpace stage unless
 its plan explicitly declares `pro-attachment`, then waits for a bound receipt;
 it is never downgraded. Missing receipt/output,
 crash, or ambiguity returns attention-required without a replacement submit.
-Regular-stage `--browser-timeout` is an overall answer deadline, not a fresh
-budget for each reload/fallback. If Oracle fails to exit within that deadline
-plus the host grace, comprehensive mode persists the same attempt as
-`post_submit_watchdog_timeout` and returns attention-required. It does not kill,
-replace, restart, or resubmit the exact session; later continuation may only
-observe or recover that stored slug.
+Regular-stage `--browser-timeout` is a browser observation window, not a work
+termination deadline. At 4,800 seconds comprehensive mode performs a caution
+audit of the persisted exact attempt and keeps the same process/session alive.
+If an observer returns while the exact session remains live, comprehensive mode
+continues exact-slug live recovery automatically. Time alone never kills,
+fails, releases, replaces, restarts, or resubmits the session.
 
 `Prompt did not appear in conversation before timeout (send may have failed)`
 remains submission-uncertain by default. Exact recovery reporting no live tab
