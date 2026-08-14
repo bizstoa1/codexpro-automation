@@ -55,6 +55,7 @@ def compile_manifest(
         "task_kind": contract["task_kind"],
         "transport": {
             "oracle-pro-attachment-only": "pro-attachment-only",
+            "oracle-pro-devspace": "pro-devspace",
             "oracle-pro-devspace-readonly": "pro-devspace-readonly",
             "oracle-devspace": "devspace",
         }[contract["route"]],

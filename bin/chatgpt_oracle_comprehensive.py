@@ -128,6 +128,10 @@ def load_manifest(path: Path) -> dict[str, Any]:
     workflow_profile = str(value.get("workflow_profile") or STANDARD_PROFILE).strip().casefold()
     if workflow_profile not in {STANDARD_PROFILE, ULTRA_ECONOMY_PROFILE}:
         raise WorkflowError("workflow_profile must be standard or ultra-economy")
+    allow_pro_raw = value.get("allow_pro", False)
+    if not isinstance(allow_pro_raw, bool):
+        raise WorkflowError("allow_pro must be a boolean explicit opt-in")
+    allow_pro = allow_pro_raw or workflow_profile == ULTRA_ECONOMY_PROFILE
     initial_stage = str(
         value.get("initial_stage")
         or ("pro" if workflow_profile == ULTRA_ECONOMY_PROFILE else "plan")
@@ -166,6 +170,7 @@ def load_manifest(path: Path) -> dict[str, Any]:
         "initial_mission_path": mission,
         "max_stages": maximum,
         "workflow_profile": workflow_profile,
+        "allow_pro": allow_pro,
         "initial_stage": initial_stage,
         "app_name": app_name,
         "model": str(value.get("model") or "gpt-5.6"),
@@ -338,7 +343,16 @@ def _stage_mission(
         "are the authority.\n"
     )
     if stage == "plan":
+        pro_selection_instruction = (
+            "A next_stage=pro transition is permitted when it is genuinely useful.\n"
+            if config["allow_pro"]
+            else "Do not emit next_stage=pro; continue with review or an authorized web-multi stage.\n"
+        )
         protocol += (
+            "\n[PRO_SELECTION_POLICY]\n"
+            f"pro_selection_allowed={'true' if config['allow_pro'] else 'false'}\n"
+            "Pro is quota-limited and may be selected only when this manifest explicitly authorizes it. "
+            f"{pro_selection_instruction}"
             "\n[PRO_ATTACHMENT_AUTHORING_CONTRACT]\n"
             "Use the default Pro DevSpace route unless frozen external evidence is unavailable or inappropriate "
             "through the live exact root. If and only if next_stage=pro requires such evidence files, the authored "
@@ -456,7 +470,7 @@ def _oracle_manifest(
             payload["transport"] = "pro-attachment-only"
             payload["attachments"] = [str(mission), *(str(item) for item in pro_attachments)]
         else:
-            payload["transport"] = "pro-devspace-readonly"
+            payload["transport"] = "pro-devspace"
             payload["app_name"] = config["app_name"]
             payload["task_outcome_contract"] = "v1"
     else:
@@ -792,6 +806,8 @@ def _validate_receipt(
         raise WorkflowError("stage receipt identity mismatch")
     raw_status = str(value.get("status") or "")
     next_stage = str(value.get("next_stage") or "")
+    if stage == "plan" and next_stage == "pro" and not config["allow_pro"]:
+        raise WorkflowError("PRO_EXPLICIT_OPT_IN_REQUIRED: set allow_pro=true only after an explicit Pro request")
     completed_plan_compat = (
         stage == "plan"
         and raw_status.casefold() == "completed"

@@ -105,11 +105,10 @@ new exact folder. Do not inspect or automate ChatGPT app settings per task.
 | PC-local advice and counterexamples | Local Multi-GPT | Optional, Luna Max, read-only |
 | Plan through final gate | comprehensive mode | Staged web workflow |
 | Minimize local model cost | `ultra-economy` | Luna Max command + separate web stages |
-| Independent final judgment | `pro` | GPT-5.6 Sol Pro + read-only DevSpace |
+| Explicitly requested Pro work | `pro` | GPT-5.6 Sol Pro + read/write DevSpace |
 
 Natural-language aliases use the same routes: `orchestrator` / orchestrator and
-`deep-research` / deep research. Qualified Pro uses Oracle + read-only DevSpace by default; explicit `pro-attachment`
-is reserved for immutable evidence that the approved workspace cannot read.
+`deep-research` / deep research. Regular web work defaults to the highest supported non-Pro reasoning tier. Pro is quota-limited, never auto-selected, and runs only after an explicit request. Qualified Pro uses Oracle + read/write DevSpace; explicit `pro-attachment` is reserved for immutable evidence that the approved workspace cannot read.
 
 See [Global Routing](docs/GLOBAL_CHATGPT_ROUTING.md) for selection rules and
 [Ultra Economy Mode](docs/ULTRA_ECONOMY_MODE.md) for its strict contract.
@@ -134,7 +133,8 @@ Remove `--dry-run` only when live execution is authorized.
 
 - Allow one active or uncertain Oracle workflow per project.
 - Qualify the exact root before the first DevSpace submission for a new project.
-- Pro is read-only by default and cannot write, invoke a shell, or run commands.
+- Regular web work defaults to the highest supported non-Pro reasoning tier. Pro requires explicit opt-in and is never an automatic upgrade.
+- Explicit Pro may perform mission-authorized writes and commands inside the exact root, under the repository safety policy.
 - Post-submit failure recovers the existing slug and URL and never resubmits the task.
 - Browser or local-process exit alone is not evidence that web work failed.
 - Never commit secrets, Owner passwords, OAuth tokens, or browser profiles.

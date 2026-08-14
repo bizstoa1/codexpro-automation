@@ -64,7 +64,7 @@ def test_ultra_economy_manifest_rejects_handshake_self_declaration(tmp_path: Pat
     with pytest.raises(module.WorkflowError, match="one-time conversational handshake"):
         module.load_manifest(path)
 
-def test_ultra_economy_dry_run_starts_with_read_only_pro_design(tmp_path: Path, monkeypatch) -> None:
+def test_ultra_economy_dry_run_starts_with_explicit_pro_design(tmp_path: Path, monkeypatch) -> None:
     module = load()
     seen: dict[str, object] = {}
 
@@ -84,7 +84,7 @@ def test_ultra_economy_dry_run_starts_with_read_only_pro_design(tmp_path: Path, 
     assert result["workflow_profile"] == "ultra-economy"
     assert seen["model"] == "gpt-5.6-sol"
     assert seen["thinking_time"] == "heavy"
-    assert seen["transport"] == "pro-devspace-readonly"
+    assert seen["transport"] == "pro-devspace"
 
 
 def test_standard_workflow_cannot_skip_plan_with_initial_pro(tmp_path: Path) -> None:
@@ -158,9 +158,13 @@ def test_web_authored_relay_reaches_complete_without_host_semantic_rewrite(tmp_p
     assert result["status"] == "complete"
 
 
-def test_pro_stage_runs_oracle_attachment_only_and_materializes_bound_receipt(tmp_path: Path) -> None:
+def test_explicit_pro_stage_runs_writable_devspace_and_materializes_bound_receipt(tmp_path: Path) -> None:
     module = load()
     stages = []
+    workflow_manifest = manifest(tmp_path)
+    workflow_payload = json.loads(workflow_manifest.read_text(encoding="utf-8"))
+    workflow_payload["allow_pro"] = True
+    workflow_manifest.write_text(json.dumps(workflow_payload), encoding="utf-8")
 
     def regular_receipt(mission: Path, stage: str, next_stage: str, next_mission: Path) -> None:
         text = mission.read_text(encoding="utf-8")
@@ -183,7 +187,7 @@ def test_pro_stage_runs_oracle_attachment_only_and_materializes_bound_receipt(tm
         stage = next(item for item in ("plan", "pro", "review", "implementation", "final-web-gate") if f"stage={item}\n" in text)
         stages.append(stage)
         if stage == "pro":
-            assert payload["transport"] == "pro-devspace-readonly"
+            assert payload["transport"] == "pro-devspace"
             assert payload["task_outcome_contract"] == "v1"
             assert payload["model"] == "gpt-5.6-sol"
             assert payload["app_name"] == "DevSpace"
@@ -209,7 +213,7 @@ def test_pro_stage_runs_oracle_attachment_only_and_materializes_bound_receipt(tm
         return {"ok": True, "run_dir": str(mission.parent / "run")}
 
     result = module.run_workflow(
-        manifest(tmp_path),
+        workflow_manifest,
         oracle_execute=fake_execute,
         local_gate_runner=lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, "", ""),
     )
@@ -221,6 +225,44 @@ def test_pro_stage_runs_oracle_attachment_only_and_materializes_bound_receipt(tm
     receipt = json.loads((pro_stage / "stage-result.json").read_text(encoding="utf-8"))
     assert receipt["stage"] == "pro"
     assert receipt["next_stage"] == "review"
+
+
+def test_standard_workflow_blocks_plan_selected_pro_without_explicit_opt_in(tmp_path: Path) -> None:
+    module = load()
+    calls: list[str] = []
+
+    def fake_execute(path: Path, *, dry_run: bool):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        mission = Path(payload["mission_path"])
+        text = mission.read_text(encoding="utf-8")
+        calls.append("plan")
+        assert "pro_selection_allowed=false" in text
+        output = mission.parent / "plan-output.md"
+        next_mission = tmp_path / "unauthorized-pro.md"
+        output.write_text("plan", encoding="utf-8")
+        next_mission.write_text("pro request", encoding="utf-8")
+        attempt = next(line.split("=", 1)[1] for line in text.splitlines() if line.startswith("attempt_id="))
+        input_sha = next(line.split("=", 1)[1] for line in text.splitlines() if line.startswith("input_mission_sha256="))
+        (mission.parent / "stage-result.json").write_text(json.dumps({
+            "schema": module.RECEIPT_SCHEMA,
+            "workflow_id": "a" * 32,
+            "stage": "plan",
+            "attempt_id": attempt,
+            "input_mission_sha256": input_sha,
+            "status": "PLAN_READY",
+            "output_path": str(output),
+            "output_sha256": module.sha(output),
+            "next_stage": "pro",
+            "next_mission_path": str(next_mission),
+            "next_mission_sha256": module.sha(next_mission),
+            "ready_for_next": True,
+            "blocker": "",
+        }), encoding="utf-8")
+        return {"ok": True, "run_dir": str(mission.parent / "run")}
+
+    with pytest.raises(module.WorkflowError, match="PRO_EXPLICIT_OPT_IN_REQUIRED"):
+        module.run_workflow(manifest(tmp_path), oracle_execute=fake_execute)
+    assert calls == ["plan"]
 
 
 def test_pro_exact_recovery_materializes_output_without_resubmission(tmp_path: Path) -> None:
@@ -1533,7 +1575,7 @@ def test_regular_manifest_never_attaches_pro_packets_and_default_pro_uses_devspa
     default_pro = json.loads(module._oracle_manifest(
         config, mission, tmp_path / "legacy-pro", "d" * 32, stage="pro"
     ).read_text(encoding="utf-8"))
-    assert default_pro["transport"] == "pro-devspace-readonly"
+    assert default_pro["transport"] == "pro-devspace"
     assert default_pro["task_outcome_contract"] == "v1"
     assert default_pro["app_name"] == config["app_name"]
     assert "attachments" not in default_pro
@@ -1604,6 +1646,7 @@ def test_receipt_relative_path_escape_remains_fail_closed(tmp_path: Path) -> Non
 def test_completed_plan_receipt_is_compatibly_normalized_only_when_fully_valid(tmp_path: Path) -> None:
     module = load()
     config = module.load_manifest(manifest(tmp_path))
+    config["allow_pro"] = True
     output = tmp_path / "plan-output.md"
     next_mission = tmp_path / "pro-next.md"
     output.write_text("plan", encoding="utf-8")

@@ -34,7 +34,9 @@ is cached against the DevSpace config hash and repeated only when configuration
 changes.
 
 Every run records the project, mission bytes, transport, model, effort, and
-artifact identity. Qualified Pro uses read-only DevSpace. Attachment mode is an
+artifact identity. Regular web work defaults to the highest supported non-Pro
+reasoning tier. Pro is an explicit, quota-aware opt-in and uses exact-root
+DevSpace with mission-scoped read/write authority. Attachment mode is an
 explicit immutable-evidence contract, not an automatic fallback.
 
 ## Recoverable lifecycle

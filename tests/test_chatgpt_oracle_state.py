@@ -32,7 +32,7 @@ def test_v1_task_outcome_accepts_exact_provider_reference_footer(tmp_path: Path)
     assert state.classify_task_outcome(
         output,
         contract="v1",
-        transport="pro-devspace-readonly",
+        transport="pro-devspace",
     ) == "executed"
 
 
@@ -56,7 +56,7 @@ def test_v1_task_outcome_reference_footer_stays_fail_closed(
     assert state.classify_task_outcome(
         output,
         contract="v1",
-        transport="pro-devspace-readonly",
+        transport="pro-devspace",
     ) == "unknown"
 
 
@@ -142,14 +142,14 @@ def test_pro_manifest_is_attachment_only_and_hashes_exact_files(tmp_path: Path) 
     assert payload["attachments"][1]["sha256"] == state.sha256_file(packet.resolve())
 
 
-def test_pro_readonly_manifest_requires_devspace_and_stays_inside_project(tmp_path: Path) -> None:
+def test_pro_devspace_manifest_is_write_capable_and_stays_inside_project(tmp_path: Path) -> None:
     state = load_state()
     mission = tmp_path / "mission.md"
-    mission.write_text("read only", encoding="utf-8")
+    mission.write_text("implement the change", encoding="utf-8")
     config = state.load_manifest(manifest(
         tmp_path,
         mission.resolve(),
-        transport="pro-devspace-readonly",
+        transport="pro-devspace",
         app_name="DevSpace",
         model="gpt-5.6-sol",
         model_strategy="select",
@@ -161,9 +161,10 @@ def test_pro_readonly_manifest_requires_devspace_and_stays_inside_project(tmp_pa
     assert state.is_devspace_transport(config.transport)
     assert config.attachments == ()
     assert state.composer_prompt(config).startswith(
-        f"@DevSpace Read the read-only mission file: {mission.resolve()}."
+        f"@DevSpace Read and execute the mission file: {mission.resolve()}."
     )
     prompt = state.composer_prompt(config)
+    assert "create, edit, and remove mission-owned files and run commands" in prompt
     assert "Put every citation, footnote, and Markdown reference definition before" in prompt
     assert prompt.endswith("as the final nonempty line; append nothing after it.")
     layout = state.create_layout(config, run_id="20260725T151414Z-a3aeba967d99")
@@ -173,17 +174,32 @@ def test_pro_readonly_manifest_requires_devspace_and_stays_inside_project(tmp_pa
     outside.write_text("outside", encoding="utf-8")
     with pytest.raises(state.OracleStateError) as exc:
         state.load_manifest(manifest(
-            tmp_path, outside, transport="pro-devspace-readonly", app_name="DevSpace",
+            tmp_path, outside, transport="pro-devspace", app_name="DevSpace",
             model="gpt-5.6-sol", thinking_time="heavy", task_outcome_contract="v1",
         ))
     assert exc.value.code == "MISSION_OUTSIDE_PROJECT"
 
     with pytest.raises(state.OracleStateError) as exc:
         state.load_manifest(manifest(
-            tmp_path, mission.resolve(), transport="pro-devspace-readonly", app_name="DevSpace",
+            tmp_path, mission.resolve(), transport="pro-devspace", app_name="DevSpace",
             model="gpt-5.6-sol", thinking_time="heavy", task_outcome_contract="legacy",
         ))
     assert exc.value.code == "PRO_DEVSPACE_TASK_OUTCOME_CONTRACT_REQUIRED"
+
+    legacy = state.load_manifest(manifest(
+        tmp_path,
+        mission.resolve(),
+        transport="pro-devspace-readonly",
+        app_name="DevSpace",
+        model="gpt-5.6-sol",
+        model_strategy="select",
+        thinking_time="heavy",
+        research="off",
+        task_outcome_contract="v1",
+    ))
+    assert state.composer_prompt(legacy).startswith(
+        f"@DevSpace Read the read-only mission file: {mission.resolve()}."
+    )
 
 
 def test_pro_composer_identity_changes_with_project_or_attachment_bytes(tmp_path: Path) -> None:

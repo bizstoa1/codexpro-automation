@@ -140,15 +140,15 @@ def test_pro_defaults_to_devspace_without_attachments(tmp_path: Path) -> None:
     module = load()
     mission = tmp_path / "mission.md"
     mission.write_text("read only", encoding="utf-8")
-    target = tmp_path / "pro-readonly.json"
+    target = tmp_path / "pro-devspace.json"
 
     result = module.compile_manifest(
         mode="pro", project_root=tmp_path, mission_path=mission, output_path=target
     )
 
     value = json.loads(target.read_text(encoding="utf-8"))
-    assert result["contract"]["route"] == "oracle-pro-devspace-readonly"
-    assert value["transport"] == "pro-devspace-readonly"
+    assert result["contract"]["route"] == "oracle-pro-devspace"
+    assert value["transport"] == "pro-devspace"
     assert value["app_name"] == "DevSpace"
     assert value["model"] == "gpt-5.6-sol"
     assert value["model_strategy"] == "select"

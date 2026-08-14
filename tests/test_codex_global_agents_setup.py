@@ -69,6 +69,10 @@ def test_apply_preserves_existing_config_and_policy_and_is_idempotent(tmp_path: 
     assert "directly under a drive root" in global_policy
     assert ".codex-tmp\\<task>" in global_policy
     assert "%LOCALAPPDATA%\\Codex\\Sources" in global_policy
+    assert "Default ordinary web work to `gpt-5.6` with `extra-high`" in global_policy
+    assert "Treat Pro as quota-limited and explicit-only" in global_policy
+    assert "New explicit Pro runs use the `pro-devspace` route" in global_policy
+    assert "Preserve persisted `pro-devspace-readonly` runs" in global_policy
     assert module.doctor(home, source_root=ROOT)["ok"] is True
 
     second = module.apply_setup(home, source_root=ROOT)

@@ -35,7 +35,7 @@ DEVSPACE_APP_NAME = WORKSPACE_CONFIG.DEFAULT_APP_NAME
 # separate model row.  Oracle 0.17.1 verifies that Pro effort independently.
 PRO_MODEL = "gpt-5.6-sol"
 PRO_COMPOSER_PROMPT = "Read the attached prompt/instructions and all attached files, then complete the task."
-PRO_READONLY_COMPOSER_PREFIX = "Read the read-only mission file"
+PRO_DEVSPACE_COMPOSER_PREFIX = "Read and execute the mission file"
 
 
 class OracleProfileError(ValueError):
@@ -74,9 +74,6 @@ _ALIASES = {
     "deep research": "deep-research",
     "pro": "pro",
     "gpt-pro": "pro",
-    "pro-readonly": "pro",
-    "pro_readonly": "pro",
-    "pro readonly": "pro",
     "pro_attachment": "pro-attachment",
     "pro attachment": "pro-attachment",
 }
@@ -132,13 +129,15 @@ def composer_handoff(mission_path: str | Path, app_name: str | None = None) -> s
     )
 
 
-def pro_readonly_composer_handoff(mission_path: str | Path, app_name: str | None = None) -> str:
-    """The qualified Pro read-only DevSpace handoff, with no attachments."""
+def pro_devspace_composer_handoff(mission_path: str | Path, app_name: str | None = None) -> str:
+    """The qualified Pro DevSpace handoff, with mission-scoped write authority."""
     mission = _absolute_mission_path(mission_path)
     return (
-        f"@{WORKSPACE_CONFIG.normalize_app_name(app_name or WORKSPACE_CONFIG.configured_app_name())} {PRO_READONLY_COMPOSER_PREFIX}: {mission}. "
+        f"@{WORKSPACE_CONFIG.normalize_app_name(app_name or WORKSPACE_CONFIG.configured_app_name())} {PRO_DEVSPACE_COMPOSER_PREFIX}: {mission}. "
         "Use only the exact project root recorded there; read the mission and applicable AGENTS.md fully first. "
-        "Perform read-only work only; do not modify files, settings, accounts, or external state."
+        "You may inspect, create, edit, and remove mission-owned files and run commands inside that exact root as "
+        "required by the mission. Obey all repository safety rules. Do not change accounts, app settings, or external "
+        "state unless the mission explicitly authorizes that action."
     )
 
 
@@ -184,6 +183,7 @@ def build_launch_contract(
         "attachments": [],
         "app_picker": False,
         "app_settings_automation": False,
+        "pro_selection_policy": "explicit-only",
     }
     if not profile.oracle_launch:
         result.update({
@@ -219,11 +219,11 @@ def build_launch_contract(
     if profile.mode == "pro":
         if attachment_paths:
             raise OracleProfileError(
-                "PRO_READONLY_ATTACHMENTS_FORBIDDEN",
-                "Pro read-only DevSpace runs must not attach files",
+                "PRO_DEVSPACE_ATTACHMENTS_FORBIDDEN",
+                "Pro DevSpace runs must not attach files",
             )
         result.update({
-            "route": "oracle-pro-devspace-readonly",
+            "route": "oracle-pro-devspace",
             "app_policy": "prompt-mention-only",
             "attachment_policy": "forbidden",
             "app_name": resolved_app_name,
@@ -232,7 +232,7 @@ def build_launch_contract(
             "reasoning_level": "Pro",
             "thinking_time": "heavy",
             "mission_path": str(mission),
-            "composer_prompt": pro_readonly_composer_handoff(mission, resolved_app_name),
+            "composer_prompt": pro_devspace_composer_handoff(mission, resolved_app_name),
         })
         return result
     if attachment_paths:

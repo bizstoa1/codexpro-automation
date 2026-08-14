@@ -107,7 +107,7 @@ ChatGPT 앱 `codex` 등록은 준비가 끝난 뒤 **최초 한 번 수동 등�
 | PC 로컬 자문·반례 탐색 | Local Multi-GPT | 선택 설치, Luna Max, 읽기 전용 |
 | 계획부터 최종 gate까지 | comprehensive mode | 단계별 웹 워크플로 |
 | 로컬 비용 최소화 | `ultra-economy` | Luna Max 지휘 + 분리 웹 단계 |
-| 독립 최종 판단 | `pro` | GPT-5.6 Sol Pro + 읽기 전용 DevSpace |
+| 명시 요청한 Pro 작업 | `pro` | GPT-5.6 Sol Pro + 읽기·쓰기 DevSpace |
 
 자세한 선택 기준은 [전역 라우팅](docs/GLOBAL_CHATGPT_ROUTING.md), 초절약모드는
 [초절약모드 가이드](docs/ULTRA_ECONOMY_MODE.md)를 참고하세요.
@@ -132,7 +132,8 @@ python "$env:USERPROFILE\.codex\bin\chatgpt_oracle_dispatch.py" `
 
 - 프로젝트마다 활성 또는 불확실한 Oracle 작업은 하나만 둡니다.
 - 새 프로젝트의 첫 DevSpace 제출 전에 exact root 등록을 확인합니다.
-- Pro는 기본적으로 read-only이며 쓰기·셸·명령 실행을 허용하지 않습니다.
+- 일반 웹 작업은 최고 지원 비-Pro 추론 강도가 기본입니다. Pro는 횟수 제한이 있으므로 사용자가 명시적으로 요청할 때만 선택하며 자동 승격하지 않습니다.
+- 명시적으로 선택한 Pro는 exact root 안에서 미션이 허용한 파일 쓰기와 명령 실행이 가능합니다. 저장소 안전 규칙과 `AGENTS.md`는 그대로 적용됩니다.
 - 제출 후 오류는 기존 실행 신원으로 정확히 복구하며, 저장된 slug와 대화
   URL만 회수하고 자동 재제출하지 않습니다.
 - 브라우저나 로컬 프로세스 종료만으로 웹 작업 실패를 판정하지 않습니다.

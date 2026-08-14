@@ -21,4 +21,12 @@
 - At the threshold inspect the exact run's process liveness, response/log/output progress, known conversation binding, and provider terminal evidence. If it is live, streaming, progressing, or uncertain, continue the same process or exact-slug live recovery.
 - If a host observer must return, preserve the Oracle process/session and automatically continue observation through the same exact slug. Never create a fresh prompt or release the project lock because elapsed time alone.
 - Only a real provider hard limit, explicit terminal evidence, an explicit user stop, or verified inability may end observation. Keep prompt-not-observed fail-closed and no-duplicate rules unchanged.
+
+## Web GPT model and Pro authority
+
+- Default ordinary web work to `gpt-5.6` with `extra-high`, the highest supported non-Pro reasoning tier. Never select or upgrade to Pro automatically.
+- Treat Pro as quota-limited and explicit-only. Use `GPT-5.6 Sol` at the Pro effort only after the user explicitly requests Pro; a standard comprehensive workflow additionally requires `allow_pro: true`.
+- New explicit Pro runs use the `pro-devspace` route. Inside the exact qualified project root, Pro may inspect, create, edit, and remove mission-owned files and run mission-required commands under the applicable `AGENTS.md` and repository safety rules.
+- Pro must not alter accounts, ChatGPT app settings, or external state unless the mission explicitly grants that authority. `pro-attachment` remains a separate explicit immutable-evidence route, never an automatic fallback.
+- Preserve persisted `pro-devspace-readonly` runs with their original read-only meaning during exact recovery; never reinterpret historical authority.
 <!-- END CODEX WEB GPT SUBAGENT POLICY -->

@@ -63,7 +63,7 @@ def pro_manifest(tmp_path: Path, **extra) -> Path:
 def pro_readonly_manifest(tmp_path: Path, **extra) -> Path:
     return manifest(
         tmp_path,
-        transport="pro-devspace-readonly",
+        transport="pro-devspace",
         app_name="DevSpace",
         model="gpt-5.6-sol",
         model_strategy="select",
@@ -636,14 +636,14 @@ def test_pro_dry_run_uses_oracle_attachments_and_no_app_mention(tmp_path: Path) 
     assert all(item["sha256"] for item in result["attachments"])
 
 
-def test_pro_readonly_dry_run_uses_devspace_preflight_without_file_transport(tmp_path: Path) -> None:
+def test_pro_devspace_dry_run_uses_write_capable_handoff_without_file_transport(tmp_path: Path) -> None:
     runner = load_runner()
     preflight_calls = []
     captured = {}
     result = runner.execute_run(
         pro_readonly_manifest(tmp_path),
         run_factory=version_0171_runner,
-        popen_factory=popen_for(0, b"read-only answer\n", captured, []),
+        popen_factory=popen_for(0, b"completed answer\n", captured, []),
         compat_factory=lambda version: {"ok": True, "version": version},
         devspace_compat_factory=lambda: preflight_calls.append(True) or {
             "ok": True, "changed": [], "service_restart_required": False,
@@ -653,12 +653,13 @@ def test_pro_readonly_dry_run_uses_devspace_preflight_without_file_transport(tmp
 
     argv = captured["command"]
     prompt = argv[argv.index("--prompt") + 1]
-    assert result["result"]["transport"] == "pro-devspace-readonly"
+    assert result["result"]["transport"] == "pro-devspace"
     assert "--browser-attachments" not in argv
     assert "--file" not in argv
     assert argv[argv.index("--model") + 1] == "gpt-5.6-sol"
     assert argv[argv.index("--browser-thinking-time") + 1] == "heavy"
-    assert prompt.startswith(f"@DevSpace Read the read-only mission file: {tmp_path / 'mission.md'}.")
+    assert prompt.startswith(f"@DevSpace Read and execute the mission file: {tmp_path / 'mission.md'}.")
+    assert "create, edit, and remove mission-owned files and run commands" in prompt
     assert preflight_calls == [True]
 
 
@@ -1981,7 +1982,7 @@ def test_standalone_qualified_pro_prompt_timeout_can_be_user_settled_and_unlocks
     assert settled["result"]["session_authority"] == "pre_submit"
     assert proof is not None
     assert proof["settlement_eligibility"] == "oracle-standalone-qualified-pro/v1"
-    assert proof["transport"] == "pro-devspace-readonly"
+    assert proof["transport"] == "pro-devspace"
     assert proof["oracle_version"] == "0.17.1"
     assert proof["source_mission_sha256"] == proof["transport_mission_sha256"]
 

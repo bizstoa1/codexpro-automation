@@ -146,8 +146,8 @@ ORACLE_THINKING_TIME_PRE_SUBMIT_RE = re.compile(
 # parallel Web Multi lane, which is the exact failure this guard must avoid.
 PROFILE_COPY_DEPENDENCY = "rsync"
 PROFILE_COPY_NATIVE_PLATFORMS = ("nt",)
-PRO_TRANSPORTS = frozenset(("pro-attachment-only", "pro-devspace-readonly"))
-DEVSPACE_TRANSPORTS = frozenset(("devspace", "pro-devspace-readonly"))
+PRO_TRANSPORTS = frozenset(("pro-attachment-only", "pro-devspace", "pro-devspace-readonly"))
+DEVSPACE_TRANSPORTS = frozenset(("devspace", "pro-devspace", "pro-devspace-readonly"))
 
 
 def is_pro_transport(transport: str) -> bool:
@@ -159,7 +159,12 @@ def is_devspace_transport(transport: str) -> bool:
 
 
 def is_pro_readonly_transport(transport: str) -> bool:
+    """Return whether a persisted run uses the legacy read-only transport."""
     return str(transport or "").strip().casefold() == "pro-devspace-readonly"
+
+
+def is_pro_devspace_transport(transport: str) -> bool:
+    return str(transport or "").strip().casefold() in {"pro-devspace", "pro-devspace-readonly"}
 
 
 def is_attachment_transport(transport: str) -> bool:
@@ -364,7 +369,10 @@ def load_manifest(path: Path, *, platform_name: str | None = None) -> OracleConf
         raise OracleStateError("MODE_INVALID", "Oracle foundation runner supports mode=browser only")
     transport = str(payload.get("transport") or "devspace").strip().casefold()
     if transport not in {"devspace", *PRO_TRANSPORTS}:
-        raise OracleStateError("TRANSPORT_INVALID", "transport must be devspace, pro-attachment-only, or pro-devspace-readonly")
+        raise OracleStateError(
+            "TRANSPORT_INVALID",
+            "transport must be devspace, pro-devspace, pro-attachment-only, or legacy pro-devspace-readonly",
+        )
     app_name_raw = str(payload.get("app_name") or "").strip().lstrip("@").strip()
     if is_devspace_transport(transport):
         if not is_within(project_root, mission_path):
@@ -513,7 +521,7 @@ def load_manifest(path: Path, *, platform_name: str | None = None) -> OracleConf
             "PRO_TASK_OUTCOME_CONTRACT_FORBIDDEN",
             "Pro attachment-only output is not wrapped in the DevSpace task outcome contract",
         )
-    if is_pro_readonly_transport(transport) and task_outcome_contract != "v1":
+    if is_pro_devspace_transport(transport) and task_outcome_contract != "v1":
         raise OracleStateError(
             "PRO_DEVSPACE_TASK_OUTCOME_CONTRACT_REQUIRED",
             "Pro DevSpace output requires the v1 task outcome contract",
@@ -574,6 +582,17 @@ def composer_prompt(config: OracleConfig, mission_path: Path | None = None) -> s
             f"Task identity: oracle-pro-{identity}."
         )
     effective_path = config.mission_path if mission_path is None else mission_path
+    if str(config.transport or "").strip().casefold() == "pro-devspace":
+        return (
+            f"@{config.app_name} Read and execute the mission file: {effective_path}. "
+            "Use only the exact project root recorded there; read the mission and applicable AGENTS.md fully first. "
+            "You may inspect, create, edit, and remove mission-owned files and run commands inside that exact root as "
+            "required by the mission. Obey all repository safety rules. Do not change accounts, app settings, or external "
+            "state unless the mission explicitly authorizes that action. "
+            "Put every citation, footnote, and Markdown reference definition before the outcome marker. "
+            "End the final response with exactly one of TASK_OUTCOME: EXECUTED, TASK_OUTCOME: NOT_EXECUTED, or "
+            "TASK_OUTCOME: BLOCKED as the final nonempty line; append nothing after it."
+        )
     if is_pro_readonly_transport(config.transport):
         return (
             f"@{config.app_name} Read the read-only mission file: {effective_path}. "
@@ -1304,7 +1323,7 @@ def _standalone_pro_no_submission_evidence(state_path: Path) -> dict[str, Any] |
         or _state_has_conversation_url(state)
         or int(state.get("exit_code") or 0) == 0
         or str(state.get("mode") or "") != "browser"
-        or str(state.get("transport") or "") != "pro-devspace-readonly"
+        or not is_pro_devspace_transport(str(state.get("transport") or ""))
         or state.get("parallel_parent_id") is not None
         or state.get("requested_run_id") not in (None, run_id)
         or state.get("web_multi_child_provenance") is not None
@@ -1421,7 +1440,7 @@ def _standalone_pro_no_submission_evidence(state_path: Path) -> dict[str, Any] |
         "settlement_eligibility": "oracle-standalone-qualified-pro/v1",
         "project_root": str(project_root),
         "run_id": run_id,
-        "transport": "pro-devspace-readonly",
+        "transport": str(state.get("transport") or ""),
         "source_mission_path": str(source_path),
         "source_mission_sha256": source_sha256,
         "transport_mission_path": str(transport_path),
@@ -1929,7 +1948,7 @@ def proven_pre_submit_manual_login_profile_uninitialized(
         return None
     if state.get("terminal_harvested") is True or _state_has_conversation_url(state):
         return None
-    if str(state.get("mode") or "") != "browser" or not is_pro_readonly_transport(
+    if str(state.get("mode") or "") != "browser" or not is_pro_devspace_transport(
         str(state.get("transport") or "")
     ):
         return None
@@ -2064,7 +2083,7 @@ def proven_pre_submit_cdp_disconnect(state_path: Path) -> dict[str, Any] | None:
         return None
     if state.get("terminal_harvested") is True or _state_has_conversation_url(state):
         return None
-    if str(state.get("mode") or "") != "browser" or not is_pro_readonly_transport(
+    if str(state.get("mode") or "") != "browser" or not is_pro_devspace_transport(
         str(state.get("transport") or "")
     ):
         return None

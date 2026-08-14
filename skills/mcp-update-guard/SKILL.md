@@ -21,8 +21,9 @@ preserve unrelated local customizations.
    ChatGPT run uses Oracle:
    - regular modes, Deep Research, comprehensive stages, and Web Multi use
      Oracle plus the manually registered DevSpace app;
-   - qualified Pro uses Oracle with `GPT-5.6 Sol` at the Pro effort and
-     read-only DevSpace; explicit `pro-attachment` is limited to immutable or
+   - regular web work defaults to the highest supported non-Pro reasoning tier;
+     only explicit user opt-in selects qualified Pro with `GPT-5.6 Sol` at the
+     Pro effort and read/write DevSpace; explicit `pro-attachment` is limited to immutable or
      DevSpace-unreadable evidence and is never an automatic fallback;
    - CodexPro/agbrowse may be used only for exact recovery of an already
      persisted legacy run and never as a fallback.

@@ -11,19 +11,24 @@ Use this routing in the Codex global `AGENTS.md` after installing the package.
 - New regular ChatGPT work, including direct, plan, review, edit,
   orchestrator, research, comprehensive, and Web Multi-GPT, uses Oracle plus
   the manually registered DevSpace app.
-- Regular web work selects `GPT-5.6 Sol` with Oracle `heavy` and verifies the
-  visible `Extra High` tier. It does not silently fall back to High or another
-  model.
+- Regular web work selects `gpt-5.6` with Oracle `extra-high`, the highest
+  supported non-Pro reasoning tier. It does not silently fall back to a lower
+  tier or upgrade to Pro.
 - The regular composer contains only `@DevSpace` and an absolute UTF-8 mission
   path. It does not attach the task body and does not inspect or mutate ChatGPT
   app settings per question.
-- Qualified Pro also uses Oracle, `GPT-5.6 Sol` at the Pro effort, and the
-  manually registered DevSpace app in read-only mode. It binds the exact
-  project root and begins broad, adaptive discovery with `read('.')` directory
-  listing compatibility; it may inspect all decision-relevant project evidence
-  without a narrow per-run allowlist, but may not write, edit, invoke shell, or
-  run commands. One-time app qualification is sufficient: do not inspect app
-  settings or picker state per run.
+- Pro is quota-limited and explicit-only. Ordinary modes, comprehensive plans,
+  and recovery logic must never select or upgrade to Pro automatically. A
+  standard comprehensive manifest must contain `allow_pro: true`, supplied
+  only after an explicit user request; selecting Ultra Economy Mode is itself
+  an explicit Pro-design request.
+- Qualified Pro uses Oracle, `GPT-5.6 Sol` at the Pro effort, and the manually
+  registered DevSpace app. It binds the exact project root and may inspect,
+  create, edit, and remove mission-owned files and run commands there as the
+  mission requires. Repository safety rules remain authoritative; account,
+  app-setting, or external-state changes require explicit mission authority.
+  One-time app qualification is sufficient: do not inspect app settings or
+  picker state per run.
 - Qualified Pro output uses the v1 task-outcome marker. Exit zero and a durable
   answer do not count as success when DevSpace exposed no callable tools or the
   exact mission/root was unread. A durably terminal `NOT_EXECUTED` run may
@@ -38,8 +43,8 @@ Use this routing in the Codex global `AGENTS.md` after installing the package.
 - Comprehensive stages author the next semantic mission and a bound hash
   receipt. Local Codex owns transport, immutable identity, host safety, and one
   final deterministic gate rather than rewriting web output.
-- An optional comprehensive Pro stage is read-only DevSpace by default. A
-  plan-authored explicit `pro-attachment` contract selects attachment-only;
+- An optional comprehensive Pro stage is available only after explicit opt-in
+  and uses read/write DevSpace. A plan-authored explicit `pro-attachment` contract selects attachment-only;
   either route returns one strict identity-bound JSON envelope whose output and
   next-mission strings the host materializes byte-for-byte.
 - Genuine Web Multi-GPT uses distinct Oracle sessions. Windows lanes use
@@ -57,7 +62,7 @@ Use this routing in the Codex global `AGENTS.md` after installing the package.
 ## Standalone Pro versus comprehensive
 
 `chatgpt-pro-browser` is the visible standalone Pro skill. It submits one
-qualified, read-only DevSpace Pro session by default, saves the durable result,
+explicitly requested, qualified read/write DevSpace Pro session, saves the durable result,
 returns it to the calling Codex task, and stops. An explicit `pro-attachment`
 contract may be used only for its stated evidence boundary. It never starts
 implementation or a comprehensive review-to-implementation chain. Its required

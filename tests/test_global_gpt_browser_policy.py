@@ -27,31 +27,30 @@ def test_new_regular_modes_route_only_to_oracle_devspace() -> None:
     assert "app picker" not in value.casefold()
 
 
-def test_qualified_pro_uses_read_only_devspace_and_attachments_are_explicit() -> None:
+def test_qualified_pro_requires_explicit_opt_in_and_uses_read_write_devspace() -> None:
     value = text(PRO)
     flat = " ".join(value.split())
     assert "Oracle is the only backend for a new Pro run" in flat
-    assert "manually registered DevSpace app in read-only mode" in flat
+    assert "Pro is quota-limited" in flat
+    assert "never infer Pro from task difficulty" in flat
     assert "exact absolute project root" in flat
-    assert "Read-only is absolute" in flat
+    assert "create, edit, and remove mission-owned files and run commands" in flat
     assert "`pro-attachment` is attachment-only through Oracle" in flat
     assert "immutable/external evidence or artifacts that DevSpace cannot read" in flat
     assert "never an automatic fallback from qualified Pro DevSpace" in flat
     assert "There is no new agbrowse,\nCodexPro" in value
     handoff = text(HANDOFF)
-    assert "read-only DevSpace Pro by default" in handoff
+    assert "allow_pro: true" in handoff
+    assert "read/write DevSpace" in handoff
     assert "`pro-attachment` remains an explicit attachment-only" in handoff
 
 
-def test_qualified_pro_permits_broad_adaptive_read_only_project_context() -> None:
+def test_qualified_pro_has_exact_root_mission_scoped_write_authority() -> None:
     value = text(PRO)
     flat = " ".join(value.split())
-    assert "begins with the `read('.')` directory-list compatibility call" in flat
-    assert "discover and read broadly and adaptively within that exact root" in flat
-    assert "A narrow preselected evidence allowlist is not required" in flat
     assert "applicable `AGENTS.md` chain completely" in flat
-    assert "current Git state, project rules, mission artifacts" in flat
-    assert "must not write or edit files, invoke a shell, or run commands" in flat
+    assert "Repository safety rules remain authoritative" in flat
+    assert "must not change accounts, app settings, or external state unless the mission explicitly authorizes" in flat
 
 
 def test_qualified_pro_fails_closed_when_devspace_tools_are_not_exposed() -> None:
@@ -179,7 +178,8 @@ def test_english_readme_maps_modes_to_the_same_oracle_routes() -> None:
     assert "`deep-research` / deep research" in value
     assert "comprehensive mode" in value
     assert "Web Multi-GPT" in value
-    assert "Oracle + read-only DevSpace by default; explicit `pro-attachment`" in value
+    assert "Pro is quota-limited, never auto-selected" in value
+    assert "Oracle + read/write DevSpace" in value
     assert "never resubmits the task" in value
 
 
@@ -198,8 +198,8 @@ def test_agent_metadata_exposes_oracle_active_routes() -> None:
     pro = text(ROOT / "skills" / "chatgpt-pro-browser" / "agents" / "openai.yaml")
     assert "Oracle and DevSpace" in thinking
     assert "parallel Oracle GPT sessions" in multi
-    assert "read-only DevSpace" in pro
-    assert "allow_implicit_invocation: true" in pro
+    assert "read/write DevSpace" in pro
+    assert "allow_implicit_invocation: false" in pro
 
 
 def test_standalone_pro_never_transitions_into_comprehensive_implementation() -> None:

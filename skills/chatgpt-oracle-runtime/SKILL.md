@@ -1,13 +1,14 @@
 ---
 name: chatgpt-oracle-runtime
-description: "Current Oracle runtime path for new ChatGPT work: regular modes use DevSpace, qualified Pro uses read-only DevSpace, and explicit Pro attachments remain for bounded evidence."
+description: "Current Oracle runtime path for new ChatGPT work: regular modes use highest-tier non-Pro DevSpace, explicitly requested qualified Pro uses read/write DevSpace, and explicit Pro attachments remain for bounded evidence."
 ---
 
 # ChatGPT Oracle Runtime
 
 This is the only active browser path for all new GPT work. CodexPro and
 agbrowse are frozen for exact legacy recovery only. Regular modes use DevSpace;
-qualified Pro uses the same app read-only, while `pro-attachment` uses Oracle
+explicitly requested qualified Pro uses the same app with mission-scoped
+read/write authority, while `pro-attachment` uses Oracle
 attachment transport for its explicit evidence boundary.
 
 `chatgpt_oracle_dispatch.py` supports exactly `direct`, `plan`, `review`, `edit`,
@@ -20,13 +21,13 @@ path and a compact exact-workspace guard. The web GPT must use only the exact
 project root recorded in that mission, read the mission and applicable
 `AGENTS.md` completely first, and may retry that same root once after a timeout.
 It must not substitute a parent, child, active workspace, or shell boundary
-workaround. Qualified Pro selects `GPT-5.6 Sol` at the Pro effort and uses
-DevSpace read-only at the same exact root. It begins discovery with `read('.')`
-directory-list compatibility and may read decision-relevant material broadly,
-but never writes, edits, invokes shell, or runs commands. Explicit
+workaround. Regular routes default to `gpt-5.6` with `extra-high`, the highest
+supported non-Pro reasoning tier, and never auto-upgrade to Pro. Only explicit
+`pro` mode selects `GPT-5.6 Sol` at the Pro effort. It uses DevSpace at the same
+exact root and may perform mission-authorized writes and commands under the
+repository safety policy. Explicit
 `pro-attachment` sends one short instruction plus exact attachment files.
-Regular routes select `GPT-5.6 Sol` with `heavy` and require Oracle
-evidence for visible `Extra High`. Never invent xhigh or silently downgrade.
+Never infer Pro from task difficulty, invent xhigh, or silently downgrade.
 
 On the first DevSpace-backed submission for a new project, the runner checks
 exact equality with local DevSpace `allowedRoots` before creating the Oracle

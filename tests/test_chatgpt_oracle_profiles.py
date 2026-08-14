@@ -37,6 +37,7 @@ def test_regular_modes_use_plain_devspace_handoff_and_high_only(tmp_path: Path, 
     assert contract["attachments"] == []
     assert contract["app_picker"] is False
     assert contract["app_settings_automation"] is False
+    assert contract["pro_selection_policy"] == "explicit-only"
     assert contract["composer_prompt"].startswith(
         f"@DevSpace Read and execute the mission file: {mission}."
     )
@@ -54,6 +55,7 @@ def test_deep_research_is_only_a_mode_flag() -> None:
     assert "research_picker" not in contract
     assert "research_app" not in contract
     assert contract["attachments"] == []
+    assert contract["pro_selection_policy"] == "explicit-only"
 
 
 @pytest.mark.parametrize("level", ["low", "Pro"])
@@ -109,23 +111,31 @@ def test_pro_attachment_includes_mission_once_and_regular_rejects_attachments(tm
     assert exc.value.code == "REGULAR_ATTACHMENTS_FORBIDDEN"
 
 
-@pytest.mark.parametrize("mode", ["pro", "pro-readonly", "pro_readonly"])
-def test_pro_defaults_to_devspace_without_attachments_and_readonly_is_compatible(tmp_path: Path, mode: str) -> None:
+def test_pro_is_explicit_writable_devspace_without_attachments(tmp_path: Path) -> None:
     profiles = load_profiles()
     mission = (tmp_path / "mission.md").resolve()
-    contract = profiles.build_launch_contract(mode, mission_path=mission)
+    contract = profiles.build_launch_contract("pro", mission_path=mission)
 
-    assert contract["route"] == "oracle-pro-devspace-readonly"
+    assert contract["route"] == "oracle-pro-devspace"
     assert contract["app_name"] == "DevSpace"
     assert contract["model"] == "gpt-5.6-sol"
     assert contract["model_strategy"] == "select"
     assert contract["thinking_time"] == "heavy"
     assert contract["research"] is False
     assert contract["attachments"] == []
-    assert contract["composer_prompt"].startswith(f"@DevSpace Read the read-only mission file: {mission}.")
+    assert contract["composer_prompt"].startswith(f"@DevSpace Read and execute the mission file: {mission}.")
+    assert "create, edit, and remove mission-owned files and run commands" in contract["composer_prompt"]
     with pytest.raises(profiles.OracleProfileError) as exc:
-        profiles.build_launch_contract(mode, mission_path=mission, attachment_paths=[mission])
-    assert exc.value.code == "PRO_READONLY_ATTACHMENTS_FORBIDDEN"
+        profiles.build_launch_contract("pro", mission_path=mission, attachment_paths=[mission])
+    assert exc.value.code == "PRO_DEVSPACE_ATTACHMENTS_FORBIDDEN"
+
+
+@pytest.mark.parametrize("mode", ["pro-readonly", "pro_readonly", "pro readonly"])
+def test_legacy_readonly_mode_names_do_not_silently_select_pro(tmp_path: Path, mode: str) -> None:
+    profiles = load_profiles()
+    with pytest.raises(profiles.OracleProfileError) as exc:
+        profiles.build_launch_contract(mode, mission_path=(tmp_path / "mission.md").resolve())
+    assert exc.value.code == "MODE_UNSUPPORTED"
 
 
 def test_relative_mission_is_rejected(tmp_path: Path) -> None:

@@ -1,14 +1,16 @@
 ---
 name: chatgpt-pro-plan-handoff
-description: Run staged work with read-only DevSpace Pro by default and Oracle-based regular comprehensive stages; explicit Pro attachments remain available for bounded evidence.
+description: Run staged work with explicitly authorized read/write DevSpace Pro and Oracle-based regular comprehensive stages; explicit Pro attachments remain available for bounded evidence.
 ---
 
 # Pro and comprehensive handoff
 
-Pro uses Oracle. The default comprehensive Pro stage is qualified `GPT-5.6 Sol`
-at the Pro effort with read-only DevSpace; it binds the exact project root,
-begins adaptive discovery with `read('.')`, and cannot write, edit, invoke a
-shell, or run commands. `pro-attachment` remains an explicit attachment-only
+Pro uses Oracle and is quota-limited. A standard comprehensive workflow may
+select it only when its manifest has `allow_pro: true` after an explicit user
+request; regular work remains at the highest supported non-Pro reasoning tier.
+The qualified `GPT-5.6 Sol` Pro stage uses read/write DevSpace at the exact
+project root and may perform mission-authorized edits and commands under the
+repository safety policy. `pro-attachment` remains an explicit attachment-only
 contract for immutable/external evidence or DevSpace-unreadable artifacts, not
 an automatic fallback. CodexPro and all agbrowse creation are frozen; legacy
 files remain only for exact persisted-run recovery.
@@ -22,8 +24,8 @@ plan -> optional Pro or Oracle Web Multi -> review
      -> implementation -> final web gate -> one local deterministic gate
 ```
 
-The optional `ultra-economy` profile instead starts with qualified read-only
-Pro design, then uses separate regular web review, implementation, and final
+The optional `ultra-economy` profile is itself an explicit Pro request. It
+starts with qualified Pro design, then uses separate regular web review, implementation, and final
 gate sessions. On the first activation request in a Codex task, the local
 commander gives one unconditional instruction to select `gpt-5.6-luna` with
 `max` reasoning and waits for confirmation. It does not inspect the runtime or
@@ -54,7 +56,7 @@ bound `codex.chatgpt.oracle-stage-result/v1` receipt. The host validates
 workflow/stage/attempt/input hashes, UTF-8 paths, output hashes, PASS status,
 and the transition; it never rewrites the semantic prompt.
 
-An optional Pro stage runs through Oracle with read-only DevSpace by default.
+An explicitly authorized Pro stage runs through Oracle with read/write DevSpace.
 It returns one strict identity-bound JSON envelope containing its output and
 next-mission text. The host mechanically preserves those strings as UTF-8 files
 and computes the standard receipt; it does not summarize or rewrite them.
@@ -64,8 +66,8 @@ closed `[PRO_ATTACHMENT_CONTRACT]` block. The JSON body uses schema
 `codex.chatgpt.oracle-pro-attachments/v1` and an `attachments` array of
 absolute project-root-contained regular non-symlink paths with optional
 SHA-256 values. The host attaches only the mission and these declared files; it
-never discovers ZIPs from prose. A Pro mission without the block uses the
-read-only DevSpace default. Regular non-Pro DevSpace stages reject this block.
+never discovers ZIPs from prose. An authorized Pro mission without the block
+uses the read/write DevSpace route. Regular non-Pro DevSpace stages reject this block.
 
 Plan receipts should use `PLAN_READY`. For compatibility, `completed` is
 accepted only when the plan receipt is otherwise a fully ready, blocker-free,
@@ -106,7 +108,7 @@ Transport or runner recovery keeps the same workflow and stage identity. It
 must never create a `workflow-retryN` replacement. The revision budget and
 remaining critical finding set are persisted in the workflow state for
 operator visibility. Only final web PASS plus a zero-exit local gate can
-complete. A Pro selection launches the qualified read-only DevSpace stage unless
+complete. An explicitly authorized Pro selection launches the qualified read/write DevSpace stage unless
 its plan explicitly declares `pro-attachment`, then waits for a bound receipt;
 it is never downgraded. Missing receipt/output,
 crash, or ambiguity returns attention-required without a replacement submit.

@@ -1,5 +1,17 @@
 # 기술 변경 기록
 
+## 1.14.0 - 명시적 Pro 읽기·쓰기 정책
+
+- 일반 웹 작업은 `gpt-5.6`의 최고 지원 비-Pro 추론 강도 `extra-high`를
+  기본으로 사용하며 Pro로 자동 승격하지 않습니다.
+- Pro는 사용자의 명시 요청에만 선택됩니다. 표준 종합 워크플로는
+  `allow_pro: true`가 없으면 plan의 Pro 전환을 제출 전에 차단합니다.
+- 새 qualified Pro 실행은 `pro-devspace` transport를 사용하며 exact root
+  안에서 미션이 허용한 파일 쓰기와 명령 실행을 지원합니다. 기존
+  `pro-devspace-readonly` 실행 기록은 복구 호환용 의미를 그대로 보존합니다.
+- README, 전역 정책, 라우팅·아키텍처·설치 문서와 Pro 관련 스킬을 같은
+  explicit-only/read-write 계약으로 재정렬했습니다.
+
 ## 1.13.1 - Oracle 장기 실행 상태 점검 안전성
 
 - 80분을 종료·실패·소유권 해제 시점이 아닌 caution/status-audit 임계값으로

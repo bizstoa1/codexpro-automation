@@ -2,8 +2,8 @@
 
 This compatibility path is frozen. Do not use it for a new submission.
 
-New orchestrator work uses Oracle plus DevSpace. Qualified Pro uses the same
-exact-root DevSpace route in read-only mode; explicit `pro-attachment` is
+New orchestrator work uses Oracle plus DevSpace. Explicitly requested qualified
+Pro uses the same exact-root DevSpace route with read/write authority; explicit `pro-attachment` is
 attachment-only only for immutable, external, or DevSpace-unreadable evidence.
 CodexPro/agbrowse remains available only when an exact persisted legacy run
 must be observed, recovered, or cleaned up under its original immutable

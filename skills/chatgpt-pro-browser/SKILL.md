@@ -1,6 +1,6 @@
 ---
 name: chatgpt-pro-browser
-description: Use for a one-shot ChatGPT Pro plan, research, or review through Oracle. Qualified Pro uses read-only DevSpace; `pro-attachment` is an explicit immutable-evidence route. Return the Pro result only.
+description: Use for an explicitly requested one-shot ChatGPT Pro plan, research, implementation, or review through Oracle. Qualified Pro uses read/write DevSpace; `pro-attachment` is an explicit immutable-evidence route. Return the Pro result only.
 ---
 
 # ChatGPT Pro through Oracle
@@ -19,8 +19,10 @@ CodexPro, in-app Browser, custom CDP/Playwright, or `@chrome` fallback.
 
 ## Qualified default route
 
-Qualified Pro uses Oracle with `GPT-5.6 Sol` at the Pro effort and the
-manually registered DevSpace app in read-only mode. The mission must bind one
+Pro is quota-limited. Invoke this skill only after an explicit user request;
+never infer Pro from task difficulty, select it as an automatic upgrade, or use
+it as a fallback from regular GPT. Qualified Pro uses Oracle with `GPT-5.6 Sol`
+at the Pro effort and the manually registered DevSpace app. The mission must bind one
 exact absolute project root. After one-time qualification, do not inspect,
 register, repair, select, or otherwise verify ChatGPT app/settings state on
 each run.
@@ -33,17 +35,13 @@ project do not repeat endpoint/read probes; a changed config is revalidated.
 Failure returns `DEVSPACE_EXACT_ROOT_UNAVAILABLE` before Oracle or a browser is
 created and points to the complete root-preserving setup preview.
 
-Pro reads the mission and applicable `AGENTS.md` chain completely, then begins
-with the `read('.')` directory-list compatibility call. It may discover and
-read broadly and adaptively within that exact root: current Git state, project
-rules, mission artifacts, source and configuration, failures, logs, prior
-decisions, tests, and results whenever they are decision-relevant. A narrow
-preselected evidence allowlist is not required and must not conceal relevant
-contradictory evidence.
-
-Read-only is absolute: Pro must not write or edit files, invoke a shell, or run
-commands. It may not substitute a parent, child, similarly named, active, or
-shell-boundary workspace. It may retry only the same root once after a timeout.
+Pro reads the mission and applicable `AGENTS.md` chain completely. Within the
+exact root it may inspect, create, edit, and remove mission-owned files and run
+commands required by the mission. Repository safety rules remain authoritative.
+It must not change accounts, app settings, or external state unless the mission
+explicitly authorizes that action. It may not substitute a parent, child,
+similarly named, active, or shell-boundary workspace, and may retry only the
+same root once after a timeout.
 
 ## Explicit attachment route
 
@@ -82,8 +80,8 @@ does not turn the standalone Pro result into a review-to-implementation chain.
 
 1. Resolve and hash-validate the tested Oracle compatibility contract.
 2. Bind the same normalized-project mutex used by regular Oracle work.
-3. Build a short UTF-8 mission that states the exact root, question,
-   read-only authority, and any evidence limitations. For `pro-attachment`,
+3. Build a short UTF-8 mission that states the exact root, question, explicit
+   file/command authority, and any evidence limitations. For `pro-attachment`,
    freeze the required attachments and their hashes instead.
 4. Use a fresh Oracle slug and require Oracle model and transport evidence
    before accepting a send.

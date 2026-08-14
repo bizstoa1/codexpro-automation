@@ -15,6 +15,10 @@ being copied into several files.
 
 ## Operate
 
+Read operational policy in this order: complete first installation, use Global
+ChatGPT Routing to select the highest-tier non-Pro default or an explicit Pro
+route, then open a specialized guide only when that mode applies.
+
 | Document | Language | Authority |
 |---|---|---|
 | [DevSpace + Tailscale](DEVSPACE_TAILSCALE_SETUP.md) | English | Managed DevSpace/Funnel setup and diagnosis |

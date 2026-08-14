@@ -49,7 +49,7 @@ artifact:
 
 ```text
 one-time exact-root qualification
-  -> qualified Pro design (read-only)
+  -> qualified Pro design (design-only mission on write-capable DevSpace)
   -> regular web design review and implementation-mission authoring
   -> regular web implementation and project tests
   -> separate regular web final verification or repair handoff
