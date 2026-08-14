@@ -19,12 +19,16 @@ def load_module():
     return module
 
 
-def test_compressed_canary_writes_75_80_receipt_without_resume(tmp_path: Path) -> None:
+def test_compressed_canary_proves_status_audit_without_termination(tmp_path: Path) -> None:
     module = load_module()
     result = module.run_canary(state_root=tmp_path / "state", real_time=False)
 
     assert result["ok"] is True
-    assert [item["phase"] for item in result["timeline"]] == ["RUNNING", "CHECKPOINT_DUE", "READY_NEXT_EPISODE"]
+    assert [item["phase"] for item in result["timeline"]] == ["RUNNING", "RUNNING", "RUNNING"]
+    audit = result["timeline"][1]["status_audit"]
+    assert audit["threshold_kind"] == "caution-status-audit"
+    assert audit["time_alone_is_terminal"] is False
+    assert audit["new_submission_authorized"] is False
     receipt = json.loads(Path(result["receipt_path"]).read_text(encoding="utf-8"))
     assert receipt["handoff_sha256"] == result["handoff_sha256"]
-    assert receipt["final_phase"] == "READY_NEXT_EPISODE"
+    assert receipt["final_phase"] == "RUNNING"
