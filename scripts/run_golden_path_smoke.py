@@ -58,7 +58,23 @@ def run_smoke(*, bin_root: Path) -> dict[str, Any]:
         mission = project / "mission.md"
         mission.write_text("Golden path smoke mission. Do nothing.\n", encoding="utf-8")
         host_state = base / "host-state"
+        profile_seed = base / "profile-seed"
+        profile_seed.mkdir()
+        host_state.mkdir()
+        policy_path = host_state / "host-policy.json"
+        policy_path.write_text(
+            json.dumps(
+                {
+                    "schema": "codex.chatgpt.oracle-host-policy/v1",
+                    "profile_seed": str(profile_seed.resolve()),
+                    "profile_mode": "copy-per-run",
+                    "max_total_concurrency": 5,
+                }
+            ),
+            encoding="utf-8",
+        )
         os.environ["CODEX_ORACLE_STATE_ROOT"] = str(host_state.resolve())
+        os.environ["CODEX_ORACLE_HOST_POLICY"] = str(policy_path.resolve())
 
         compiled = dispatch.compile_manifest(
             mode="direct",
@@ -71,6 +87,12 @@ def run_smoke(*, bin_root: Path) -> dict[str, Any]:
 
         config = state.load_manifest(manifest_path)
         record("manifest_loads", True, {"transport": config.transport, "app_name": config.app_name})
+        record(
+            "host_profile_policy_is_bound",
+            config.copy_profile == profile_seed.resolve()
+            and config.profile_mode == "copy-per-run"
+            and config.host_max_total_concurrency == 5,
+        )
         record("devspace_transport_selected", config.transport == "devspace" and bool(config.app_name))
 
         prompt = state.composer_prompt(config) if hasattr(state, "composer_prompt") else None
