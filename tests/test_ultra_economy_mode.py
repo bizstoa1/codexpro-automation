@@ -25,9 +25,19 @@ def load_comprehensive():
 
 
 def workflow_manifest(tmp_path: Path) -> Path:
-    os.environ["CODEX_ORACLE_STATE_ROOT"] = str(
-        (tmp_path.parent / f"{tmp_path.name}-host").resolve()
-    )
+    state_root = (tmp_path.parent / f"{tmp_path.name}-host").resolve()
+    profile_seed = (tmp_path.parent / f"{tmp_path.name}-oracle-profile-seed").resolve()
+    profile_seed.mkdir(parents=True, exist_ok=True)
+    state_root.mkdir(parents=True, exist_ok=True)
+    policy_path = state_root / "host-policy.json"
+    policy_path.write_text(json.dumps({
+        "schema": "codex.chatgpt.oracle-host-policy/v1",
+        "profile_seed": str(profile_seed),
+        "profile_mode": "copy-per-run",
+        "max_total_concurrency": 5,
+    }), encoding="utf-8")
+    os.environ["CODEX_ORACLE_STATE_ROOT"] = str(state_root)
+    os.environ["CODEX_ORACLE_HOST_POLICY"] = str(policy_path)
     mission = tmp_path / "mission.md"
     mission.write_text("Design the implementation.", encoding="utf-8")
     path = tmp_path / "workflow.json"

@@ -1,13 +1,29 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Sequence
+
+
+def _load_host_module():
+    path = Path(__file__).resolve().with_name("chatgpt_oracle_host.py")
+    spec = importlib.util.spec_from_file_location("chatgpt_oracle_compat_host_runtime", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Oracle host module unavailable: {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+HOST = _load_host_module()
 
 SUPPORTED_VERSION = "0.17.1"
 CREATE_NO_WINDOW = 0x08000000
@@ -88,7 +104,9 @@ PATCHES = {
     "dist/src/browser/config.js": {
         "patch": "browserConfig.copy-profile-windows.patch",
         "pristine": "aa4cd86b70217d08a3178c52c20eff621b553ef18b8d1adff9b930ad8e9c3b4a",
-        "patched": "9d2dbde2801ab39be9d81f2e84646592ce45063df571c480b09475a2861769c5",
+        "patched": "3bd381248959cdc02aa60ca75b9f75c140fbd360f7a8ebd2392bfe8270f07e4c",
+        "legacy_patched": ["9d2dbde2801ab39be9d81f2e84646592ce45063df571c480b09475a2861769c5"],
+        "legacy_patch": "browserConfig.copy-profile-windows.pre-isolation.patch",
     },
     "dist/src/browser/actions/thinkingTime.js": {
         "patch": "thinkingTime.strict.patch",
@@ -166,9 +184,20 @@ def _candidate_roots() -> list[Path]:
     override = str(os.environ.get("ORACLE_PACKAGE_ROOT") or "").strip()
     if override:
         return [Path(override).expanduser().resolve()]
-    local = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local"))
-    roots = list((local / "npm-cache" / "_npx").glob("*/node_modules/@steipete/oracle"))
-    return sorted((path.resolve() for path in roots if path.is_dir()), key=lambda path: path.stat().st_mtime, reverse=True)
+    cache_override = str(os.environ.get("npm_config_cache") or "").strip()
+    if cache_override:
+        cache_root = Path(cache_override).expanduser().resolve()
+    elif os.name == "nt":
+        local = Path(os.environ.get("LOCALAPPDATA") or (Path.home() / "AppData" / "Local"))
+        cache_root = (local / "npm-cache").resolve()
+    else:
+        cache_root = (Path.home() / ".npm").resolve()
+    roots = {
+        path.resolve()
+        for path in (cache_root / "_npx").glob("*/node_modules/@steipete/oracle")
+        if path.is_dir()
+    }
+    return sorted(roots, key=lambda path: path.stat().st_mtime, reverse=True)
 
 
 def resolve_package_root(version: str = SUPPORTED_VERSION) -> Path:
@@ -269,6 +298,75 @@ def _migrate_known_legacy_patch(
         shutil.copy2(staged_target, target)
 
 
+def _ensure_root_compatibility(
+    root: Path,
+    *,
+    version: str,
+    root_count: int,
+    patches: Path,
+    backup: Path,
+    changed: list[str],
+    already: list[str],
+) -> None:
+    if package_version(root) != version:
+        raise OracleCompatError(
+            "ORACLE_VERSION_MISMATCH",
+            "Oracle package version does not match the resolved CLI version",
+        )
+    for relative, contract in PATCHES.items():
+        target = root / Path(relative)
+        current = sha256_file(target)
+        item = relative if root_count == 1 else f"{root}:{relative}"
+        if current == contract["patched"]:
+            already.append(item)
+            continue
+        backup_path = backup / Path(relative)
+        if current in contract.get("legacy_patched", []):
+            if not backup_path.exists() or sha256_file(backup_path) != contract["pristine"]:
+                legacy_patches = contract.get("legacy_patches")
+                legacy_patch = (
+                    legacy_patches.get(current)
+                    if isinstance(legacy_patches, dict)
+                    else None
+                ) or contract.get("legacy_patch")
+                if not isinstance(legacy_patch, str) or not legacy_patch:
+                    raise OracleCompatError(
+                        "ORACLE_LEGACY_PATCH_BACKUP_INVALID",
+                        "A legacy Oracle patch cannot be migrated without the exact pristine backup",
+                        {"path": str(target), "backup": str(backup_path), "actual": current},
+                    )
+                _migrate_known_legacy_patch(
+                    root, target, relative, patches / legacy_patch, str(contract["pristine"])
+                )
+                backup_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(target, backup_path)
+            else:
+                shutil.copy2(backup_path, target)
+            current = sha256_file(target)
+        if current != contract["pristine"]:
+            raise OracleCompatError(
+                "ORACLE_FILE_HASH_MISMATCH",
+                "Oracle compatibility refuses an unknown third-party file",
+                {
+                    "path": str(target),
+                    "actual": current,
+                    "expected": [contract["pristine"], contract["patched"]],
+                },
+            )
+        backup_path.parent.mkdir(parents=True, exist_ok=True)
+        if not backup_path.exists():
+            shutil.copy2(target, backup_path)
+        _apply_patch(root, patches / str(contract["patch"]))
+        actual = sha256_file(target)
+        if actual != contract["patched"]:
+            raise OracleCompatError(
+                "ORACLE_PATCH_HASH_MISMATCH",
+                "Oracle compatibility patch output hash is unexpected",
+                {"path": str(target), "actual": actual, "expected": contract["patched"]},
+            )
+        changed.append(item)
+
+
 def ensure_oracle_compatibility(
     resolved_version: str,
     *,
@@ -288,56 +386,19 @@ def ensure_oracle_compatibility(
     changed: list[str] = []
     already: list[str] = []
     for root in roots:
-        if package_version(root) != version:
-            raise OracleCompatError("ORACLE_VERSION_MISMATCH", "Oracle package version does not match the resolved CLI version")
-        for relative, contract in PATCHES.items():
-            target = root / Path(relative)
-            current = sha256_file(target)
-            item = relative if len(roots) == 1 else f"{root}:{relative}"
-            if current == contract["patched"]:
-                already.append(item)
-                continue
-            backup_path = backup / Path(relative)
-            if current in contract.get("legacy_patched", []):
-                if not backup_path.exists() or sha256_file(backup_path) != contract["pristine"]:
-                    legacy_patches = contract.get("legacy_patches")
-                    legacy_patch = (
-                        legacy_patches.get(current)
-                        if isinstance(legacy_patches, dict)
-                        else None
-                    ) or contract.get("legacy_patch")
-                    if not isinstance(legacy_patch, str) or not legacy_patch:
-                        raise OracleCompatError(
-                            "ORACLE_LEGACY_PATCH_BACKUP_INVALID",
-                            "A legacy Oracle patch cannot be migrated without the exact pristine backup",
-                            {"path": str(target), "backup": str(backup_path), "actual": current},
-                        )
-                    _migrate_known_legacy_patch(
-                        root, target, relative, patches / legacy_patch, str(contract["pristine"])
-                    )
-                    backup_path.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(target, backup_path)
-                else:
-                    shutil.copy2(backup_path, target)
-                current = sha256_file(target)
-            if current != contract["pristine"]:
-                raise OracleCompatError(
-                    "ORACLE_FILE_HASH_MISMATCH",
-                    "Oracle compatibility refuses an unknown third-party file",
-                    {"path": str(target), "actual": current, "expected": [contract["pristine"], contract["patched"]]},
+        try:
+            with HOST.package_compatibility_mutex(root):
+                _ensure_root_compatibility(
+                    root,
+                    version=version,
+                    root_count=len(roots),
+                    patches=patches,
+                    backup=backup,
+                    changed=changed,
+                    already=already,
                 )
-            backup_path.parent.mkdir(parents=True, exist_ok=True)
-            if not backup_path.exists():
-                shutil.copy2(target, backup_path)
-            _apply_patch(root, patches / str(contract["patch"]))
-            actual = sha256_file(target)
-            if actual != contract["patched"]:
-                raise OracleCompatError(
-                    "ORACLE_PATCH_HASH_MISMATCH",
-                    "Oracle compatibility patch output hash is unexpected",
-                    {"path": str(target), "actual": actual, "expected": contract["patched"]},
-                )
-            changed.append(item)
+        except HOST.OracleHostLeaseError as exc:
+            raise OracleCompatError(exc.code, str(exc), exc.evidence) from exc
     return {
         "ok": True,
         "version": version,

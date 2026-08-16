@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 import sys
+from contextlib import ExitStack
 from pathlib import Path
 
 import pytest
@@ -61,7 +62,19 @@ def test_v1_task_outcome_reference_footer_stays_fail_closed(
 
 
 def manifest(tmp_path: Path, mission_path: Path | str, **extra) -> Path:
-    os.environ["CODEX_ORACLE_STATE_ROOT"] = str((tmp_path.parent / f"{tmp_path.name}-host-state").resolve())
+    state_root = (tmp_path.parent / f"{tmp_path.name}-host-state").resolve()
+    profile_seed = (tmp_path.parent / f"{tmp_path.name}-oracle-profile-seed").resolve()
+    profile_seed.mkdir(parents=True, exist_ok=True)
+    state_root.mkdir(parents=True, exist_ok=True)
+    policy_path = state_root / "host-policy.json"
+    policy_path.write_text(json.dumps({
+        "schema": "codex.chatgpt.oracle-host-policy/v1",
+        "profile_seed": str(profile_seed),
+        "profile_mode": "copy-per-run",
+        "max_total_concurrency": 5,
+    }), encoding="utf-8")
+    os.environ["CODEX_ORACLE_STATE_ROOT"] = str(state_root)
+    os.environ["CODEX_ORACLE_HOST_POLICY"] = str(policy_path)
     value = {
         "schema": "codex.chatgpt.oracle-run/v1",
         "project_root": str(tmp_path.resolve()),
@@ -140,6 +153,9 @@ def test_pro_manifest_is_attachment_only_and_hashes_exact_files(tmp_path: Path) 
     payload = state.state_payload(config, layout, status="prepared", resolved_version="oracle 0.17.1")
     assert payload["transport"] == "pro-attachment-only"
     assert payload["attachments"][1]["sha256"] == state.sha256_file(packet.resolve())
+    assert payload["profile"]["isolation_mode"] == "copy-per-run"
+    assert payload["profile"]["host_policy_sha256"] == config.host_policy_sha256
+    assert payload["profile"]["run_profile_root"] == str(layout.browser_temp_path)
 
 
 def test_pro_devspace_manifest_is_write_capable_and_stays_inside_project(tmp_path: Path) -> None:
@@ -370,20 +386,19 @@ def test_control_state_must_be_outside_devspace_project(tmp_path: Path) -> None:
     assert overlap.value.code == "HOST_STATE_OVERLAPS_PROJECT"
 
 
-def test_default_profile_copy_is_skipped_when_the_copy_dependency_is_absent(
+def test_host_profile_copy_fails_closed_when_the_copy_dependency_is_absent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     state = load_state()
     mission = tmp_path / "mission.md"
     mission.write_text("work", encoding="utf-8")
-    seed = tmp_path.parent / f"{tmp_path.name}-oracle-profile"
-    seed.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("ORACLE_BROWSER_PROFILE_DIR", str(seed.resolve()))
+    seed = tmp_path.parent / f"{tmp_path.name}-oracle-profile-seed"
     monkeypatch.setattr(state.shutil, "which", lambda name: None)
 
-    config = state.load_manifest(manifest(tmp_path, mission.resolve()), platform_name="posix")
+    with pytest.raises(state.OracleStateError) as exc:
+        state.load_manifest(manifest(tmp_path, mission.resolve()), platform_name="posix")
 
-    assert config.copy_profile is None
+    assert exc.value.code == "COPY_PROFILE_DEPENDENCY_MISSING"
 
 
 def test_default_profile_copy_is_used_when_the_copy_dependency_exists(
@@ -392,9 +407,7 @@ def test_default_profile_copy_is_used_when_the_copy_dependency_exists(
     state = load_state()
     mission = tmp_path / "mission.md"
     mission.write_text("work", encoding="utf-8")
-    seed = tmp_path.parent / f"{tmp_path.name}-oracle-profile"
-    seed.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("ORACLE_BROWSER_PROFILE_DIR", str(seed.resolve()))
+    seed = tmp_path.parent / f"{tmp_path.name}-oracle-profile-seed"
     monkeypatch.setattr(
         state.shutil,
         "which",
@@ -417,9 +430,7 @@ def test_windows_profile_copy_needs_no_external_dependency(
     state = load_state()
     mission = tmp_path / "mission.md"
     mission.write_text("work", encoding="utf-8")
-    seed = tmp_path.parent / f"{tmp_path.name}-windows-profile"
-    seed.mkdir(parents=True, exist_ok=True)
-    monkeypatch.setenv("ORACLE_BROWSER_PROFILE_DIR", str(seed.resolve()))
+    seed = tmp_path.parent / f"{tmp_path.name}-oracle-profile-seed"
     monkeypatch.setattr(state.shutil, "which", lambda name: None)
 
     assert state.profile_copy_is_supported(platform_name="nt") is True
@@ -430,13 +441,11 @@ def test_windows_profile_copy_needs_no_external_dependency(
     )
     assert default_config.copy_profile == seed.resolve()
 
-    explicit = tmp_path.parent / f"{tmp_path.name}-windows-explicit"
-    explicit.mkdir(parents=True, exist_ok=True)
     explicit_config = state.load_manifest(
-        manifest(tmp_path, mission.resolve(), copy_profile=str(explicit.resolve())),
+        manifest(tmp_path, mission.resolve(), copy_profile=str(seed.resolve())),
         platform_name="nt",
     )
-    assert explicit_config.copy_profile == explicit.resolve()
+    assert explicit_config.copy_profile == seed.resolve()
 
 
 def test_explicit_profile_copy_fails_closed_without_the_copy_dependency(
@@ -445,8 +454,7 @@ def test_explicit_profile_copy_fails_closed_without_the_copy_dependency(
     state = load_state()
     mission = tmp_path / "mission.md"
     mission.write_text("work", encoding="utf-8")
-    seed = tmp_path.parent / f"{tmp_path.name}-explicit-profile"
-    seed.mkdir(parents=True, exist_ok=True)
+    seed = tmp_path.parent / f"{tmp_path.name}-oracle-profile-seed"
     monkeypatch.setattr(state.shutil, "which", lambda name: None)
 
     with pytest.raises(state.OracleStateError) as exc:
@@ -457,6 +465,121 @@ def test_explicit_profile_copy_fails_closed_without_the_copy_dependency(
 
     assert exc.value.code == "COPY_PROFILE_DEPENDENCY_MISSING"
     assert exc.value.evidence["dependency"] == state.PROFILE_COPY_DEPENDENCY
+
+
+def test_manifest_profile_seed_must_match_the_host_policy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = load_state()
+    mission = tmp_path / "mission.md"
+    mission.write_text("work", encoding="utf-8")
+    manifest_path = manifest(tmp_path, mission.resolve())
+    different_seed = tmp_path.parent / f"{tmp_path.name}-different-profile-seed"
+    different_seed.mkdir()
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    payload["copy_profile"] = str(different_seed.resolve())
+    manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+    monkeypatch.setattr(
+        state.shutil,
+        "which",
+        lambda name: "/usr/bin/rsync" if name == state.PROFILE_COPY_DEPENDENCY else None,
+    )
+
+    with pytest.raises(state.OracleStateError) as exc:
+        state.load_manifest(manifest_path, platform_name="posix")
+
+    assert exc.value.code == "HOST_PROFILE_SEED_MISMATCH"
+
+
+def test_manifest_requires_a_host_policy_before_profile_selection(tmp_path: Path) -> None:
+    state = load_state()
+    mission = tmp_path / "mission.md"
+    mission.write_text("work", encoding="utf-8")
+    manifest_path = manifest(tmp_path, mission.resolve())
+    Path(os.environ["CODEX_ORACLE_HOST_POLICY"]).unlink()
+
+    with pytest.raises(state.OracleStateError) as exc:
+        state.load_manifest(manifest_path)
+
+    assert exc.value.code == "HOST_POLICY_REQUIRED"
+
+
+def test_host_capacity_allows_five_leases_and_blocks_the_sixth(tmp_path: Path) -> None:
+    state = load_state()
+    state_root = tmp_path / "host-state"
+
+    with ExitStack() as leases:
+        for _ in range(5):
+            leases.enter_context(
+                state.host_run_lease(
+                    state_root=state_root,
+                    max_total_concurrency=5,
+                    timeout_seconds=0.05,
+                    platform_name="posix",
+                )
+            )
+        with pytest.raises(state.OracleStateError) as exc:
+            with state.host_run_lease(
+                state_root=state_root,
+                max_total_concurrency=5,
+                timeout_seconds=0.05,
+                platform_name="posix",
+            ):
+                raise AssertionError("sixth host lease must not be acquired")
+
+    assert exc.value.code == "HOST_CAPACITY_TIMEOUT"
+
+
+def test_host_maintenance_lease_blocks_new_run_slots(tmp_path: Path) -> None:
+    state = load_state()
+    state_root = tmp_path / "host-state"
+
+    with state.HOST.host_maintenance_lease(
+        state_root=state_root,
+        max_total_concurrency=5,
+        timeout_seconds=0.05,
+        platform_name="posix",
+    ):
+        with pytest.raises(state.OracleStateError) as exc:
+            with state.host_run_lease(
+                state_root=state_root,
+                max_total_concurrency=5,
+                timeout_seconds=0.05,
+                platform_name="posix",
+            ):
+                raise AssertionError("maintenance must exclude new Oracle runs")
+
+    assert exc.value.code == "HOST_CAPACITY_TIMEOUT"
+
+
+def test_host_policy_configuration_waits_for_all_run_slots(tmp_path: Path) -> None:
+    state = load_state()
+    state_root = tmp_path / "host-state"
+    profile_seed = tmp_path / "profile-seed"
+    profile_seed.mkdir()
+    policy = state.HOST_POLICY.configure_host_policy(
+        profile_seed,
+        max_total_concurrency=5,
+        state_root=state_root,
+        timeout_seconds=0.05,
+    )
+
+    with state.host_run_lease(
+        state_root=state_root,
+        max_total_concurrency=5,
+        timeout_seconds=0.05,
+        platform_name="posix",
+    ):
+        with pytest.raises(state.HOST_POLICY.OracleHostPolicyError) as exc:
+            state.HOST_POLICY.configure_host_policy(
+                profile_seed,
+                max_total_concurrency=4,
+                state_root=state_root,
+                timeout_seconds=0.05,
+            )
+
+    assert getattr(exc.value, "code", None) == "HOST_MAINTENANCE_TIMEOUT"
+    assert state.HOST_POLICY.load_host_policy_from_path(policy.path).max_total_concurrency == 5
 
 
 def test_lifecycle_vocabulary_is_bounded_to_four_states() -> None:

@@ -110,6 +110,20 @@ def test_host_control_state_is_outside_devspace_project() -> None:
     assert "HOST_STATE_OVERLAPS_PROJECT" in source
 
 
+def test_oracle_profile_seed_and_host_capacity_are_global_policy_bound() -> None:
+    value = text(ORACLE)
+    assert "codex.chatgpt.oracle-host-policy/v1" in value
+    assert 'profile_mode: "copy-per-run"' in value
+    assert "every new run and exact-session recovery" in value
+    assert "shared across every project root" in value
+    assert "sixth occupied host slot fails before browser" in value
+    manifest = json.loads((ROOT / "install-manifest.json").read_text(encoding="utf-8"))
+    assert {
+        "bin/chatgpt_oracle_host.py",
+        "bin/chatgpt_oracle_host_policy.py",
+    } <= set(manifest["include"])
+
+
 def test_oracle_recovery_is_exact_slug_no_restart_and_monotonic() -> None:
     value = text(THINKING)
     assert "stored slug" in value

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 import shutil
@@ -346,6 +347,27 @@ def latest_receipt(codex_home: Path) -> Path:
     return receipts[-1]
 
 
+def oracle_host_policy_report(codex_home: Path) -> dict[str, Any]:
+    helper = codex_home / "bin" / "chatgpt_oracle_host_policy.py"
+    spec = importlib.util.spec_from_file_location("codexpro_doctor_oracle_host_policy", helper)
+    if spec is None or spec.loader is None:
+        raise LifecycleError("Oracle host policy helper is unavailable")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    policy = module.load_host_policy_from_path(
+        codex_home / "state" / "chatgpt-oracle" / "host-policy.json"
+    )
+    return {
+        "status": "PASS",
+        "path": str(policy.path),
+        "profile_seed": str(policy.profile_seed),
+        "profile_mode": policy.profile_mode,
+        "max_total_concurrency": policy.max_total_concurrency,
+        "sha256": policy.sha256,
+    }
+
+
 def rollback(codex_home: Path, receipt_path: Path | None = None) -> dict[str, Any]:
     codex_home = codex_home.expanduser().resolve()
     receipt_path = (receipt_path or latest_receipt(codex_home)).expanduser().resolve()
@@ -387,6 +409,7 @@ def doctor(codex_home: Path) -> dict[str, Any]:
     receipt_path: Path | None = None
     local_multi_gpt: dict[str, Any] = {"enabled": False, "doctor": None}
     devspace_native_runtime: dict[str, Any] | None = None
+    host_policy: dict[str, Any] | None = None
     try:
         receipt_path = latest_receipt(codex_home)
         receipt = _read_json(receipt_path)
@@ -449,6 +472,15 @@ def doctor(codex_home: Path) -> dict[str, Any]:
             )
     if os.name != "nt" and shutil.which("rsync") is None:
         issues.append({"code": "ORACLE_PROFILE_COPY_RSYNC_MISSING"})
+    try:
+        host_policy = oracle_host_policy_report(codex_home)
+    except Exception as exc:
+        issues.append(
+            {
+                "code": str(getattr(exc, "code", "ORACLE_HOST_POLICY_INVALID")),
+                "detail": str(exc),
+            }
+        )
     if sys.platform == "darwin":
         for tool in ("launchctl", "plutil", "lsof", "ps"):
             if shutil.which(tool) is None:
@@ -468,6 +500,7 @@ def doctor(codex_home: Path) -> dict[str, Any]:
         "tools": required,
         "local_multi_gpt": local_multi_gpt,
         "devspace_native_runtime": devspace_native_runtime,
+        "oracle_host_policy": host_policy,
     }
 
 

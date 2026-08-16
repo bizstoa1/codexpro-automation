@@ -2,20 +2,40 @@ from __future__ import annotations
 
 import ctypes
 import hashlib
+import importlib.util
 import json
 import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import threading
 import time
 import uuid
-from contextlib import AbstractContextManager
+from collections.abc import Iterator
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Sequence
+
+
+def _load_runtime_module(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"runtime module unavailable: {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+_BIN = Path(__file__).resolve().parent
+HOST_POLICY = _load_runtime_module(
+    "chatgpt_oracle_host_policy_runtime", _BIN / "chatgpt_oracle_host_policy.py"
+)
+HOST = _load_runtime_module("chatgpt_oracle_host_runtime", _BIN / "chatgpt_oracle_host.py")
 
 SCHEMA = "codex.chatgpt.oracle-run/v1"
 STATE_SCHEMA = "codex.chatgpt.oracle-run-state/v1"
@@ -227,6 +247,9 @@ class OracleConfig:
     model_strategy: str
     thinking_time: str
     copy_profile: Path | None
+    profile_mode: str
+    host_policy_sha256: str
+    host_max_total_concurrency: int
     research: str
     archive: str
     task_outcome_contract: str
@@ -476,35 +499,50 @@ def load_manifest(path: Path, *, platform_name: str | None = None) -> OracleConf
             raise OracleStateError("PRO_MODEL_STRATEGY_INVALID", "Pro requires explicit model selection")
         if thinking_time != "heavy":
             raise OracleStateError("PRO_THINKING_TIME_INVALID", "Pro requires heavy reasoning")
+    try:
+        host_policy = HOST_POLICY.load_host_policy(oracle_state_root())
+    except HOST_POLICY.OracleHostPolicyError as exc:
+        raise OracleStateError(exc.code, str(exc), exc.evidence) from exc
+    explicit_host_concurrency = policy_raw.get("max_total_concurrency")
+    if (
+        explicit_host_concurrency is not None
+        and policy["max_total_concurrency"] != host_policy.max_total_concurrency
+    ):
+        raise OracleStateError(
+            "HOST_CONCURRENCY_MISMATCH",
+            "manifest max_total_concurrency must match the host policy",
+            {
+                "manifest": policy["max_total_concurrency"],
+                "host": host_policy.max_total_concurrency,
+            },
+        )
+    policy["max_total_concurrency"] = host_policy.max_total_concurrency
     copy_profile_raw = str(payload.get("copy_profile") or "").strip()
     if copy_profile_raw:
-        copy_profile = absolute_path(copy_profile_raw, label="copy_profile", must_exist=True)
-    else:
-        # The manually signed-in Oracle profile is the immutable seed for a
-        # throwaway per-run copy.  This prevents different projects from
-        # sharing one Chrome process and closing each other's live work.
-        profile_override = str(os.environ.get("ORACLE_BROWSER_PROFILE_DIR") or "").strip()
-        default_profile = Path(profile_override).expanduser().resolve() if profile_override else (
-            Path.home() / ".oracle" / "browser-profile"
-        ).resolve()
-        copy_profile = default_profile if default_profile.is_dir() else None
-    if copy_profile is not None:
-        if not copy_profile.is_dir():
-            raise OracleStateError("COPY_PROFILE_NOT_DIRECTORY", "copy_profile must identify a directory")
-        if is_within(project_root, copy_profile) or is_within(copy_profile, project_root):
-            raise OracleStateError("COPY_PROFILE_OVERLAPS_PROJECT", "copy_profile must be outside the DevSpace project")
-        if not profile_copy_is_supported(platform_name=platform_name):
-            # Without the copy dependency Oracle aborts after launch, so every
-            # run failed before reaching the composer.  Fall back to the
-            # signed-in profile directly instead of forcing that failure.
-            if copy_profile_raw:
-                raise OracleStateError(
-                    "COPY_PROFILE_DEPENDENCY_MISSING",
-                    f"copy_profile requires {PROFILE_COPY_DEPENDENCY} on PATH; "
-                    "install it or omit copy_profile to reuse the signed-in profile",
-                    {"dependency": PROFILE_COPY_DEPENDENCY, "copy_profile": str(copy_profile)},
-                )
-            copy_profile = None
+        explicit_profile = absolute_path(
+            copy_profile_raw, label="copy_profile", must_exist=True
+        )
+        if explicit_profile != host_policy.profile_seed:
+            raise OracleStateError(
+                "HOST_PROFILE_SEED_MISMATCH",
+                "manifest copy_profile must match the host policy profile_seed",
+                {
+                    "manifest": str(explicit_profile),
+                    "host": str(host_policy.profile_seed),
+                },
+            )
+    copy_profile = host_policy.profile_seed
+    if is_within(project_root, copy_profile) or is_within(copy_profile, project_root):
+        raise OracleStateError(
+            "COPY_PROFILE_OVERLAPS_PROJECT",
+            "copy_profile must be outside the DevSpace project",
+        )
+    if not profile_copy_is_supported(platform_name=platform_name):
+        raise OracleStateError(
+            "COPY_PROFILE_DEPENDENCY_MISSING",
+            f"copy-per-run requires {PROFILE_COPY_DEPENDENCY} on PATH",
+            {"dependency": PROFILE_COPY_DEPENDENCY, "copy_profile": str(copy_profile)},
+        )
     research = str(payload.get("research") or "off").strip().casefold()
     if research not in {"off", "deep"}:
         raise OracleStateError("RESEARCH_INVALID", "research must be off or deep")
@@ -562,6 +600,9 @@ def load_manifest(path: Path, *, platform_name: str | None = None) -> OracleConf
         model_strategy,
         thinking_time,
         copy_profile,
+        host_policy.profile_mode,
+        host_policy.sha256,
+        host_policy.max_total_concurrency,
         research,
         archive,
         task_outcome_contract,
@@ -654,6 +695,9 @@ def state_payload(config: OracleConfig, layout: RunLayout, *, status: str, resol
             "model_strategy": config.model_strategy,
             "thinking_time": config.thinking_time,
             "copy_profile": str(config.copy_profile) if config.copy_profile else None,
+            "isolation_mode": config.profile_mode,
+            "host_policy_sha256": config.host_policy_sha256,
+            "run_profile_root": str(layout.browser_temp_path),
             "research": config.research,
             "archive": config.archive,
         },
@@ -2325,11 +2369,11 @@ def proven_pre_submit_cdp_disconnect(state_path: Path) -> dict[str, Any] | None:
     profile = state.get("profile") if isinstance(state.get("profile"), dict) else {}
     oracle = state.get("oracle") if isinstance(state.get("oracle"), dict) else {}
     locator = str(oracle.get("session_locator") or oracle.get("slug") or "").strip()
-    expected_profile = (Path.home() / ".oracle" / "browser-profile").resolve()
     try:
         copy_profile = Path(str(profile.get("copy_profile") or "")).resolve()
     except OSError:
         return None
+    expected_profile = copy_profile
     if (
         str(profile.get("model") or "") != "gpt-5.6-sol"
         or str(profile.get("model_strategy") or "") != "select"
@@ -2777,6 +2821,7 @@ def proven_pre_submit_failure(state_path: Path) -> dict[str, Any] | None:
         or proven_pre_submit_profile_copy_ebusy(state_path)
         or proven_pre_submit_thinking_time_failure(state_path)
         or proven_pre_submit_model_switcher_failure(state_path)
+        or proven_pre_submit_manual_login_profile_uninitialized(state_path)
         or proven_pre_submit_cdp_disconnect(state_path)
         or proven_pre_submit_host_failure(state_path)
         or proven_user_confirmed_no_submission(state_path)
@@ -2823,6 +2868,8 @@ def settle_proven_pre_submit_failure(state_path: Path) -> dict[str, Any] | None:
         evidence = proven_pre_submit_thinking_time_failure(state_path)
     if evidence is None:
         evidence = proven_pre_submit_model_switcher_failure(state_path)
+    if evidence is None:
+        evidence = proven_pre_submit_manual_login_profile_uninitialized(state_path)
     if evidence is None:
         evidence = proven_pre_submit_cdp_disconnect(state_path)
     if evidence is None:
@@ -3230,6 +3277,26 @@ def project_submit_mutex(
     if platform == "nt":
         return WindowsSubmitMutex(name, timeout_seconds)
     return FileSubmitMutex(name, timeout_seconds)
+
+
+@contextmanager
+def host_run_lease(
+    *,
+    state_root: Path,
+    max_total_concurrency: int,
+    timeout_seconds: float,
+    platform_name: str | None = None,
+) -> Iterator[None]:
+    try:
+        with HOST.host_run_lease(
+            state_root=state_root,
+            max_total_concurrency=max_total_concurrency,
+            timeout_seconds=timeout_seconds,
+            platform_name=platform_name,
+        ):
+            yield
+    except HOST.OracleHostLeaseError as exc:
+        raise OracleStateError(exc.code, str(exc), exc.evidence) from exc
 
 
 def command_for_display(command: Sequence[str]) -> list[str]:

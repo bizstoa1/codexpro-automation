@@ -163,6 +163,17 @@ def load_manifest(path: Path) -> dict[str, Any]:
         )
     except ValueError as exc:
         raise WorkflowError(str(exc)) from exc
+    try:
+        host_policy = RUNNER.STATE.HOST_POLICY.load_host_policy(state_root)
+    except RUNNER.STATE.HOST_POLICY.OracleHostPolicyError as exc:
+        raise WorkflowError(f"{exc.code}: {exc}") from exc
+    explicit_profile_raw = str(value.get("copy_profile") or "").strip()
+    if explicit_profile_raw:
+        explicit_profile = Path(explicit_profile_raw).expanduser().resolve(strict=True)
+        if explicit_profile != host_policy.profile_seed:
+            raise WorkflowError(
+                "HOST_PROFILE_SEED_MISMATCH: copy_profile must match host policy"
+            )
     return {
         **value,
         "project_root": root,
@@ -174,6 +185,8 @@ def load_manifest(path: Path) -> dict[str, Any]:
         "initial_stage": initial_stage,
         "app_name": app_name,
         "model": str(value.get("model") or "gpt-5.6"),
+        "copy_profile": host_policy.profile_seed,
+        "host_policy_sha256": host_policy.sha256,
         "local_gate_command": list(local_gate),
         "manifest_sha256": sha(path.resolve(strict=True)),
         "workflow_id": workflow_id,
@@ -462,6 +475,7 @@ def _oracle_manifest(
         "thinking_time": "heavy" if stage == "pro" else "extra-high",
         "research": "off",
         "archive": "auto",
+        "copy_profile": str(config["copy_profile"]),
         "parallel_parent_id": config["_parallel_parent_id"],
         "run_id": run_id,
     }

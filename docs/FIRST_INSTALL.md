@@ -197,6 +197,42 @@ npx --yes @steipete/oracle@0.17.1 --engine browser `
 열린 전용 브라우저에서 ChatGPT 로그인만 완료합니다. 이후 실제 실행은 이 프로필의
 throwaway copy를 사용하므로 동시 프로젝트가 같은 브라우저 상태를 공유하지 않습니다.
 
+호스트 전용 상태의 `host-policy.json`에 로그인 seed와 전체 동시 실행 한도를 한 번
+기록합니다. 이 파일은 프로젝트 안에 두지 않으며, 모든 프로젝트가 같은 정책을
+읽습니다.
+
+```json
+{
+  "schema": "codex.chatgpt.oracle-host-policy/v1",
+  "profile_seed": "C:\\Users\\you\\.oracle\\browser-profile",
+  "profile_mode": "copy-per-run",
+  "max_total_concurrency": 5
+}
+```
+
+위 파일의 기본 위치는
+`%USERPROFILE%\.codex\state\chatgpt-oracle\host-policy.json`입니다. macOS는
+동일한 홈 기준 경로 아래에 두고 `profile_seed`만 실제 초기화한 Oracle 로그인
+프로필의 절대 경로로 기록합니다. seed 자체를 실행용 Chrome `user-data-dir`로 열지
+않습니다. 각 새 실행과 exact-session 복구가 별도의 임시 복사본과 호스트 슬롯 하나를
+사용하며, 전체 슬롯이 차면 브라우저를 열기 전에 중단합니다. 따라서 프로젝트 root를
+추가해도 로그인 seed를 복제하거나 모든 Oracle을 영구 직렬화할 필요가 없습니다.
+
+정책 파일은 직접 덮어쓰지 말고 maintenance lease를 사용하는 설치된 helper로
+생성·변경합니다.
+
+```powershell
+python "$env:USERPROFILE\.codex\bin\chatgpt_oracle_host_policy.py" configure `
+  --profile-seed "$env:USERPROFILE\.oracle\browser-profile" `
+  --max-total-concurrency 5
+```
+
+```bash
+python3 "$HOME/.codex/bin/chatgpt_oracle_host_policy.py" configure \
+  --profile-seed "$HOME/.oracle/manual-login-profile" \
+  --max-total-concurrency 5
+```
+
 ## 7. ChatGPT 앱을 마지막에 수동 등록
 
 고정 URL, DevSpace, OAuth, 재부팅 복구, Oracle 로그인이 모두 준비된 뒤 진행합니다.

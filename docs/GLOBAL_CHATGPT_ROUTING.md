@@ -50,6 +50,13 @@ Use this routing in the Codex global `AGENTS.md` after installing the package.
 - Genuine Web Multi-GPT uses distinct Oracle sessions. Windows lanes use
   independent throwaway copies of the signed-in Oracle profile, run in waves
   of at most five, and hand compact files to one merger.
+- All project roots share one host policy, not one live browser. The policy
+  names an immutable signed-in profile seed and a host-wide capacity of at
+  most five. Each run and exact-session recovery consumes one crash-recoverable
+  host slot and its own throwaway profile until its Oracle process exits.
+  Project-specific mutexes continue to guard exact-session ownership; they do
+  not define host capacity. Adding a DevSpace root therefore does not require
+  another login seed and does not permanently serialize unrelated projects.
 - Local Multi-GPT is an optional, read-only PC-local advisory component. It is
   fixed to `gpt-5.6-luna` with `max` reasoning and is not a web transport or a
   release authority.

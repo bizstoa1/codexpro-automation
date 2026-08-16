@@ -26,6 +26,22 @@ def load_runner():
 def manifest(tmp_path: Path, **extra) -> Path:
     mission = tmp_path / "mission.md"
     mission.write_text("finish", encoding="utf-8")
+    state_root = (tmp_path.parent / f"{tmp_path.name}-host-state").resolve()
+    requested_profile = str(extra.get("copy_profile") or "").strip()
+    profile_seed = (
+        Path(requested_profile).expanduser().resolve()
+        if requested_profile
+        else (tmp_path.parent / f"{tmp_path.name}-oracle-profile-seed").resolve()
+    )
+    profile_seed.mkdir(parents=True, exist_ok=True)
+    state_root.mkdir(parents=True, exist_ok=True)
+    policy_path = state_root / "host-policy.json"
+    policy_path.write_text(json.dumps({
+        "schema": "codex.chatgpt.oracle-host-policy/v1",
+        "profile_seed": str(profile_seed),
+        "profile_mode": "copy-per-run",
+        "max_total_concurrency": 5,
+    }), encoding="utf-8")
     path = tmp_path / "job.json"
     payload = {
         "schema": "codex.chatgpt.oracle-run/v1",
@@ -33,12 +49,13 @@ def manifest(tmp_path: Path, **extra) -> Path:
         "mission_path": str(mission.resolve()),
         "app_name": "DevSpace",
         "mode": "browser",
-        "run_root": str((tmp_path.parent / f"{tmp_path.name}-host-state" / "runs").resolve()),
+        "run_root": str((state_root / "runs").resolve()),
         "oracle_command": ["oracle"],
     }
     payload.update(extra)
     path.write_text(json.dumps(payload), encoding="utf-8")
-    os.environ["CODEX_ORACLE_STATE_ROOT"] = str((tmp_path.parent / f"{tmp_path.name}-host-state").resolve())
+    os.environ["CODEX_ORACLE_STATE_ROOT"] = str(state_root)
+    os.environ["CODEX_ORACLE_HOST_POLICY"] = str(policy_path)
     return path.resolve()
 
 
@@ -212,7 +229,7 @@ def cdp_disconnect_pre_submit_popen(session_root: Path, *, variation: str | None
     def popen(command, **kwargs):
         slug = command[command.index("--slug") + 1]
         output_path = Path(command[command.index("--write-output") + 1]).resolve()
-        expected_profile = (Path.home() / ".oracle" / "browser-profile").resolve()
+        expected_profile = Path(command[command.index("--copy-profile") + 1]).resolve()
         error_message = (
             "Chrome DevTools client disconnected before oracle finished; "
             "the browser target appears still alive."
@@ -490,9 +507,7 @@ def test_default_signed_in_profile_is_copied_per_run_and_window_is_hidden(
     tmp_path: Path, monkeypatch
 ) -> None:
     runner = load_runner()
-    profile = tmp_path.parent / f"{tmp_path.name}-signed-in-oracle-profile"
-    profile.mkdir()
-    monkeypatch.setenv("ORACLE_BROWSER_PROFILE_DIR", str(profile.resolve()))
+    profile = (tmp_path.parent / f"{tmp_path.name}-oracle-profile-seed").resolve()
     monkeypatch.setattr(
         runner.STATE.shutil,
         "which",
@@ -505,21 +520,17 @@ def test_default_signed_in_profile_is_copied_per_run_and_window_is_hidden(
     assert result["argv"].count("--browser-hide-window") == 1
 
 
-def test_missing_posix_copy_dependency_still_launches_without_profile_copy(
+def test_missing_posix_copy_dependency_fails_before_launch(
     tmp_path: Path, monkeypatch
 ) -> None:
     runner = load_runner()
-    profile = tmp_path.parent / f"{tmp_path.name}-signed-in-oracle-profile"
-    profile.mkdir()
-    monkeypatch.setenv("ORACLE_BROWSER_PROFILE_DIR", str(profile.resolve()))
+    profile = (tmp_path.parent / f"{tmp_path.name}-oracle-profile-seed").resolve()
     monkeypatch.setattr(runner.STATE.shutil, "which", lambda name: None)
 
-    result = execute_run(
-        runner, manifest(tmp_path), dry_run=True, platform_name="posix"
-    )
+    with pytest.raises(runner.STATE.OracleStateError) as exc:
+        execute_run(runner, manifest(tmp_path), dry_run=True, platform_name="posix")
 
-    assert "--copy-profile" not in result["argv"]
-    assert result["argv"].count("--browser-hide-window") == 1
+    assert exc.value.code == "COPY_PROFILE_DEPENDENCY_MISSING"
 
 
 def test_windows_lanes_keep_profile_isolation_without_rsync(
@@ -531,9 +542,7 @@ def test_windows_lanes_keep_profile_isolation_without_rsync(
     Web Multi lanes before submission.
     """
     runner = load_runner()
-    profile = tmp_path.parent / f"{tmp_path.name}-signed-in-oracle-profile"
-    profile.mkdir()
-    monkeypatch.setenv("ORACLE_BROWSER_PROFILE_DIR", str(profile.resolve()))
+    profile = (tmp_path.parent / f"{tmp_path.name}-oracle-profile-seed").resolve()
     monkeypatch.setattr(runner.STATE.shutil, "which", lambda name: None)
 
     result = execute_run(runner, manifest(tmp_path), dry_run=True, platform_name="nt")
@@ -1161,6 +1170,39 @@ def test_windows_launch_uses_no_window_and_waits(tmp_path: Path) -> None:
     assert events == ["enter", "popen", "wait", "exit"]
 
 
+def test_host_capacity_exhaustion_fails_before_oracle_launch(tmp_path: Path) -> None:
+    runner = load_runner()
+    job = manifest(tmp_path, submit_mutex_timeout_seconds=0.05)
+    state_root = Path(os.environ["CODEX_ORACLE_STATE_ROOT"])
+    policy_path = state_root / "host-policy.json"
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    policy["max_total_concurrency"] = 1
+    policy_path.write_text(json.dumps(policy), encoding="utf-8")
+    calls: list[bool] = []
+
+    def forbidden_popen(*args, **kwargs):
+        calls.append(True)
+        raise AssertionError("Oracle must not launch without a host slot")
+
+    with runner.STATE.host_run_lease(
+        state_root=state_root,
+        max_total_concurrency=1,
+        timeout_seconds=0.05,
+        platform_name="posix",
+    ):
+        result = execute_run(
+            runner,
+            job,
+            run_factory=version_0171_runner,
+            popen_factory=forbidden_popen,
+        )
+
+    stderr = (Path(result["run_dir"]) / "stderr.log").read_text(encoding="utf-8")
+    assert result["ok"] is False
+    assert "HOST_CAPACITY_TIMEOUT" in stderr
+    assert calls == []
+
+
 def test_transport_mission_change_blocks_before_oracle_launch(tmp_path: Path) -> None:
     runner = load_runner()
     launched = []
@@ -1302,7 +1344,7 @@ def test_profile_copy_rsync_missing_is_proven_pre_submit_and_releases_project(tm
     ) == []
 
 
-def test_manual_login_profile_uninitialized_is_proven_pre_submit_and_releases_project(
+def test_manual_login_profile_uninitialized_does_not_override_copy_per_run_authority(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1317,20 +1359,10 @@ def test_manual_login_profile_uninitialized_is_proven_pre_submit_and_releases_pr
     run_dir = Path(result["run_dir"])
     state = runner.STATE.load_state(run_dir / "state.json")
 
-    assert result["status"] == "pre_submit_failed"
-    assert result["safe_for_fresh_run"] is True
-    assert state["session_authority"] == "pre_submit"
-    assert state["transport_status"] == "failed_pre_submit"
-    assert state["task_outcome"] == "not_executed"
-    assert state["task_outcome_reason"] == "oracle-manual-login-profile-uninitialized-pre-submit"
-    assert (
-        state["pre_submit_failure"]["code"]
-        == "ORACLE_MANUAL_LOGIN_PROFILE_UNINITIALIZED_PRELAUNCH_FAILED"
-    )
-    assert runner.STATE.unresolved_project_sessions(
-        runner.STATE.load_manifest(pro_readonly_manifest(tmp_path)).run_root,
-        tmp_path,
-    ) == []
+    assert result["ok"] is False
+    assert state["session_authority"] == "submitted_unknown"
+    assert state["status"] == "attention_required"
+    assert "pre_submit_failure" not in state
 
 
 @pytest.mark.parametrize(
@@ -1548,6 +1580,12 @@ def test_recovery_repairs_legacy_manual_login_profile_lock_without_oracle_call(
         }
     )
     legacy.pop("pre_submit_failure", None)
+    legacy_profile = dict(legacy["profile"])
+    legacy_profile["copy_profile"] = None
+    legacy_profile.pop("isolation_mode", None)
+    legacy_profile.pop("host_policy_sha256", None)
+    legacy_profile.pop("run_profile_root", None)
+    legacy["profile"] = legacy_profile
     runner.STATE.write_json_atomic(state_path, legacy)
     calls: list[bool] = []
 

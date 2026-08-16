@@ -32,7 +32,27 @@ def test_portable_lifecycle_is_exact_inverse(tmp_path: Path) -> None:
     installed = module.install(ROOT, codex_home)
     assert installed["ok"] and installed["count"] > 120
     receipt = Path(installed["receipt"])
-    assert module.doctor(codex_home)["status"] == "PASS"
+    missing_policy = module.doctor(codex_home)
+    assert missing_policy["status"] == "FAIL"
+    assert any(item["code"] == "HOST_POLICY_REQUIRED" for item in missing_policy["issues"])
+    profile_seed = tmp_path / "oracle-profile-seed"
+    profile_seed.mkdir()
+    policy_path = codex_home / "state" / "chatgpt-oracle" / "host-policy.json"
+    policy_path.parent.mkdir(parents=True)
+    policy_path.write_text(
+        json.dumps(
+            {
+                "schema": "codex.chatgpt.oracle-host-policy/v1",
+                "profile_seed": str(profile_seed.resolve()),
+                "profile_mode": "copy-per-run",
+                "max_total_concurrency": 5,
+            }
+        ),
+        encoding="utf-8",
+    )
+    doctor = module.doctor(codex_home)
+    assert doctor["status"] == "PASS"
+    assert doctor["oracle_host_policy"]["max_total_concurrency"] == 5
 
     rolled_back = module.rollback(codex_home, receipt)
     assert rolled_back == {"ok": True, "status": "COMPLETE", "receipt": str(receipt), "conflicts": []}

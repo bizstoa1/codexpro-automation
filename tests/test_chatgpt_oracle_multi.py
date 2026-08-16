@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -21,6 +22,19 @@ def load():
 
 
 def make_manifest(tmp_path: Path, count: int = 7) -> Path:
+    state_root = (tmp_path.parent / f"{tmp_path.name}-host-state").resolve()
+    profile_seed = (tmp_path.parent / f"{tmp_path.name}-oracle-profile-seed").resolve()
+    profile_seed.mkdir(parents=True, exist_ok=True)
+    state_root.mkdir(parents=True, exist_ok=True)
+    policy_path = state_root / "host-policy.json"
+    policy_path.write_text(json.dumps({
+        "schema": "codex.chatgpt.oracle-host-policy/v1",
+        "profile_seed": str(profile_seed),
+        "profile_mode": "copy-per-run",
+        "max_total_concurrency": 5,
+    }), encoding="utf-8")
+    os.environ["CODEX_ORACLE_STATE_ROOT"] = str(state_root)
+    os.environ["CODEX_ORACLE_HOST_POLICY"] = str(policy_path)
     missions = []
     for index in range(count):
         path = tmp_path / f"solver-{index}.md"
@@ -74,7 +88,10 @@ def test_multi_uses_unique_child_manifests_waves_and_merger(tmp_path: Path) -> N
     assert all(item["model"] == "gpt-5.6" for item in calls)
     assert all(item["model_strategy"] == "select" for item in calls)
     assert all(item["thinking_time"] == "extra-high" for item in calls)
-    assert all(item["copy_profile"] for item in calls)
+    host_policy = json.loads(
+        Path(os.environ["CODEX_ORACLE_HOST_POLICY"]).read_text(encoding="utf-8")
+    )
+    assert all(item["copy_profile"] == host_policy["profile_seed"] for item in calls)
     merger_text = Path(calls[-1]["mission_path"]).read_text(encoding="utf-8")
     assert merger_text.count(".md") == 7
 
@@ -117,15 +134,15 @@ def test_multi_rejects_lane_path_traversal(tmp_path: Path) -> None:
         raise AssertionError("unsafe lane id must fail")
 
 
-def test_reconcile_recovered_lanes_restores_stable_order_without_submission(tmp_path: Path, monkeypatch) -> None:
+def test_reconcile_recovered_lanes_restores_stable_order_without_submission(tmp_path: Path) -> None:
     module = load()
-    monkeypatch.setenv("CODEX_ORACLE_STATE_ROOT", str((tmp_path / "state").resolve()))
     manifest = make_manifest(tmp_path, 3)
     config = module.load_manifest(manifest)
+    state_root = Path(os.environ["CODEX_ORACLE_STATE_ROOT"])
     parent_id = "a" * 64
     recorded = []
     for lane in reversed(config["solvers"]):
-        run_dir = tmp_path / "state" / lane["id"]
+        run_dir = state_root / lane["id"]
         run_dir.mkdir(parents=True)
         output = run_dir / "output.md"
         output.write_text(f"answer {lane['id']}", encoding="utf-8")
@@ -163,22 +180,22 @@ def test_reconcile_recovered_lanes_restores_stable_order_without_submission(tmp_
     assert result["merger_run_dir"].endswith("failed-pre-submit-merger")
 
 
-def test_reconcile_recovered_lanes_rejects_parent_identity_mismatch(tmp_path: Path, monkeypatch) -> None:
+def test_reconcile_recovered_lanes_rejects_parent_identity_mismatch(tmp_path: Path) -> None:
     module = load()
-    monkeypatch.setenv("CODEX_ORACLE_STATE_ROOT", str(tmp_path.resolve()))
     manifest = make_manifest(tmp_path, 2)
     config = module.load_manifest(manifest)
+    state_root = Path(os.environ["CODEX_ORACLE_STATE_ROOT"])
     module._write_json(config["output_dir"] / "result.json", {
         "schema": module.RESULT_SCHEMA,
         "status": "failed",
         "parent_id": "a" * 64,
         "lanes": [
-            {"id": lane["id"], "run_dir": str(tmp_path / lane["id"]), "session_locator": f"oracle-{lane['id']}"}
+            {"id": lane["id"], "run_dir": str(state_root / lane["id"]), "session_locator": f"oracle-{lane['id']}"}
             for lane in config["solvers"]
         ],
     })
     first = config["solvers"][0]
-    run_dir = tmp_path / first["id"]
+    run_dir = state_root / first["id"]
     run_dir.mkdir()
     output = run_dir / "output.md"
     output.write_text("answer", encoding="utf-8")
@@ -196,15 +213,15 @@ def test_reconcile_recovered_lanes_rejects_parent_identity_mismatch(tmp_path: Pa
         module.reconcile_recovered_lanes(manifest)
 
 
-def test_resume_recovered_merger_submits_only_stable_order_merger(tmp_path: Path, monkeypatch) -> None:
+def test_resume_recovered_merger_submits_only_stable_order_merger(tmp_path: Path) -> None:
     module = load()
-    monkeypatch.setenv("CODEX_ORACLE_STATE_ROOT", str((tmp_path / "state").resolve()))
     manifest = make_manifest(tmp_path, 2)
     config = module.load_manifest(manifest)
+    state_root = Path(os.environ["CODEX_ORACLE_STATE_ROOT"])
     parent_id = "c" * 64
     recorded = []
     for lane in config["solvers"]:
-        run_dir = tmp_path / "state" / lane["id"]
+        run_dir = state_root / lane["id"]
         run_dir.mkdir(parents=True)
         output = run_dir / "output.md"
         output.write_text(f"answer {lane['id']}", encoding="utf-8")

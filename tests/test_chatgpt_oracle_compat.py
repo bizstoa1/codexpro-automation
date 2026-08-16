@@ -113,18 +113,9 @@ def test_unknown_oracle_version_or_file_hash_fails_closed(tmp_path: Path) -> Non
 
 def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_path: Path) -> None:
     compat = load_compat()
-    source = (
-        Path.home()
-        / "AppData"
-        / "Local"
-        / "npm-cache"
-        / "_npx"
-        / "0a10f56e3ba43148"
-        / "node_modules"
-        / "@steipete"
-        / "oracle"
-    )
-    if not source.is_dir():
+    try:
+        source = compat.resolve_package_root()
+    except compat.OracleCompatError:
         pytest.skip("published Oracle 0.17.1 cache is unavailable")
     package = tmp_path / "oracle"
     shutil.copytree(source, package)
@@ -289,7 +280,7 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
         check=False,
     )
     assert behavior.returncode == 0, behavior.stderr
-    assert json.loads(behavior.stdout) == {"copied": False, "explicit": True}
+    assert json.loads(behavior.stdout) == {"copied": False, "explicit": False}
 
     profile_copy = package / "dist/src/browser/profileCopy.js"
     profile_copy_text = profile_copy.read_text(encoding="utf-8")
@@ -340,3 +331,19 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
 
     second = compat.ensure_oracle_compatibility("oracle 0.17.1", package_root=package, backup_root=backup)
     assert set(second["already_patched"]) == set(compat.PATCHES)
+
+
+def test_npx_cache_discovery_supports_posix_hosts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    compat = load_compat()
+    cache = tmp_path / "npm-cache"
+    package = cache / "_npx" / "fixture" / "node_modules" / "@steipete" / "oracle"
+    package.mkdir(parents=True)
+    (package / "package.json").write_text(
+        json.dumps({"version": "0.17.1"}), encoding="utf-8"
+    )
+    monkeypatch.delenv("ORACLE_PACKAGE_ROOT", raising=False)
+    monkeypatch.setenv("npm_config_cache", str(cache))
+
+    assert compat.resolve_package_roots() == [package.resolve()]

@@ -23,7 +23,19 @@ def load():
 
 
 def manifest(tmp_path: Path) -> Path:
-    os.environ["CODEX_ORACLE_STATE_ROOT"] = str((tmp_path.parent / f"{tmp_path.name}-host-state").resolve())
+    state_root = (tmp_path.parent / f"{tmp_path.name}-host-state").resolve()
+    profile_seed = (tmp_path.parent / f"{tmp_path.name}-oracle-profile-seed").resolve()
+    profile_seed.mkdir(parents=True, exist_ok=True)
+    state_root.mkdir(parents=True, exist_ok=True)
+    policy_path = state_root / "host-policy.json"
+    policy_path.write_text(json.dumps({
+        "schema": "codex.chatgpt.oracle-host-policy/v1",
+        "profile_seed": str(profile_seed),
+        "profile_mode": "copy-per-run",
+        "max_total_concurrency": 5,
+    }), encoding="utf-8")
+    os.environ["CODEX_ORACLE_STATE_ROOT"] = str(state_root)
+    os.environ["CODEX_ORACLE_HOST_POLICY"] = str(policy_path)
     mission = tmp_path / "initial.md"
     mission.write_text("Plan the work broadly.", encoding="utf-8")
     path = tmp_path / "workflow.json"
@@ -85,6 +97,10 @@ def test_ultra_economy_dry_run_starts_with_explicit_pro_design(tmp_path: Path, m
     assert seen["model"] == "gpt-5.6-sol"
     assert seen["thinking_time"] == "heavy"
     assert seen["transport"] == "pro-devspace"
+    host_policy = json.loads(
+        Path(os.environ["CODEX_ORACLE_HOST_POLICY"]).read_text(encoding="utf-8")
+    )
+    assert seen["copy_profile"] == host_policy["profile_seed"]
 
 
 def test_standard_workflow_cannot_skip_plan_with_initial_pro(tmp_path: Path) -> None:

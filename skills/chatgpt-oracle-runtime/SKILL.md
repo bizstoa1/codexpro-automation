@@ -46,7 +46,8 @@ Require schema `codex.chatgpt.oracle-run/v1` with:
   `pro-attachment` includes one or more exact `attachments`.
 - `mode`: `browser`.
 - Optional `run_root`, `oracle_command`, `oracle_args`, `thinking_time`,
-  hash-validated `copy_profile`, and mutex timeout.
+  host-policy-matching `copy_profile`, and mutex timeout. A manifest cannot
+  select a different seed or lower the host capacity policy.
 - Regular direct/orchestrator manifests use `task_outcome_contract: "v1"`.
 
 ## Run
@@ -133,6 +134,22 @@ profiles, then wait concurrently.
 Control state, Oracle output, and transcripts live under
 `%USERPROFILE%\.codex\state\chatgpt-oracle`, outside the DevSpace-writable
 project.
+
+The host policy at
+`%USERPROFILE%\.codex\state\chatgpt-oracle\host-policy.json` is the only
+profile-selection authority. It uses schema
+`codex.chatgpt.oracle-host-policy/v1`, `profile_mode: "copy-per-run"`, one
+absolute signed-in `profile_seed`, and `max_total_concurrency` from 1 through
+5. The seed is login material only: every new run and exact-session recovery
+launches a separate throwaway Chrome profile and never opens the seed as a
+shared Chrome user-data directory. Missing policy, missing copy support, a
+different manifest seed, or a sixth occupied host slot fails before browser
+launch. Host slots are shared across every project root and are held until the
+Oracle or exact-recovery process exits; project mutexes still protect semantic
+ownership separately. Oracle package compatibility mutation is serialized by
+canonical package root. Create or change the host policy only through
+`chatgpt_oracle_host_policy.py configure`; its maintenance lease prevents a
+policy swap while any run or recovery slot is active.
 
 Use `chatgpt_oracle_comprehensive.py` for the bounded plan → optional
 Pro/Multi → review → implementation → final web gate flow. Each web stage

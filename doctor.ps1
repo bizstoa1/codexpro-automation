@@ -12,6 +12,7 @@ $Warnings = @()
 $Commands = @('powershell -ExecutionPolicy Bypass -File .\install.ps1 -WhatIf')
 $LocalMultiGptEnabled = $false
 $LocalMultiGptDoctor = $null
+$OracleHostPolicy = $null
 
 function Get-Sha256([string]$Path) {
   $stream = $null
@@ -94,6 +95,22 @@ if (!$Node -or !$Npx) {
 if (!$GitBash) {
   $Issues += @{code='DEVSPACE_GIT_BASH_MISSING'; detail='Windows DevSpace requires Git Bash'}
 }
+$OraclePolicyPath = Join-Path $CodexRoot 'state/chatgpt-oracle/host-policy.json'
+try {
+  $PolicyItem = Get-Item -LiteralPath $OraclePolicyPath -ErrorAction Stop
+  if ($PolicyItem.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'host policy must not be a symlink or reparse point' }
+  $OracleHostPolicy = Get-Content -LiteralPath $OraclePolicyPath -Raw | ConvertFrom-Json
+  if ([string]$OracleHostPolicy.schema -ne 'codex.chatgpt.oracle-host-policy/v1') { throw 'host policy schema is invalid' }
+  if ([string]$OracleHostPolicy.profile_mode -ne 'copy-per-run') { throw 'host profile mode must be copy-per-run' }
+  $HostCapacity = [int]$OracleHostPolicy.max_total_concurrency
+  if ($HostCapacity -lt 1 -or $HostCapacity -gt 5) { throw 'host capacity must be within 1..5' }
+  $ProfileSeed = [IO.Path]::GetFullPath([string]$OracleHostPolicy.profile_seed)
+  $ProfileItem = Get-Item -LiteralPath $ProfileSeed -ErrorAction Stop
+  if (!$ProfileItem.PSIsContainer -or ($ProfileItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'profile seed must be a non-symlink directory' }
+} catch {
+  $Issues += @{code='ORACLE_HOST_POLICY_INVALID'; detail=$_.Exception.Message; path=$OraclePolicyPath}
+  $OracleHostPolicy = $null
+}
 $Commands += 'npx -y @steipete/oracle --version'
 $Commands += 'python .\skills\chatgpt-workspace-setup\scripts\devspace_tailscale_setup.py doctor --root C:\project --hostname your-device.your-tailnet.ts.net'
 
@@ -170,7 +187,7 @@ if (($Agbrowse -or $UpdateReceipt) -and (!$Python -or !(Test-Path -LiteralPath $
   warnings = $Warnings
   commands = $Commands
   agbrowse = @{selected_version=$SelectedVersion; contract=$Contract; update_receipt=$UpdateReceiptPath}
-  oracle = @{package='@steipete/oracle';tested_version='0.17.1';resolution='npx at explicit run time'}
+  oracle = @{package='@steipete/oracle';tested_version='0.17.1';resolution='npx at explicit run time';host_policy=$OracleHostPolicy}
   devspace = @{package='@waishnav/devspace';tested_version='1.0.4';setup='explicit setup skill only'}
   local_multi_gpt = @{enabled=$LocalMultiGptEnabled;doctor=$LocalMultiGptDoctor}
   codexpro = @{

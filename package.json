@@ -40,6 +40,8 @@
     "bin/chatgpt_agbrowse_tabs.py",
     "bin/chatgpt_git_isolation.py",
     "bin/chatgpt_oracle_run.py",
+    "bin/chatgpt_oracle_host.py",
+    "bin/chatgpt_oracle_host_policy.py",
     "bin/chatgpt_devspace_compat.py",
     "bin/devspace-compat/",
     "bin/chatgpt_oracle_compat.py",

@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import time
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
@@ -768,7 +769,7 @@ def execute_run(
         }
 
     try:
-        with layout.stdout_path.open("wb") as stdout_handle, layout.stderr_path.open("wb") as stderr_handle:
+        with layout.stdout_path.open("wb") as stdout_handle, layout.stderr_path.open("wb") as stderr_handle, ExitStack() as host_leases:
             mutex_root = (
                 config.project_root / ".oracle-parallel-submit" / str(config.parallel_parent_id)
                 if config.parallel_parent_id
@@ -807,6 +808,14 @@ def execute_run(
                             "attachment bytes changed after manifest validation",
                             {"path": str(attachment), "expected": expected, "actual": actual},
                         )
+                host_leases.enter_context(
+                    STATE.host_run_lease(
+                        state_root=STATE.oracle_state_root(),
+                        max_total_concurrency=config.host_max_total_concurrency,
+                        timeout_seconds=config.submit_mutex_timeout_seconds,
+                        platform_name=platform_name,
+                    )
+                )
                 process = popen_factory(
                     argv,
                     cwd=str(config.project_root),
@@ -854,7 +863,8 @@ def execute_run(
                     process, status_audit_seconds, on_status_audit=audit_callback
                 )
     except Exception as exc:
-        code = f"{exc.code}: " if isinstance(exc, OracleRunError) else ""
+        error_code = str(getattr(exc, "code", "")).strip()
+        code = f"{error_code}: " if error_code else ""
         append_error(layout.stderr_path, f"Oracle launch/run failed: {code}{exc}")
         STATE.write_transcript(layout)
         latest = STATE.load_state(layout.state_path)
@@ -1092,6 +1102,19 @@ def _recover_run_locked(
     argv = recovery_argv(command, locator, action, argv_output)
     if dry_run:
         return {"ok": True, "status": "dry-run", "run_dir": str(directory), "action": action, "argv": STATE.command_for_display(argv)}
+    try:
+        host_policy = STATE.HOST_POLICY.load_host_policy(STATE.oracle_state_root())
+    except STATE.HOST_POLICY.OracleHostPolicyError as exc:
+        raise OracleRunError(exc.code, str(exc), exc.evidence) from exc
+    stored_profile = state.get("profile") if isinstance(state.get("profile"), dict) else {}
+    if stored_profile.get("isolation_mode") == STATE.HOST_POLICY.COPY_PER_RUN_MODE:
+        stored_seed = Path(str(stored_profile.get("copy_profile") or "")).expanduser().resolve()
+        if stored_seed != host_policy.profile_seed:
+            raise OracleRunError(
+                "HOST_PROFILE_SEED_MISMATCH",
+                "exact-session recovery profile seed no longer matches the host policy",
+                {"stored": str(stored_seed), "host": str(host_policy.profile_seed)},
+            )
     stdout_path = directory / f"recovery-{action}-stdout.log"
     stderr_path = directory / f"recovery-{action}-stderr.log"
     recovery_browser_temp = directory / f"recovery-{action}-browser-temp"
@@ -1105,17 +1128,23 @@ def _recover_run_locked(
         )
     try:
         with stdout_path.open("wb") as stdout_handle, stderr_path.open("wb") as stderr_handle:
-            process = popen_factory(
-                argv,
-                cwd=str(state["project_root"]),
-                env=recovery_env,
-                stdin=subprocess.DEVNULL,
-                stdout=stdout_handle,
-                stderr=stderr_handle,
-                shell=False,
-                **STATE.windows_subprocess_kwargs(platform_name=platform_name),
-            )
-            exit_code = int(process.wait())
+            with STATE.host_run_lease(
+                state_root=STATE.oracle_state_root(),
+                max_total_concurrency=host_policy.max_total_concurrency,
+                timeout_seconds=30,
+                platform_name=platform_name,
+            ):
+                process = popen_factory(
+                    argv,
+                    cwd=str(state["project_root"]),
+                    env=recovery_env,
+                    stdin=subprocess.DEVNULL,
+                    stdout=stdout_handle,
+                    stderr=stderr_handle,
+                    shell=False,
+                    **STATE.windows_subprocess_kwargs(platform_name=platform_name),
+                )
+                exit_code = int(process.wait())
     finally:
         STATE.cleanup_owned_browser_temp(recovery_browser_temp)
     pre_submit_absence = STATE.settle_pre_submit_session_absent(

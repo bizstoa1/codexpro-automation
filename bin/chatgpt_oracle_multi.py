@@ -130,6 +130,17 @@ def load_manifest(path: Path) -> dict[str, Any]:
         )
     except ValueError as exc:
         raise MultiError(str(exc)) from exc
+    try:
+        host_policy = STATE.HOST_POLICY.load_host_policy(STATE.oracle_state_root())
+    except STATE.HOST_POLICY.OracleHostPolicyError as exc:
+        raise MultiError(f"{exc.code}: {exc}") from exc
+    explicit_profile_raw = str(value.get("copy_profile") or "").strip()
+    if explicit_profile_raw:
+        explicit_profile = Path(explicit_profile_raw).expanduser().resolve(strict=True)
+        if explicit_profile != host_policy.profile_seed:
+            raise MultiError("HOST_PROFILE_SEED_MISMATCH: copy_profile must match host policy")
+    if concurrency > host_policy.max_total_concurrency:
+        raise MultiError("HOST_CONCURRENCY_MISMATCH: max_concurrency exceeds host policy")
     return {
         **value,
         "project_root": root,
@@ -140,9 +151,8 @@ def load_manifest(path: Path) -> dict[str, Any]:
         "max_concurrency": concurrency,
         "app_name": app_name,
         "model": str(value.get("model") or "gpt-5.6").strip(),
-        "copy_profile": Path(
-            str(value.get("copy_profile") or (Path.home() / ".oracle" / "browser-profile"))
-        ).expanduser().resolve(),
+        "copy_profile": host_policy.profile_seed,
+        "host_policy_sha256": host_policy.sha256,
         "allowed_worktree_roots": allowed_worktrees,
         "manifest_sha256": hashlib.sha256(path.resolve(strict=True).read_bytes()).hexdigest(),
         "manifest_path": path.resolve(strict=True),
