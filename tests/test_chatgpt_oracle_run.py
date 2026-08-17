@@ -358,6 +358,15 @@ def copy_profile_manual_login_conflict_popen(command, **kwargs):
     return Process(1, [])
 
 
+def unknown_browser_manual_login_option_popen(command, **kwargs):
+    kwargs["stderr"].write(
+        b"error: unknown option '--no-browser-manual-login'\n"
+        b"(use --help for usage)\n"
+    )
+    kwargs["stderr"].flush()
+    return Process(1, [])
+
+
 def profile_copy_rsync_missing_popen(command, **kwargs):
     kwargs["stdout"].write(
         b"oracle 0.17.1\n"
@@ -486,10 +495,9 @@ def test_dry_run_never_executes_and_has_no_file_flag(tmp_path: Path) -> None:
     assert not (tmp_path / "runs").exists()
 
 
-def test_copy_profile_is_first_class_and_disables_global_manual_login(
+def test_copy_profile_is_first_class_without_unsupported_manual_login_flags(
     tmp_path: Path, monkeypatch
 ) -> None:
-    # Given: Oracle's host config may default browser manual-login to true.
     runner = load_runner()
     profile = tmp_path.parent / f"{tmp_path.name}-oracle-profile"
     profile.mkdir()
@@ -504,9 +512,9 @@ def test_copy_profile_is_first_class_and_disables_global_manual_login(
     # When: the runner builds a copy-per-run Oracle command.
     result = execute_run(runner, manifest(tmp_path, copy_profile=str(profile.resolve())), dry_run=True)
 
-    # Then: the copied seed stays outside the project and host manual-login is disabled.
     assert result["argv"][result["argv"].index("--copy-profile") + 1] == str(profile.resolve())
-    assert result["argv"].count("--no-browser-manual-login") == 1
+    assert "--no-browser-manual-login" not in result["argv"]
+    assert "--browser-manual-login=false" not in result["argv"]
 
 
 def test_default_signed_in_profile_is_copied_per_run_and_window_is_hidden(
@@ -1318,6 +1326,35 @@ def test_copy_profile_manual_login_conflict_is_proven_pre_submit_and_releases_pr
     assert state["task_outcome"] == "not_executed"
     assert state["task_outcome_reason"] == "oracle-launch-flags-mutually-exclusive-pre-submit"
     assert state["pre_submit_failure"]["code"] == "ORACLE_LAUNCH_FLAGS_MUTUALLY_EXCLUSIVE_PRELAUNCH_FAILED"
+    assert runner.STATE.unresolved_project_sessions(
+        runner.STATE.load_manifest(pro_manifest(tmp_path)).run_root,
+        tmp_path,
+    ) == []
+
+
+def test_unknown_manual_login_negation_option_is_proven_pre_submit_and_releases_project(
+    tmp_path: Path,
+) -> None:
+    runner = load_runner()
+    seed = tmp_path.parent / f"{tmp_path.name}-profile"
+    seed.mkdir(parents=True)
+    result = execute_run(
+        runner,
+        pro_manifest(tmp_path, run_id="f" * 32, copy_profile=str(seed)),
+        run_factory=version_0171_runner,
+        popen_factory=unknown_browser_manual_login_option_popen,
+    )
+    run_dir = Path(result["run_dir"])
+    state = runner.STATE.load_state(run_dir / "state.json")
+
+    assert result["status"] == "pre_submit_failed"
+    assert result["safe_for_fresh_run"] is True
+    assert state["session_authority"] == "pre_submit"
+    assert state["transport_status"] == "failed_pre_submit"
+    assert state["task_outcome"] == "not_executed"
+    assert state["task_outcome_reason"] == "oracle-cli-unknown-option-pre-submit"
+    assert state["pre_submit_failure"]["code"] == "ORACLE_CLI_UNKNOWN_OPTION_PRELAUNCH_FAILED"
+    assert state["pre_submit_failure"]["option"] == "--no-browser-manual-login"
     assert runner.STATE.unresolved_project_sessions(
         runner.STATE.load_manifest(pro_manifest(tmp_path)).run_root,
         tmp_path,

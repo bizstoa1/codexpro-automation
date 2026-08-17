@@ -91,6 +91,11 @@ PATCHES_0161 = {
 }
 
 PATCHES = {
+    "dist/src/cli/browserConfig.js": {
+        "patch": "cliBrowserConfig.copy-profile-default.patch",
+        "pristine": "989f14399c8aa51913752306135e11d97e4f1c55b2baf984907f1b54959cc340",
+        "patched": "ce9f47cdae379f96a431a816836891a1b1f8af220af1feebcc3315a0887213fc",
+    },
     "dist/src/browser/recoverConversation.js": {
         "patch": "recoverConversation.copy-profile.patch",
         "pristine": "d7e39d21acf07e6d227e761944519e11cd8d93930629cc87555d7de75a42d1ca",

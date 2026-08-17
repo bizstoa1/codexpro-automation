@@ -135,7 +135,6 @@ def build_oracle_argv(config, layout, prompt: str) -> list[str]:
         command[command.index("--slug"):command.index("--slug")] = [
             "--copy-profile",
             str(config.copy_profile),
-            "--no-browser-manual-login",
         ]
     if not STATE.is_pro_transport(config.transport) and any(
         item == "--file" or item.startswith("--file=") or item == "-f" for item in command

@@ -282,6 +282,41 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
     assert behavior.returncode == 0, behavior.stderr
     assert json.loads(behavior.stdout) == {"copied": False, "explicit": False}
 
+    cli_browser_config = package / "dist/src/cli/browserConfig.js"
+    assert compat.sha256_file(cli_browser_config) == compat.PATCHES["dist/src/cli/browserConfig.js"]["patched"]
+    cli_config_syntax = subprocess.run(
+        [node, "--check", str(cli_browser_config)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert cli_config_syntax.returncode == 0, cli_config_syntax.stderr
+    chalk_source = source.parents[1] / "chalk"
+    assert chalk_source.is_dir()
+    shutil.copytree(chalk_source, package / "node_modules" / "chalk")
+    cli_behavior = subprocess.run(
+        [
+            node,
+            "--input-type=module",
+            "-e",
+            (
+                f"import {{ buildBrowserConfig }} from {json.dumps(cli_browser_config.as_uri())}; "
+                "const config=await buildBrowserConfig({model:'gpt-5.6-sol',"
+                "copyProfile:'signed',browserManualLogin:true});"
+                "console.log(JSON.stringify({manualLogin:config.manualLogin,"
+                "copyProfileSource:config.copyProfileSource}));"
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert cli_behavior.returncode == 0, cli_behavior.stderr
+    assert json.loads(cli_behavior.stdout) == {
+        "manualLogin": False,
+        "copyProfileSource": "signed",
+    }
+
     profile_copy = package / "dist/src/browser/profileCopy.js"
     profile_copy_text = profile_copy.read_text(encoding="utf-8")
     assert 'process.platform === "win32"' in profile_copy_text

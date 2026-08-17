@@ -141,6 +141,10 @@ ORACLE_COPY_PROFILE_MANUAL_LOGIN_CONFLICT = (
     "--copy-profile cannot be combined with --browser-manual-login: choose either a "
     "throwaway copied profile or the persistent manual-login profile."
 )
+ORACLE_UNKNOWN_MANUAL_LOGIN_NEGATION_OPTION = (
+    "error: unknown option '--no-browser-manual-login'\n"
+    "(use --help for usage)"
+)
 ORACLE_PROFILE_COPY_RSYNC_MISSING = (
     "--copy-profile requires rsync on PATH (spawn failed): spawn rsync ENOENT"
 )
@@ -2640,6 +2644,53 @@ def proven_pre_submit_copy_profile_manual_login_conflict(state_path: Path) -> di
     }
 
 
+def proven_pre_submit_unknown_manual_login_negation_option(
+    state_path: Path,
+) -> dict[str, Any] | None:
+    state = load_state(state_path)
+    if str(state.get("session_authority") or "") not in {"pre_submit", "submitted_unknown"}:
+        return None
+    if state.get("terminal_harvested") is True or _state_has_conversation_url(state):
+        return None
+    profile = state.get("profile") if isinstance(state.get("profile"), dict) else {}
+    copy_profile = str(profile.get("copy_profile") or "").strip()
+    oracle = state.get("oracle") if isinstance(state.get("oracle"), dict) else {}
+    locator = str(oracle.get("session_locator") or oracle.get("slug") or "").strip()
+    artifacts = state.get("artifacts") if isinstance(state.get("artifacts"), dict) else {}
+    output = Path(str(artifacts.get("output") or ""))
+    stdout_record = _artifact_bytes(state, "stdout")
+    stderr_record = _artifact_bytes(state, "stderr")
+    if (
+        not copy_profile
+        or not locator
+        or str(oracle.get("resolved_version") or "").removeprefix("oracle ").strip() != "0.17.1"
+        or output_is_nonempty(output)
+        or stdout_record is None
+        or stderr_record is None
+    ):
+        return None
+    _, stdout_bytes = stdout_record
+    _, stderr_bytes = stderr_record
+    try:
+        stderr_text = stderr_bytes.decode("utf-8", errors="strict").strip()
+    except UnicodeDecodeError:
+        return None
+    if stdout_bytes or stderr_text != ORACLE_UNKNOWN_MANUAL_LOGIN_NEGATION_OPTION:
+        return None
+    return {
+        "schema": "codex.chatgpt.oracle-pre-submit-host-failure/v1",
+        "code": "ORACLE_CLI_UNKNOWN_OPTION_PRELAUNCH_FAILED",
+        "oracle_locator": locator,
+        "stdout_sha256": hashlib.sha256(stdout_bytes).hexdigest(),
+        "stderr_sha256": hashlib.sha256(stderr_bytes).hexdigest(),
+        "output_absent": True,
+        "conversation_url_absent": True,
+        "failure_reason": "oracle-cli-unknown-option",
+        "option": "--no-browser-manual-login",
+        "copy_profile": str(Path(copy_profile).resolve()),
+    }
+
+
 def proven_pre_submit_profile_copy_rsync_missing(state_path: Path) -> dict[str, Any] | None:
     """Prove Windows profile copy failed before Chrome because Oracle invoked rsync."""
     state = load_state(state_path)
@@ -2816,6 +2867,7 @@ def proven_pre_submit_model_switcher_failure(state_path: Path) -> dict[str, Any]
 def proven_pre_submit_failure(state_path: Path) -> dict[str, Any] | None:
     return (
         proven_pre_submit_rejection(state_path)
+        or proven_pre_submit_unknown_manual_login_negation_option(state_path)
         or proven_pre_submit_copy_profile_manual_login_conflict(state_path)
         or proven_pre_submit_profile_copy_rsync_missing(state_path)
         or proven_pre_submit_profile_copy_ebusy(state_path)
@@ -2857,7 +2909,9 @@ def settle_proven_pre_submit_failure(state_path: Path) -> dict[str, Any] | None:
     confirmed = proven_user_confirmed_no_submission(state_path)
     if confirmed is not None:
         return load_state(state_path)
-    evidence = proven_pre_submit_copy_profile_manual_login_conflict(state_path)
+    evidence = proven_pre_submit_unknown_manual_login_negation_option(state_path)
+    if evidence is None:
+        evidence = proven_pre_submit_copy_profile_manual_login_conflict(state_path)
     if evidence is None:
         evidence = proven_pre_submit_profile_copy_rsync_missing(state_path)
     if evidence is None:
@@ -2891,6 +2945,7 @@ def settle_proven_pre_submit_failure(state_path: Path) -> dict[str, Any] | None:
                 "ORACLE_LAUNCH_FLAGS_MUTUALLY_EXCLUSIVE_PRELAUNCH_FAILED",
                 "ORACLE_MANUAL_LOGIN_PROFILE_UNINITIALIZED_PRELAUNCH_FAILED",
                 "ORACLE_CDP_DISCONNECT_PRE_SUBMIT_FAILED",
+                "ORACLE_CLI_UNKNOWN_OPTION_PRELAUNCH_FAILED",
             }
             else "pending"
         ),
@@ -2907,6 +2962,8 @@ def settle_proven_pre_submit_failure(state_path: Path) -> dict[str, Any] | None:
             if evidence["code"] == "ORACLE_MANUAL_LOGIN_PROFILE_UNINITIALIZED_PRELAUNCH_FAILED"
             else "oracle-cdp-disconnect-pre-submit"
             if evidence["code"] == "ORACLE_CDP_DISCONNECT_PRE_SUBMIT_FAILED"
+            else "oracle-cli-unknown-option-pre-submit"
+            if evidence["code"] == "ORACLE_CLI_UNKNOWN_OPTION_PRELAUNCH_FAILED"
             else "oracle-model-switcher-pre-submit"
             if evidence["code"] == "ORACLE_MODEL_SWITCHER_PRE_SUBMIT_FAILED"
             else "prelaunch-host-failure"

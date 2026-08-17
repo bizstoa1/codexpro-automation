@@ -1,0 +1,24 @@
+diff --git a/dist/src/cli/browserConfig.js b/dist/src/cli/browserConfig.js
+--- a/dist/src/cli/browserConfig.js
++++ b/dist/src/cli/browserConfig.js
+@@ -72,9 +72,6 @@ export async function buildBrowserConfig(options) {
+     if (options.copyProfile && options.browserKeepBrowser) {
+         throw new Error("--copy-profile cannot be combined with --browser-keep-browser: the copied profile is a throwaway that is deleted after the run, so it must not be retained.");
+     }
+-    if (options.copyProfile && options.browserManualLogin) {
+-        throw new Error("--copy-profile cannot be combined with --browser-manual-login: choose either a throwaway copied profile or the persistent manual-login profile.");
+-    }
+     if (options.copyProfile && options.remoteChrome) {
+         throw new Error("--copy-profile cannot be combined with --remote-chrome: copied profiles require a locally launched Chrome instance.");
+     }
+@@ -164,7 +161,9 @@ export async function buildBrowserConfig(options) {
+         inlineCookiesSource: inline?.source ?? null,
+         headless: undefined, // disable headless; Cloudflare blocks it
+         keepBrowser: options.browserKeepBrowser ? true : undefined,
+-        manualLogin: options.browserManualLogin === undefined ? undefined : options.browserManualLogin,
++        manualLogin: options.copyProfile
++            ? false
++            : (options.browserManualLogin === undefined ? undefined : options.browserManualLogin),
+         manualLoginProfileDir: options.browserManualLoginProfileDir ?? undefined,
+         copyProfileSource: options.copyProfile ?? undefined,
+         hideWindow: options.browserHideWindow ? true : undefined,
