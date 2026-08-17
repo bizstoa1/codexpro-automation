@@ -145,6 +145,11 @@ ORACLE_UNKNOWN_MANUAL_LOGIN_NEGATION_OPTION = (
     "error: unknown option '--no-browser-manual-login'\n"
     "(use --help for usage)"
 )
+ORACLE_COPIED_PROFILE_LOGIN_MISSING = (
+    "ChatGPT session not detected. Login button detected on page. "
+    "No ChatGPT cookies were applied; sign in to chatgpt.com in Chrome or pass inline cookies "
+    "(--browser-inline-cookies[(-file)] / ORACLE_BROWSER_COOKIES_JSON)."
+)
 ORACLE_PROFILE_COPY_RSYNC_MISSING = (
     "--copy-profile requires rsync on PATH (spawn failed): spawn rsync ENOENT"
 )
@@ -867,6 +872,7 @@ def update_state(
     transport_status: str | None = None,
     task_outcome: str | None = None,
     task_outcome_reason: str | None = None,
+    host_capacity: dict[str, Any] | None = None,
     host_watchdog: dict[str, Any] | None = None,
     browser_observer: dict[str, Any] | None = None,
     status_audit: dict[str, Any] | None = None,
@@ -916,6 +922,8 @@ def update_state(
         payload["task_outcome"] = task_outcome
     if task_outcome_reason is not None:
         payload["task_outcome_reason"] = task_outcome_reason
+    if host_capacity is not None:
+        payload["host_capacity"] = host_capacity
     if host_watchdog is not None:
         payload["host_watchdog"] = host_watchdog
     if browser_observer is not None:
@@ -2691,6 +2699,174 @@ def proven_pre_submit_unknown_manual_login_negation_option(
     }
 
 
+def proven_pre_submit_copied_profile_login_missing(
+    state_path: Path,
+) -> dict[str, Any] | None:
+    state = load_state(state_path)
+    if str(state.get("session_authority") or "") not in {"pre_submit", "submitted_unknown"}:
+        return None
+    if state.get("terminal_harvested") is True or _state_has_conversation_url(state):
+        return None
+    if str(state.get("mode") or "") != "browser" or not is_devspace_transport(
+        str(state.get("transport") or "")
+    ):
+        return None
+    profile = state.get("profile") if isinstance(state.get("profile"), dict) else {}
+    oracle = state.get("oracle") if isinstance(state.get("oracle"), dict) else {}
+    locator = str(oracle.get("session_locator") or oracle.get("slug") or "").strip()
+    model = str(profile.get("model") or "").strip()
+    thinking_time = str(profile.get("thinking_time") or "").strip()
+    copy_profile_text = str(profile.get("copy_profile") or "").strip()
+    if not copy_profile_text:
+        return None
+    try:
+        copy_profile = Path(copy_profile_text).resolve()
+    except OSError:
+        return None
+    if (
+        not locator
+        or model not in {"gpt-5.6", "gpt-5.6-sol"}
+        or not thinking_time
+        or str(profile.get("isolation_mode") or "") != HOST_POLICY.COPY_PER_RUN_MODE
+        or str(oracle.get("resolved_version") or "").removeprefix("oracle ").strip() != "0.17.1"
+    ):
+        return None
+    run_dir = state_path.parent.resolve()
+    artifacts = state.get("artifacts") if isinstance(state.get("artifacts"), dict) else {}
+    canonical = {
+        "output": run_dir / "output.md",
+        "stdout": run_dir / "stdout.log",
+        "stderr": run_dir / "stderr.log",
+        "transcript": run_dir / "transcript.md",
+    }
+    resolved: dict[str, Path] = {}
+    try:
+        for name, expected in canonical.items():
+            path = Path(str(artifacts.get(name) or ""))
+            if not path.is_absolute() or path.is_symlink() or path.resolve() != expected:
+                return None
+            resolved[name] = path
+        if resolved["output"].exists():
+            return None
+        stdout_bytes = resolved["stdout"].read_bytes()
+        stderr_bytes = resolved["stderr"].read_bytes()
+        transcript_bytes = resolved["transcript"].read_bytes()
+        stdout_text = stdout_bytes.decode("utf-8", errors="strict")
+    except (OSError, UnicodeDecodeError):
+        return None
+    if stderr_bytes or transcript_bytes != stdout_bytes:
+        return None
+    if _settlement_logs_have_conversation_url(state_path) or CHATGPT_CONVERSATION_URL_RE.search(
+        stdout_text
+    ):
+        return None
+    failure_lines = [
+        f"ERROR: {ORACLE_COPIED_PROFILE_LOGIN_MISSING}",
+        f"User error (browser-automation): {ORACLE_COPIED_PROFILE_LOGIN_MISSING}",
+    ]
+    lines = stdout_text.splitlines()
+    if len(lines) != 13 or lines[-2:] != failure_lines:
+        return None
+    if not (
+        re.fullmatch(r".{1,4} oracle 0\.17\.1 .{2,120}", lines[0])
+        and lines[1] == f"Session: {locator}"
+        and lines[2:6]
+        == [
+            "Mode: browser foreground",
+            "Models: 1",
+            "Detach: no",
+            f"Reattach: oracle session {locator}",
+        ]
+        and re.fullmatch(
+            rf"Launching browser mode \(target=GPT-5\.6 Sol; requested={re.escape(model)}\) "
+            r"with ~[1-9][0-9]* tokens\.",
+            lines[6],
+        )
+        and lines[7:11]
+        == [
+            "This run can take up to an hour (usually ~10 minutes).",
+            "[browser] Browser control: launch Chrome in hidden-window mode; may focus/control the browser UI.",
+            "[browser] Browser guidance: On macOS, Oracle launches Chrome off-screen while keeping the page rendered.",
+            "[browser] Browser guidance: For the calmest shared-desktop flow, prefer --browser-attach-running or --remote-chrome.",
+        ]
+    ):
+        return None
+    session_root = Path(
+        os.environ.get("ORACLE_SESSION_ROOT") or (Path.home() / ".oracle" / "sessions")
+    ).resolve()
+    meta_path = session_root / locator / "meta.json"
+    if meta_path.is_symlink():
+        return None
+    try:
+        meta_bytes = meta_path.read_bytes()
+        meta_text = meta_bytes.decode("utf-8", errors="strict")
+        meta = json.loads(meta_text)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    browser = meta.get("browser") if isinstance(meta.get("browser"), dict) else {}
+    config = browser.get("config") if isinstance(browser.get("config"), dict) else {}
+    runtime = browser.get("runtime") if isinstance(browser.get("runtime"), dict) else {}
+    error = meta.get("error") if isinstance(meta.get("error"), dict) else {}
+    details = error.get("details") if isinstance(error.get("details"), dict) else {}
+    options = meta.get("options") if isinstance(meta.get("options"), dict) else {}
+    option_browser = (
+        options.get("browserConfig") if isinstance(options.get("browserConfig"), dict) else {}
+    )
+    project_root = Path(str(state.get("project_root") or ""))
+    try:
+        meta_cwd = Path(str(meta.get("cwd") or "")).resolve()
+        output_path = Path(str(options.get("writeOutputPath") or "")).resolve()
+        config_profile = Path(str(config.get("copyProfileSource") or "")).resolve()
+        option_profile = Path(str(option_browser.get("copyProfileSource") or "")).resolve()
+    except OSError:
+        return None
+    if (
+        meta.get("id") != locator
+        or meta.get("status") != "error"
+        or meta.get("model") != model
+        or meta.get("mode") != "browser"
+        or not str(meta.get("completedAt") or "").strip()
+        or meta_cwd != project_root.resolve()
+        or config_profile != copy_profile
+        or option_profile != copy_profile
+        or config.get("manualLogin") is not False
+        or option_browser.get("manualLogin") is not False
+        or config.get("desiredModel") != "GPT-5.6 Sol"
+        or option_browser.get("desiredModel") != "GPT-5.6 Sol"
+        or config.get("modelStrategy") != "select"
+        or option_browser.get("modelStrategy") != "select"
+        or config.get("thinkingTime") != thinking_time
+        or option_browser.get("thinkingTime") != thinking_time
+        or runtime
+        or options.get("model") != model
+        or options.get("slug") != locator
+        or output_path != canonical["output"]
+        or error.get("category") != "browser-automation"
+        or error.get("message") != ORACLE_COPIED_PROFILE_LOGIN_MISSING
+        or details != {"stage": "execute-browser"}
+        or str(meta.get("errorMessage") or "") != ORACLE_COPIED_PROFILE_LOGIN_MISSING
+        or CHATGPT_CONVERSATION_URL_RE.search(meta_text)
+        or "promptSubmitted" in meta_text
+    ):
+        return None
+    return {
+        "schema": "codex.chatgpt.oracle-pre-submit-ui-failure/v1",
+        "code": "ORACLE_COPIED_PROFILE_LOGIN_MISSING_PRE_SUBMIT_FAILED",
+        "oracle_locator": locator,
+        "stdout_sha256": hashlib.sha256(stdout_bytes).hexdigest(),
+        "stderr_sha256": hashlib.sha256(stderr_bytes).hexdigest(),
+        "transcript_sha256": hashlib.sha256(transcript_bytes).hexdigest(),
+        "oracle_meta_path": str(meta_path),
+        "oracle_meta_sha256": hashlib.sha256(meta_bytes).hexdigest(),
+        "output_absent": True,
+        "conversation_url_absent": True,
+        "prompt_submitted": False,
+        "resolved_version": "0.17.1",
+        "failure_reason": "oracle-copied-profile-login-missing-before-submit",
+        "copy_profile": str(copy_profile),
+    }
+
+
 def proven_pre_submit_profile_copy_rsync_missing(state_path: Path) -> dict[str, Any] | None:
     """Prove Windows profile copy failed before Chrome because Oracle invoked rsync."""
     state = load_state(state_path)
@@ -2868,6 +3044,7 @@ def proven_pre_submit_failure(state_path: Path) -> dict[str, Any] | None:
     return (
         proven_pre_submit_rejection(state_path)
         or proven_pre_submit_unknown_manual_login_negation_option(state_path)
+        or proven_pre_submit_copied_profile_login_missing(state_path)
         or proven_pre_submit_copy_profile_manual_login_conflict(state_path)
         or proven_pre_submit_profile_copy_rsync_missing(state_path)
         or proven_pre_submit_profile_copy_ebusy(state_path)
@@ -2911,6 +3088,8 @@ def settle_proven_pre_submit_failure(state_path: Path) -> dict[str, Any] | None:
         return load_state(state_path)
     evidence = proven_pre_submit_unknown_manual_login_negation_option(state_path)
     if evidence is None:
+        evidence = proven_pre_submit_copied_profile_login_missing(state_path)
+    if evidence is None:
         evidence = proven_pre_submit_copy_profile_manual_login_conflict(state_path)
     if evidence is None:
         evidence = proven_pre_submit_profile_copy_rsync_missing(state_path)
@@ -2946,6 +3125,7 @@ def settle_proven_pre_submit_failure(state_path: Path) -> dict[str, Any] | None:
                 "ORACLE_MANUAL_LOGIN_PROFILE_UNINITIALIZED_PRELAUNCH_FAILED",
                 "ORACLE_CDP_DISCONNECT_PRE_SUBMIT_FAILED",
                 "ORACLE_CLI_UNKNOWN_OPTION_PRELAUNCH_FAILED",
+                "ORACLE_COPIED_PROFILE_LOGIN_MISSING_PRE_SUBMIT_FAILED",
             }
             else "pending"
         ),
@@ -2964,6 +3144,8 @@ def settle_proven_pre_submit_failure(state_path: Path) -> dict[str, Any] | None:
             if evidence["code"] == "ORACLE_CDP_DISCONNECT_PRE_SUBMIT_FAILED"
             else "oracle-cli-unknown-option-pre-submit"
             if evidence["code"] == "ORACLE_CLI_UNKNOWN_OPTION_PRELAUNCH_FAILED"
+            else "oracle-copied-profile-login-missing-pre-submit"
+            if evidence["code"] == "ORACLE_COPIED_PROFILE_LOGIN_MISSING_PRE_SUBMIT_FAILED"
             else "oracle-model-switcher-pre-submit"
             if evidence["code"] == "ORACLE_MODEL_SWITCHER_PRE_SUBMIT_FAILED"
             else "prelaunch-host-failure"
@@ -3343,15 +3525,15 @@ def host_run_lease(
     max_total_concurrency: int,
     timeout_seconds: float,
     platform_name: str | None = None,
-) -> Iterator[None]:
+) -> Iterator[Any]:
     try:
         with HOST.host_run_lease(
             state_root=state_root,
             max_total_concurrency=max_total_concurrency,
             timeout_seconds=timeout_seconds,
             platform_name=platform_name,
-        ):
-            yield
+        ) as lease:
+            yield lease
     except HOST.OracleHostLeaseError as exc:
         raise OracleStateError(exc.code, str(exc), exc.evidence) from exc
 

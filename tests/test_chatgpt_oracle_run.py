@@ -367,6 +367,77 @@ def unknown_browser_manual_login_option_popen(command, **kwargs):
     return Process(1, [])
 
 
+def copied_profile_login_missing_popen(session_root: Path):
+    def popen(command, **kwargs):
+        slug = command[command.index("--slug") + 1]
+        output_path = Path(command[command.index("--write-output") + 1]).resolve()
+        copy_profile = Path(command[command.index("--copy-profile") + 1]).resolve()
+        thinking_time = command[command.index("--browser-thinking-time") + 1]
+        error_message = (
+            "ChatGPT session not detected. Login button detected on page. "
+            "No ChatGPT cookies were applied; sign in to chatgpt.com in Chrome or pass inline cookies "
+            "(--browser-inline-cookies[(-file)] / ORACLE_BROWSER_COOKIES_JSON)."
+        )
+        lines = [
+            "🧿 oracle 0.17.1 deterministic fixture",
+            f"Session: {slug}",
+            "Mode: browser foreground",
+            "Models: 1",
+            "Detach: no",
+            f"Reattach: oracle session {slug}",
+            "Launching browser mode (target=GPT-5.6 Sol; requested=gpt-5.6) with ~199 tokens.",
+            "This run can take up to an hour (usually ~10 minutes).",
+            "[browser] Browser control: launch Chrome in hidden-window mode; may focus/control the browser UI.",
+            "[browser] Browser guidance: On macOS, Oracle launches Chrome off-screen while keeping the page rendered.",
+            "[browser] Browser guidance: For the calmest shared-desktop flow, prefer --browser-attach-running or --remote-chrome.",
+            f"ERROR: {error_message}",
+            f"User error (browser-automation): {error_message}",
+        ]
+        kwargs["stdout"].write(("\n".join(lines) + "\n").encode())
+        kwargs["stdout"].flush()
+        meta = {
+            "id": slug,
+            "status": "error",
+            "model": "gpt-5.6",
+            "cwd": str(Path(kwargs["cwd"]).resolve()),
+            "mode": "browser",
+            "browser": {
+                "config": {
+                    "manualLogin": False,
+                    "copyProfileSource": str(copy_profile),
+                    "desiredModel": "GPT-5.6 Sol",
+                    "modelStrategy": "select",
+                    "thinkingTime": thinking_time,
+                }
+            },
+            "options": {
+                "model": "gpt-5.6",
+                "slug": slug,
+                "writeOutputPath": str(output_path),
+                "browserConfig": {
+                    "manualLogin": False,
+                    "copyProfileSource": str(copy_profile),
+                    "desiredModel": "GPT-5.6 Sol",
+                    "modelStrategy": "select",
+                    "thinkingTime": thinking_time,
+                },
+            },
+            "completedAt": "2026-08-17T12:43:17.825Z",
+            "errorMessage": error_message,
+            "error": {
+                "category": "browser-automation",
+                "message": error_message,
+                "details": {"stage": "execute-browser"},
+            },
+        }
+        meta_path = session_root / slug / "meta.json"
+        meta_path.parent.mkdir(parents=True, exist_ok=True)
+        meta_path.write_text(json.dumps(meta), encoding="utf-8")
+        return Process(1, [])
+
+    return popen
+
+
 def profile_copy_rsync_missing_popen(command, **kwargs):
     kwargs["stdout"].write(
         b"oracle 0.17.1\n"
@@ -1180,6 +1251,8 @@ def test_windows_launch_uses_no_window_and_waits(tmp_path: Path) -> None:
     assert captured["kwargs"]["creationflags"] & runner.STATE.CREATE_NO_WINDOW
     assert Path(captured["kwargs"]["env"]["TEMP"]).name == "browser-temp"
     assert captured["kwargs"]["env"]["TMP"] == captured["kwargs"]["env"]["TEMP"]
+    assert captured["kwargs"]["env"]["ORACLE_BROWSER_PORT"] == "19222"
+    assert result["result"]["host_capacity"]["browser_debug_port"] == 19222
     assert not Path(captured["kwargs"]["env"]["TEMP"]).exists()
     assert events == ["enter", "popen", "wait", "exit"]
 
@@ -1215,6 +1288,25 @@ def test_host_capacity_exhaustion_fails_before_oracle_launch(tmp_path: Path) -> 
     assert result["ok"] is False
     assert "HOST_CAPACITY_TIMEOUT" in stderr
     assert calls == []
+
+
+def test_host_capacity_slots_assign_disjoint_browser_debug_port_ranges(tmp_path: Path) -> None:
+    runner = load_runner()
+    state_root = tmp_path / "host-state"
+
+    with runner.STATE.host_run_lease(
+        state_root=state_root,
+        max_total_concurrency=2,
+        timeout_seconds=0.05,
+        platform_name="posix",
+    ) as first, runner.STATE.host_run_lease(
+        state_root=state_root,
+        max_total_concurrency=2,
+        timeout_seconds=0.05,
+        platform_name="posix",
+    ) as second:
+        assert {first.slot_index, second.slot_index} == {0, 1}
+        assert abs(first.browser_debug_port - second.browser_debug_port) >= 10
 
 
 def test_transport_mission_change_blocks_before_oracle_launch(tmp_path: Path) -> None:
@@ -1357,6 +1449,38 @@ def test_unknown_manual_login_negation_option_is_proven_pre_submit_and_releases_
     assert state["pre_submit_failure"]["option"] == "--no-browser-manual-login"
     assert runner.STATE.unresolved_project_sessions(
         runner.STATE.load_manifest(pro_manifest(tmp_path)).run_root,
+        tmp_path,
+    ) == []
+
+
+def test_copied_profile_login_missing_is_proven_pre_submit_and_releases_project(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = load_runner()
+    session_root = tmp_path.parent / f"{tmp_path.name}-sessions"
+    monkeypatch.setenv("ORACLE_SESSION_ROOT", str(session_root))
+    seed = tmp_path.parent / f"{tmp_path.name}-profile"
+    seed.mkdir(parents=True)
+    result = execute_run(
+        runner,
+        manifest(tmp_path, run_id="9" * 32, copy_profile=str(seed)),
+        run_factory=version_0171_runner,
+        popen_factory=copied_profile_login_missing_popen(session_root),
+    )
+    run_dir = Path(result["run_dir"])
+    state = runner.STATE.load_state(run_dir / "state.json")
+
+    assert result["status"] == "pre_submit_failed"
+    assert result["safe_for_fresh_run"] is True
+    assert state["session_authority"] == "pre_submit"
+    assert state["transport_status"] == "failed_pre_submit"
+    assert state["task_outcome"] == "not_executed"
+    assert state["task_outcome_reason"] == "oracle-copied-profile-login-missing-pre-submit"
+    assert state["pre_submit_failure"]["code"] == "ORACLE_COPIED_PROFILE_LOGIN_MISSING_PRE_SUBMIT_FAILED"
+    assert state["pre_submit_failure"]["prompt_submitted"] is False
+    assert runner.STATE.unresolved_project_sessions(
+        runner.STATE.load_manifest(manifest(tmp_path)).run_root,
         tmp_path,
     ) == []
 
@@ -2616,6 +2740,7 @@ def test_recovery_captures_output_and_updates_state(tmp_path: Path) -> None:
     assert Path(recovered["output_path"]).read_text(encoding="utf-8") == "recovered answer"
     assert recovered["result"]["status"] == "complete"
     assert Path(captured_env["TEMP"]).name == "recovery-harvest-browser-temp"
+    assert captured_env["ORACLE_BROWSER_PORT"] == "19222"
     assert not Path(captured_env["TEMP"]).exists()
     transcript = Path(recovered["result"]["artifacts"]["transcript"]).read_text(encoding="utf-8")
     assert "recovered answer" in transcript

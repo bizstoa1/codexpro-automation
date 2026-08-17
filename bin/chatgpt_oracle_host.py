@@ -13,6 +13,8 @@ from typing import BinaryIO, final
 
 _HELD_PATHS: set[str] = set()
 _HELD_PATHS_GUARD = threading.Lock()
+HOST_BROWSER_DEBUG_PORT_BASE = 19_222
+HOST_BROWSER_DEBUG_PORT_STRIDE = 20
 
 
 @final
@@ -128,6 +130,16 @@ class HostRunLease:
         self.timeout_seconds = timeout_seconds
         self.platform_name = platform_name
         self.lease: ExclusiveFileLease | None = None
+        self.slot_index: int | None = None
+
+    @property
+    def browser_debug_port(self) -> int:
+        if self.slot_index is None:
+            raise OracleHostLeaseError(
+                "HOST_CAPACITY_SLOT_UNAVAILABLE",
+                "Oracle host capacity slot is not acquired",
+            )
+        return HOST_BROWSER_DEBUG_PORT_BASE + self.slot_index * HOST_BROWSER_DEBUG_PORT_STRIDE
 
     def __enter__(self) -> "HostRunLease":
         deadline = time.monotonic() + self.timeout_seconds
@@ -148,6 +160,7 @@ class HostRunLease:
                     )
                     if lease.try_acquire():
                         self.lease = lease
+                        self.slot_index = index
                         return self
             if time.monotonic() >= deadline:
                 raise OracleHostLeaseError(
@@ -166,6 +179,7 @@ class HostRunLease:
         if self.lease is not None:
             self.lease.__exit__(exc_type, exc, traceback)
         self.lease = None
+        self.slot_index = None
         return None
 
 

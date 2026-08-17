@@ -811,7 +811,7 @@ def execute_run(
                             "attachment bytes changed after manifest validation",
                             {"path": str(attachment), "expected": expected, "actual": actual},
                         )
-                host_leases.enter_context(
+                host_lease = host_leases.enter_context(
                     STATE.host_run_lease(
                         state_root=STATE.oracle_state_root(),
                         max_total_concurrency=config.host_max_total_concurrency,
@@ -819,6 +819,7 @@ def execute_run(
                         platform_name=platform_name,
                     )
                 )
+                oracle_env["ORACLE_BROWSER_PORT"] = str(host_lease.browser_debug_port)
                 process = popen_factory(
                     argv,
                     cwd=str(config.project_root),
@@ -836,6 +837,11 @@ def execute_run(
                     status="running",
                     resolved_version=version,
                     session_authority="submitted_unknown",
+                    host_capacity={
+                        "slot_index": host_lease.slot_index,
+                        "browser_debug_port": host_lease.browser_debug_port,
+                        "max_total_concurrency": config.host_max_total_concurrency,
+                    },
                     browser_observer={
                         "status": "running",
                         "timeout_seconds": browser_timeout_seconds,
@@ -1136,7 +1142,8 @@ def _recover_run_locked(
                 max_total_concurrency=host_policy.max_total_concurrency,
                 timeout_seconds=30,
                 platform_name=platform_name,
-            ):
+            ) as host_lease:
+                recovery_env["ORACLE_BROWSER_PORT"] = str(host_lease.browser_debug_port)
                 process = popen_factory(
                     argv,
                     cwd=str(state["project_root"]),
