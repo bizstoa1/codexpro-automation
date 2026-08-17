@@ -1,5 +1,5 @@
 diff --git a/dist/src/browser/recoverConversation.js b/dist/src/browser/recoverConversation.js
-index e1b4568..c456b38 100644
+index e1b4568..a60d1a0 100644
 --- a/dist/src/browser/recoverConversation.js
 +++ b/dist/src/browser/recoverConversation.js
 @@ -1,9 +1,14 @@
@@ -18,38 +18,22 @@ index e1b4568..c456b38 100644
  const READY_POLL_MS = 1_000;
  /**
   * Picks the URL to navigate the recovered Chrome tab to.
-@@ -26,9 +31,26 @@ export function resolveRecoveryUrl(meta) {
-     }
-     return null;
- }
-+const RECOVERY_COPY_PROFILE_SOURCE_ENV = "ORACLE_RECOVERY_COPY_PROFILE_SOURCE";
-+export function resolveRecoveryCopyProfileSource(meta) {
-+    const inherited = process.env[RECOVERY_COPY_PROFILE_SOURCE_ENV];
-+    if (typeof inherited === "string" && inherited.trim().length > 0) {
-+        return inherited.trim();
-+    }
-+    const resolved = resolveBrowserConfig(meta?.browser?.config);
-+    const configured = resolved.copyProfileSource;
-+    if (typeof configured === "string" && configured.trim().length > 0) {
-+        return configured.trim();
-+    }
-+    return null;
-+}
+@@ -29,6 +34,10 @@ export function resolveRecoveryUrl(meta) {
  export function resolveRecoveryProfileDir(meta) {
      const config = meta?.browser?.config;
      const resolved = resolveBrowserConfig(config);
-+    const copyProfileSource = resolveRecoveryCopyProfileSource(meta);
-+    if (copyProfileSource) {
-+        return copyProfileSource;
++    const copyProfileSource = resolved.copyProfileSource;
++    if (typeof copyProfileSource === "string" && copyProfileSource.trim().length > 0) {
++        return copyProfileSource.trim();
 +    }
      if (!resolved.manualLogin) {
          throw new Error("Cannot recover conversation: session was not run with a manual-login browser profile.");
      }
-@@ -39,6 +61,28 @@ export function resolveRecoveryProfileDir(meta) {
+@@ -39,6 +48,28 @@ export function resolveRecoveryProfileDir(meta) {
      }
      return profileDir;
  }
-+export function wrapEphemeralRecoveryChrome(chrome, userDataDir) {
++function wrapEphemeralRecoveryChrome(chrome, userDataDir) {
 +    let cleanupPromise = null;
 +    const cleanup = () => {
 +        if (!cleanupPromise) {
@@ -74,18 +58,17 @@ index e1b4568..c456b38 100644
  async function waitForRecoveredConversationReady(endpoint, ref, timeoutMs) {
      const deadline = Date.now() + timeoutMs;
      let lastError = null;
-@@ -109,10 +153,34 @@ export async function recoverConversationTab(meta, logger, options = {}) {
+@@ -109,10 +140,33 @@ export async function recoverConversationTab(meta, logger, options = {}) {
              logger(`[browser] Recovery: existing Chrome could not reopen the conversation (${message}).`);
          }
      }
 -    const userDataDir = resolveRecoveryProfileDir(meta);
++    const profileSource = resolveRecoveryProfileDir(meta);
      const config = resolveBrowserConfig(meta.browser?.config);
-+    const copyProfileSource = resolveRecoveryCopyProfileSource(meta);
-+    const profileSource = copyProfileSource ?? resolveRecoveryProfileDir(meta);
 -    logger(`[browser] Recovery: relaunching Chrome with profile ${userDataDir} and navigating to ${url}`);
 -    const { chrome } = await acquireManualLoginChromeForRun(userDataDir, config, logger, meta.id, {});
 +    let chrome;
-+    if (copyProfileSource) {
++    if (config.copyProfileSource) {
 +        const userDataDir = await mkdtemp(path.join(os.tmpdir(), "oracle-recovery-"));
 +        try {
 +            const chromeProfile = await copyChromeProfile(profileSource, userDataDir, config.chromeProfile);

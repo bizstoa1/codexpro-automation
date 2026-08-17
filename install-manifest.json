@@ -1,6 +1,6 @@
 {
   "schema": "codexpro.install-manifest/v1",
-  "version": "1.14.2",
+  "version": "1.14.3",
   "include": [
     "bin/chatgpt_agbrowse_bridge.py",
     "bin/chatgpt_agbrowse_composer.py",
@@ -22,6 +22,7 @@
     "bin/oracle-compat/0.17.1/browserConfig.copy-profile-windows.patch",
     "bin/oracle-compat/0.17.1/browserConfig.copy-profile-windows.pre-isolation.patch",
     "bin/oracle-compat/0.17.1/recoverConversation.copy-profile.patch",
+    "bin/oracle-compat/0.17.1/recoverConversation.copy-profile.pre-legacy-host-policy.patch",
     "bin/oracle-compat/0.17.1/thinkingTime.strict.patch",
     "bin/oracle-compat/0.17.1/thinkingTime.strict.pre-power.patch",
     "bin/oracle-compat/0.17.1/thinkingTime.strict.broken-power.patch",

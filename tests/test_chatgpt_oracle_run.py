@@ -2746,6 +2746,85 @@ def test_recovery_captures_output_and_updates_state(tmp_path: Path) -> None:
     assert "recovered answer" in transcript
 
 
+@pytest.mark.parametrize(
+    ("exit_code", "recovery_stdout", "candidate", "expected_status"),
+    [
+        (0, b"State: complete\n", "legacy recovered answer", "complete"),
+        (1, b"", None, "attention_required"),
+    ],
+)
+def test_legacy_exact_recovery_uses_host_policy_copy_and_cleans_only_owned_temp(
+    tmp_path: Path,
+    exit_code: int,
+    recovery_stdout: bytes,
+    candidate: str | None,
+    expected_status: str,
+) -> None:
+    runner = load_runner()
+    result = execute_run(
+        runner,
+        manifest(tmp_path),
+        run_factory=version_runner,
+        popen_factory=popen_for(4, None, {}, []),
+    )
+    run_dir = Path(result["run_dir"])
+    state_path = run_dir / "state.json"
+    legacy_state = runner.STATE.load_state(state_path)
+    profile_seed = Path(legacy_state["profile"].pop("copy_profile"))
+    legacy_state["profile"].pop("isolation_mode")
+    exact_url = "https://chatgpt.com/c/legacy-exact-conversation"
+    legacy_state["oracle"]["conversation_url"] = exact_url
+    runner.STATE.write_json_atomic(state_path, legacy_state)
+    seed_marker = profile_seed / "Default" / "Network" / "Cookies"
+    seed_marker.parent.mkdir(parents=True)
+    seed_marker.write_bytes(b"signed-in-seed-must-remain-unchanged")
+    seed_before = seed_marker.read_bytes()
+    locator = legacy_state["oracle"]["session_locator"]
+    captured: dict[str, object] = {}
+
+    def recovery_popen(command, **kwargs):
+        captured["command"] = list(command)
+        captured["env"] = dict(kwargs["env"])
+        owned_temp = Path(kwargs["env"]["TEMP"])
+        copied_profile = owned_temp / "oracle-recovery-fixture"
+        copied_profile.mkdir()
+        (copied_profile / "copied-cookie").write_bytes(seed_marker.read_bytes())
+        if candidate is not None:
+            output = Path(command[command.index("--write-output") + 1])
+            output.write_text(candidate, encoding="utf-8")
+        if recovery_stdout:
+            kwargs["stdout"].write(recovery_stdout)
+            kwargs["stdout"].flush()
+        else:
+            kwargs["stderr"].write(b"recovered tab is still detached\n")
+            kwargs["stderr"].flush()
+        return Process(exit_code, [])
+
+    recovered = runner.recover_run(
+        run_dir,
+        action="harvest",
+        oracle_command=["oracle"],
+        popen_factory=recovery_popen,
+    )
+
+    recovery_env = captured["env"]
+    assert isinstance(recovery_env, dict)
+    assert recovery_env["ORACLE_RECOVERY_COPY_PROFILE_SOURCE"] == str(profile_seed.resolve())
+    recovery_command = captured["command"]
+    assert isinstance(recovery_command, list)
+    assert recovery_command[:3] == ["oracle", "session", locator]
+    assert "--harvest" in recovery_command
+    assert "--prompt" not in recovery_command
+    assert "-p" not in recovery_command
+    assert "restart" not in recovery_command
+    assert recovered["status"] == expected_status
+    assert not Path(recovery_env["TEMP"]).exists()
+    assert seed_marker.read_bytes() == seed_before
+    updated = runner.STATE.load_state(state_path)
+    assert updated["oracle"]["session_locator"] == locator
+    assert updated["oracle"]["conversation_url"] == exact_url
+
+
 def test_running_exact_session_cannot_publish_partial_harvest(tmp_path: Path) -> None:
     runner = load_runner()
     result = execute_run(

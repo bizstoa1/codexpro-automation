@@ -99,7 +99,9 @@ PATCHES = {
     "dist/src/browser/recoverConversation.js": {
         "patch": "recoverConversation.copy-profile.patch",
         "pristine": "d7e39d21acf07e6d227e761944519e11cd8d93930629cc87555d7de75a42d1ca",
-        "patched": "31a17e1a2c3dccddf09db42b290fad517638b88c9a659e9fb5dba7307c588a61",
+        "patched": "b197668fdab8652d77a33c71df40562fa46fcc1de85866579efea8252345df96",
+        "legacy_patched": ["31a17e1a2c3dccddf09db42b290fad517638b88c9a659e9fb5dba7307c588a61"],
+        "legacy_patch": "recoverConversation.copy-profile.pre-legacy-host-policy.patch",
     },
     "dist/src/browser/profileCopy.js": {
         "patch": "profileCopy.windows-native.patch",

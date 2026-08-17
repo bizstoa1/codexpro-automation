@@ -1,5 +1,16 @@
 # 기술 변경 기록
 
+## 1.14.3 - legacy exact recovery 프로필 격리
+
+- `copy-per-run` host policy 아래에서 생성된 pre-migration exact session도
+  저장 metadata에 `copyProfileSource`가 없더라도 중앙 seed를 실행 프로필로
+  직접 열지 않고 recovery 전용 throwaway copy를 사용합니다.
+- 중앙 runner가 검증한 host-policy seed를 recovery-only 환경 계약으로 넘기며,
+  기존 exact locator와 저장된 대화 URL만 복구합니다. prompt, restart, resubmit,
+  새 대화 생성 경로는 추가하지 않았습니다.
+- 성공과 실패 모두 controller가 소유한 recovery 임시 디렉터리만 정리하고
+  로그인 seed 및 exact-session identity를 보존하는 회귀 검증을 추가했습니다.
+
 ## 1.14.2 - DevSpace 상주 복구
 
 - Windows DevSpace 부트스트랩을 로그인 시 한 번 실행하고 종료하는 방식에서

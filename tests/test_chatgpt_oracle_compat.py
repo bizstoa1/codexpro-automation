@@ -131,7 +131,8 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
     assert "copyProfileSource" in recovery_text
     assert "launching an isolated profile copy" in recovery_text
     assert "wrapEphemeralRecoveryChrome" in recovery_text
-    assert 'return copyProfileSource.trim();' in recovery_text
+    assert "ORACLE_RECOVERY_COPY_PROFILE_SOURCE" in recovery_text
+    assert 'return configured.trim();' in recovery_text
     assert 'const chromeProfile = await copyChromeProfile(profileSource, userDataDir, config.chromeProfile);' in recovery_text
     recovery_syntax = subprocess.run(
         [node, "--check", str(recovery_target)],
@@ -141,6 +142,49 @@ def test_published_0171_patch_requires_extra_high_and_pro_selection_proof(tmp_pa
     )
     assert recovery_syntax.returncode == 0, recovery_syntax.stderr
     assert compat.sha256_file(recovery_target) == compat.PATCHES["dist/src/browser/recoverConversation.js"]["patched"]
+    behavior_target = tmp_path / "recovery-behavior.mjs"
+    behavior_target.write_text(
+        "import {rm} from 'node:fs/promises';\n"
+        "const resolveBrowserConfig=(config)=>config??{};\n"
+        + "\n".join(
+            line for line in recovery_text.splitlines() if not line.startswith("import ")
+        ),
+        encoding="utf-8",
+    )
+    legacy_recovery_behavior = subprocess.run(
+        [
+            node,
+            "--input-type=module",
+            "-e",
+            (
+                f"import {{ resolveRecoveryCopyProfileSource, wrapEphemeralRecoveryChrome }} from {json.dumps(behavior_target.as_uri())};"
+                "import {mkdtemp,mkdir,readFile,stat,writeFile} from 'node:fs/promises';"
+                "import os from 'node:os';import path from 'node:path';"
+                "const root=await mkdtemp(path.join(os.tmpdir(),'legacy-recovery-test-'));"
+                "const seed=path.join(root,'seed');const state=path.join(root,'session.json');"
+                "await mkdir(seed);await writeFile(path.join(seed,'Cookies'),'signed-seed');"
+                "await writeFile(state,'exact-session-state');"
+                "process.env.ORACLE_RECOVERY_COPY_PROFILE_SOURCE=seed;"
+                "const resolved=resolveRecoveryCopyProfileSource({browser:{config:{copyProfileSource:'stale-seed',manualLogin:true,manualLoginProfileDir:seed}}});"
+                "const cleanup=[];"
+                "for(const rejects of [false,true]){"
+                "const temp=await mkdtemp(path.join(root,'throwaway-'));await writeFile(path.join(temp,'copy'),'copy');"
+                "const wrapped=wrapEphemeralRecoveryChrome({host:'127.0.0.1',port:19222,kill:async()=>{if(rejects)throw new Error('kill failed')}},temp);"
+                "await wrapped.kill();let removed=false;try{await stat(temp)}catch(error){removed=error?.code==='ENOENT'}cleanup.push(removed)}"
+                "console.log(JSON.stringify({resolvedMatchesSeed:resolved===seed,cleanup,seed:await readFile(path.join(seed,'Cookies'),'utf8'),state:await readFile(state,'utf8')}));"
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert legacy_recovery_behavior.returncode == 0, legacy_recovery_behavior.stderr
+    assert json.loads(legacy_recovery_behavior.stdout) == {
+        "resolvedMatchesSeed": True,
+        "cleanup": [True, True],
+        "seed": "signed-seed",
+        "state": "exact-session-state",
+    }
     target = package / "dist/src/browser/actions/thinkingTime.js"
     source_text = target.read_text(encoding="utf-8")
     assert "strictGpt56Effort" in source_text

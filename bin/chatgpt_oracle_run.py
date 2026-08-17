@@ -1128,6 +1128,7 @@ def _recover_run_locked(
     stderr_path = directory / f"recovery-{action}-stderr.log"
     recovery_browser_temp = directory / f"recovery-{action}-browser-temp"
     recovery_env = STATE.browser_temp_environment(recovery_browser_temp, platform_name=platform_name)
+    recovery_env["ORACLE_RECOVERY_COPY_PROFILE_SOURCE"] = str(host_policy.profile_seed)
     if action == "live" and live_settle_timeout_seconds > 0:
         # The compatibility-patched Oracle live tail owns one recovered browser
         # connection until this deadline.  Do not turn a live recovery into a
