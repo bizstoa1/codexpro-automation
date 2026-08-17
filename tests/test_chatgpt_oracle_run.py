@@ -486,9 +486,10 @@ def test_dry_run_never_executes_and_has_no_file_flag(tmp_path: Path) -> None:
     assert not (tmp_path / "runs").exists()
 
 
-def test_copy_profile_is_first_class_and_outside_project(
+def test_copy_profile_is_first_class_and_disables_global_manual_login(
     tmp_path: Path, monkeypatch
 ) -> None:
+    # Given: Oracle's host config may default browser manual-login to true.
     runner = load_runner()
     profile = tmp_path.parent / f"{tmp_path.name}-oracle-profile"
     profile.mkdir()
@@ -499,8 +500,13 @@ def test_copy_profile_is_first_class_and_outside_project(
         "which",
         lambda name: "/usr/bin/rsync" if name == runner.STATE.PROFILE_COPY_DEPENDENCY else None,
     )
+
+    # When: the runner builds a copy-per-run Oracle command.
     result = execute_run(runner, manifest(tmp_path, copy_profile=str(profile.resolve())), dry_run=True)
+
+    # Then: the copied seed stays outside the project and host manual-login is disabled.
     assert result["argv"][result["argv"].index("--copy-profile") + 1] == str(profile.resolve())
+    assert result["argv"].count("--no-browser-manual-login") == 1
 
 
 def test_default_signed_in_profile_is_copied_per_run_and_window_is_hidden(
