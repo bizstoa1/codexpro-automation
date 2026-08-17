@@ -17,6 +17,7 @@
     "bin/devspace-compat/1.0.4/directory-read.patch",
     "bin/devspace-compat/1.0.4/workspaces.patch",
     "bin/chatgpt_oracle_compat.py",
+    "bin/oracle-compat/0.17.1/cliBrowserConfig.copy-profile-default.patch",
     "bin/oracle-compat/0.17.1/profileCopy.windows-native.patch",
     "bin/oracle-compat/0.17.1/browserConfig.copy-profile-windows.patch",
     "bin/oracle-compat/0.17.1/browserConfig.copy-profile-windows.pre-isolation.patch",
