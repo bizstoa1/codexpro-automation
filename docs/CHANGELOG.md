@@ -1,5 +1,18 @@
 # 기술 변경 기록
 
+## 1.14.6 - archived transcript 보고 형식 교정
+
+- archived Oracle transcript가 final-gate output 원문 전체를 포함해야 한다는
+  잘못된 가정을 제거했습니다. exact archived 경로와 승인 SHA-256, 마지막
+  `TASK_OUTCOME: EXECUTED`는 계속 검증합니다.
+- transcript는 Markdown bullet/backtick을 허용하되 exact output path/SHA-256,
+  PASS receipt path/SHA-256, `status=PASS`, `next_stage=complete`,
+  `ready_for_next=true`를 각각 정확한 필드 값으로 보고해야 합니다. 기대 문자열을
+  단순히 포함한 무관한 문장이나 접미사가 붙은 값은 fail-closed로 거부합니다.
+- output materialization은 계속 별도의 hash-bound final-gate 파일만 사용하며,
+  1.14.5의 canonical archive/recovery hash, confirmation, PID, PASS receipt,
+  create-only, state transition, zero-action 계약은 변경하지 않습니다.
+
 ## 1.14.5 - archived transcript source 분리
 
 - 승인된 answer source는 exact session locator에 해당하는

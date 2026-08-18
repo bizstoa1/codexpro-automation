@@ -216,11 +216,41 @@ def validate(
     final_bytes = binding.final_gate_output_path.read_bytes()
     transcript_bytes = binding.transcript_path.read_bytes()
     try:
-        final_line = final_bytes.decode("utf-8", errors="strict").strip().splitlines()[-1]
-    except (UnicodeDecodeError, IndexError) as exc:
-        raise SettlementError("TRANSCRIPT_ANSWER_INVALID", "final-gate answer must be nonempty UTF-8") from exc
-    if transcript_bytes.count(final_bytes) != 1 or final_line != "TASK_OUTCOME: EXECUTED":
-        raise SettlementError("TRANSCRIPT_ANSWER_INVALID", "transcript lacks the exact executed final-gate answer")
+        final_lines = final_bytes.decode("utf-8", errors="strict").strip().splitlines()
+        transcript_lines = transcript_bytes.decode("utf-8", errors="strict").strip().splitlines()
+    except UnicodeDecodeError as exc:
+        raise SettlementError("TRANSCRIPT_ANSWER_INVALID", "final output and transcript must be UTF-8") from exc
+    if (
+        not final_lines
+        or not transcript_lines
+        or final_lines[-1].strip() != "TASK_OUTCOME: EXECUTED"
+        or transcript_lines[-1].strip() != "TASK_OUTCOME: EXECUTED"
+    ):
+        raise SettlementError("TRANSCRIPT_ANSWER_INVALID", "final output and transcript must report execution")
+    report_fields: dict[str, list[str]] = {}
+    for raw_line in transcript_lines[:-1]:
+        line = raw_line.strip()
+        if line.startswith(("- ", "* ", "+ ")):
+            line = line[2:].strip()
+        key, separator, value = line.partition(":")
+        if not separator:
+            continue
+        normalized_key = "_".join(key.strip(" `*_").casefold().replace("-", " ").split())
+        report_fields.setdefault(normalized_key, []).append(value.strip(" `*_"))
+    required_report = (
+        (("output", "output_path", "final_output", "final_output_path", "final_gate_output", "final_gate_output_path"), str(binding.final_gate_output_path)),
+        (("output_sha256", "output_sha_256", "final_output_sha256", "final_output_sha_256", "final_gate_output_sha256", "final_gate_output_sha_256"), binding.final_gate_output_sha256),
+        (("receipt", "receipt_path", "stage_receipt", "stage_receipt_path", "pass_receipt", "pass_receipt_path", "pass_stage_receipt", "pass_stage_receipt_path"), str(binding.pass_stage_receipt_path)),
+        (("receipt_sha256", "receipt_sha_256", "stage_receipt_sha256", "stage_receipt_sha_256", "pass_receipt_sha256", "pass_receipt_sha_256", "pass_stage_receipt_sha256", "pass_stage_receipt_sha_256"), binding.pass_stage_receipt_sha256),
+        (("status",), "PASS"),
+        (("next_stage",), "complete"),
+        (("ready_for_next",), "true"),
+    )
+    if any(
+        [value for key in keys for value in report_fields.get(key, ())] != [expected]
+        for keys, expected in required_report
+    ):
+        raise SettlementError("TRANSCRIPT_ANSWER_INVALID", "transcript lacks exact settlement report bindings")
     receipt = read_json(binding.pass_stage_receipt_path, "PASS stage receipt")
     receipt_output = absolute(receipt.get("output_path"), "PASS receipt output")
     if (

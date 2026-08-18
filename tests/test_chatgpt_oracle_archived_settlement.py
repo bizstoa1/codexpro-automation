@@ -53,7 +53,6 @@ def fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path
     recovery_transcript.write_bytes(b"Recovered tab detached.\nNode.js v26.5.0\n")
     archived_transcript = test_home / ".oracle" / "sessions" / LOCATOR / "artifacts" / "transcript.md"
     archived_transcript.parent.mkdir(parents=True)
-    archived_transcript.write_bytes(b"State: completed\n" + answer)
     pass_receipt = final_output.parent / "stage-result.json"
     pass_receipt.write_text(json.dumps({
         "schema": "codex.chatgpt.oracle-stage-result/v1",
@@ -68,6 +67,7 @@ def fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path
         "ready_for_next": True,
         "blocker": "",
     }), encoding="utf-8")
+    archived_transcript.write_text(f"- Output: `{final_output}`\n- Output SHA-256: `{sha(final_output)}`\n- Receipt: `{pass_receipt}`\n- Receipt SHA-256: `{sha(pass_receipt)}`\n- status: PASS\n- next_stage: complete\n- ready_for_next: true\n\nTASK_OUTCOME: EXECUTED\n", encoding="utf-8")
     release_receipt = receipts / "codexpro-release-prior.json"
     release_receipt.write_text(json.dumps({
         "schema": "codexpro.install-release-receipt/v1",
@@ -225,7 +225,9 @@ def test_active_pid_and_invalid_pass_or_transcript_semantics_fail_closed(
     receipt_value = json.loads(receipt.read_text())
     receipt_value["ready_for_next"] = False
     receipt.write_text(json.dumps(receipt_value), encoding="utf-8")
-    value.update({"state_sha256": sha(state_path), "pass_stage_receipt_sha256": sha(receipt)})
+    transcript = Path(value["transcript_path"])
+    transcript.write_text(transcript.read_text().replace(value["pass_stage_receipt_sha256"], sha(receipt)), encoding="utf-8")
+    value.update({"state_sha256": sha(state_path), "transcript_sha256": sha(transcript), "pass_stage_receipt_sha256": sha(receipt)})
     manifest.write_text(json.dumps(value), encoding="utf-8")
     with pytest.raises(module.SettlementError) as exc:
         module.settle(manifest, confirmation=module.CONFIRMATION_TOKEN)

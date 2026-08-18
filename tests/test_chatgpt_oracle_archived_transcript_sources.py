@@ -39,6 +39,91 @@ def test_run_local_recovery_transcript_is_independently_hash_bound(
     assert not (run_dir / "output.md").exists()
 
 
+def test_reported_exact_bindings_allow_transcript_without_final_output_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: an exact archived browser transcript that reports independent evidence.
+    fixtures = load_fixtures()
+    module = fixtures.load_module()
+    manifest, _, run_dir = fixtures.fixture(tmp_path, monkeypatch)
+    value = json.loads(manifest.read_text())
+    transcript = Path(value["transcript_path"])
+    final_output = Path(value["final_gate_output_path"])
+    transcript.write_text(
+        "\n".join([
+            "# Exact Oracle result",
+            f"- `Output`: `{final_output}`",
+            f"- `Output SHA-256`: `{value['final_gate_output_sha256']}`",
+            f"- `Receipt`: `{value['pass_stage_receipt_path']}`",
+            f"- `Receipt SHA-256`: `{value['pass_stage_receipt_sha256']}`",
+            "- `status`: `PASS`",
+            "- `next_stage`: `complete`",
+            "- `ready_for_next`: `true`",
+            "",
+            "TASK_OUTCOME: EXECUTED",
+        ]) + "\n",
+        encoding="utf-8",
+    )
+    value["transcript_sha256"] = fixtures.sha(transcript)
+    manifest.write_text(json.dumps(value), encoding="utf-8")
+    assert final_output.read_bytes() not in transcript.read_bytes()
+
+    # When: settlement validates the summary-form transcript.
+    result = module.settle(
+        manifest,
+        confirmation=module.CONFIRMATION_TOKEN,
+        process_alive=lambda _pid: False,
+    )
+
+    # Then: the independently hash-bound output is materialized without web action.
+    assert result["ok"] is True
+    assert (run_dir / "output.md").read_bytes() == final_output.read_bytes()
+    assert set(result["zero_action_counters"].values()) == {0}
+
+
+@pytest.mark.parametrize("mutation_index", range(9))
+def test_report_values_and_final_marker_reject_meaningless_substrings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation_index: int,
+) -> None:
+    # Given: every expected token appears, but one report value or final position is invalid.
+    fixtures = load_fixtures()
+    module = fixtures.load_module()
+    manifest, _, run_dir = fixtures.fixture(tmp_path, monkeypatch)
+    value = json.loads(manifest.read_text())
+    transcript = Path(value["transcript_path"])
+    report_lines = [
+        f"- `Output`: `{value['final_gate_output_path']}`",
+        f"- `Output SHA-256`: `{value['final_gate_output_sha256']}`",
+        f"- `Receipt`: `{value['pass_stage_receipt_path']}`",
+        f"- `Receipt SHA-256`: `{value['pass_stage_receipt_sha256']}`",
+        "- `status`: `PASS`",
+        "- `next_stage`: `complete`",
+        "- `ready_for_next`: `true`",
+        "TASK_OUTCOME: EXECUTED",
+    ]
+    if mutation_index < len(report_lines):
+        report_lines[mutation_index] += " trailing prose"
+    else:
+        report_lines.append("trailing prose after the execution marker")
+    transcript.write_text("\n".join(report_lines) + "\n", encoding="utf-8")
+    value["transcript_sha256"] = fixtures.sha(transcript)
+    manifest.write_text(json.dumps(value), encoding="utf-8")
+
+    # When: settlement validates the transcript before creating output.
+    with pytest.raises(module.SettlementError) as exc:
+        module.settle(
+            manifest,
+            confirmation=module.CONFIRMATION_TOKEN,
+            process_alive=lambda _pid: False,
+        )
+
+    # Then: exact-line semantics reject the token-containing prose fail closed.
+    assert exc.value.code == "TRANSCRIPT_ANSWER_INVALID"
+    assert not (run_dir / "output.md").exists()
+
+
 def test_only_canonical_regular_archived_transcript_is_accepted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
