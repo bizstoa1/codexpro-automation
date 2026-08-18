@@ -51,6 +51,7 @@ class Binding:
     state_sha256: str
     transcript_path: Path
     transcript_sha256: str
+    recovery_transcript_sha256: str
     final_gate_output_path: Path
     final_gate_output_sha256: str
     pass_stage_receipt_path: Path
@@ -111,14 +112,23 @@ def load_binding(manifest_path: Path) -> Binding:
     project = absolute(value.get("project_root"), "project_root")
     if project.is_symlink() or not project.is_dir() or not STATE.is_within(project, path):
         raise SettlementError("PROJECT_CONTAINMENT_REQUIRED", "manifest must be inside the exact project")
+    session_locator = str(value.get("session_locator") or "").strip()
+    transcript_path = Path(str(value.get("transcript_path") or "")).expanduser()
+    if not transcript_path.is_absolute():
+        raise SettlementError("MANIFEST_INVALID", "transcript_path must be absolute")
+    if transcript_path.is_symlink() or not transcript_path.is_file():
+        raise SettlementError("REGULAR_FILE_REQUIRED", "archived transcript must be a regular non-symlink file")
     return Binding(
         exact_run_id=str(value.get("exact_run_id") or "").strip(),
-        session_locator=str(value.get("session_locator") or "").strip(),
+        session_locator=session_locator,
         project_root=project,
         run_dir=absolute(value.get("run_dir"), "run_dir"),
         state_sha256=_hash(value.get("state_sha256"), "state_sha256"),
-        transcript_path=absolute(value.get("transcript_path"), "transcript_path"),
+        transcript_path=transcript_path,
         transcript_sha256=_hash(value.get("transcript_sha256"), "transcript_sha256"),
+        recovery_transcript_sha256=_hash(
+            value.get("recovery_transcript_sha256"), "recovery_transcript_sha256"
+        ),
         final_gate_output_path=_regular(value.get("final_gate_output_path"), "final_gate_output", project),
         final_gate_output_sha256=_hash(value.get("final_gate_output_sha256"), "final_gate_output_sha256"),
         pass_stage_receipt_path=_regular(value.get("pass_stage_receipt_path"), "pass_stage_receipt", project),
@@ -140,7 +150,7 @@ def _require_hash(path: Path, expected: str) -> None:
 def validate(
     binding: Binding,
     process_alive: Callable[[int], bool],
-) -> tuple[JsonObject, tuple[int, ...], bytes]:
+) -> tuple[JsonObject, tuple[int, ...], bytes, Path]:
     state_root = STATE.oracle_state_root()
     if (
         binding.run_dir.is_symlink()
@@ -166,6 +176,18 @@ def validate(
     oracle: JsonObject = oracle_value if isinstance(oracle_value, dict) else {}
     if oracle.get("slug") != binding.session_locator or oracle.get("session_locator") != binding.session_locator:
         raise SettlementError("LOCATOR_MISMATCH", "state exact slug/session locator changed")
+    expected_transcript = (
+        Path.home() / ".oracle" / "sessions" / binding.session_locator / "artifacts" / "transcript.md"
+    )
+    if (
+        not binding.session_locator
+        or Path(binding.session_locator).name != binding.session_locator
+        or binding.transcript_path != expected_transcript
+    ):
+        raise SettlementError(
+            "ARCHIVED_TRANSCRIPT_PATH_INVALID",
+            "approved transcript must be the exact archived session transcript",
+        )
     if (
         state.get("project_root") != str(binding.project_root)
         or str(state.get("status") or "") != "attention_required"
@@ -175,8 +197,10 @@ def validate(
         or output_path != binding.run_dir / "output.md"
     ):
         raise SettlementError("STATE_ENTRY_INVALID", "state no longer matches the approved unsettled entry")
-    if absolute(artifacts.get("transcript"), "state transcript") != binding.transcript_path:
-        raise SettlementError("TRANSCRIPT_MISMATCH", "state transcript path changed")
+    recovery_transcript_path = _regular(
+        artifacts.get("transcript"), "state recovery transcript", binding.run_dir
+    )
+    _require_hash(recovery_transcript_path, binding.recovery_transcript_sha256)
     release_root = absolute(os.environ.get("CODEX_HOME") or Path.home() / ".codex", "CODEX_HOME") / "receipts"
     for evidence, expected in (
         (binding.transcript_path, binding.transcript_sha256),
@@ -185,8 +209,6 @@ def validate(
         (binding.prior_runtime_release_receipt_path, binding.prior_runtime_release_receipt_sha256),
     ):
         _require_hash(evidence, expected)
-    if not STATE.is_within(binding.run_dir, binding.transcript_path):
-        raise SettlementError("RUN_CONTAINMENT_REQUIRED", "transcript must belong to the exact run")
     if not STATE.is_within(release_root, binding.prior_runtime_release_receipt_path):
         raise SettlementError("RELEASE_RECEIPT_INVALID", "prior release receipt must be under CODEX_HOME/receipts")
     if read_json(binding.prior_runtime_release_receipt_path, "prior release receipt").get("schema") != "codexpro.install-release-receipt/v1":
@@ -215,4 +237,4 @@ def validate(
     pids = RUNNER.run_owned_process_ids(binding.run_dir, state)
     if any(process_alive(pid) for pid in pids):
         raise SettlementError("ACTIVE_PROCESS", "an exact-run Oracle or recovery process is still active")
-    return state, pids, final_bytes
+    return state, pids, final_bytes, recovery_transcript_path

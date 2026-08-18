@@ -34,10 +34,13 @@ def fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path
     state_root = tmp_path / "host-state"
     run_dir = state_root / "runs" / "project-key" / RUN_ID
     project = tmp_path / "project"
+    test_home = tmp_path / "home"
     receipts = tmp_path / "codex-home" / "receipts"
     run_dir.mkdir(parents=True)
     project.mkdir()
+    test_home.mkdir()
     receipts.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(test_home))
     monkeypatch.setenv("CODEX_ORACLE_STATE_ROOT", str(state_root))
     monkeypatch.setenv("CODEX_HOME", str(receipts.parent))
 
@@ -45,8 +48,11 @@ def fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path
     final_output.parent.mkdir(parents=True)
     answer = b"Archived exact answer.\n\nTASK_OUTCOME: EXECUTED\n"
     final_output.write_bytes(answer)
-    transcript = run_dir / "transcript.md"
-    transcript.write_bytes(b"State: completed\n" + answer)
+    recovery_transcript = run_dir / "transcript.md"
+    recovery_transcript.write_bytes(b"Recovered tab detached.\nNode.js v26.5.0\n")
+    archived_transcript = test_home / ".oracle" / "sessions" / LOCATOR / "artifacts" / "transcript.md"
+    archived_transcript.parent.mkdir(parents=True)
+    archived_transcript.write_bytes(b"State: completed\n" + answer)
     pass_receipt = final_output.parent / "stage-result.json"
     pass_receipt.write_text(json.dumps({
         "schema": "codex.chatgpt.oracle-stage-result/v1",
@@ -81,7 +87,7 @@ def fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path
         "oracle": {"slug": LOCATOR, "session_locator": LOCATOR},
         "artifacts": {
             "output": str(run_dir / "output.md"),
-            "transcript": str(transcript),
+            "transcript": str(recovery_transcript),
             "stdout": str(run_dir / "stdout.log"),
             "stderr": str(run_dir / "stderr.log"),
         },
@@ -94,8 +100,9 @@ def fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path
         "project_root": str(project),
         "run_dir": str(run_dir),
         "state_sha256": sha(state_path),
-        "transcript_path": str(transcript),
-        "transcript_sha256": sha(transcript),
+        "transcript_path": str(archived_transcript),
+        "transcript_sha256": sha(archived_transcript),
+        "recovery_transcript_sha256": sha(recovery_transcript),
         "final_gate_output_path": str(final_output),
         "final_gate_output_sha256": sha(final_output),
         "pass_stage_receipt_path": str(pass_receipt),
@@ -127,6 +134,7 @@ def test_settlement_requires_separate_exact_confirmation(
         ("exact_run_id", "f" * 32, "RUN_ID_MISMATCH"),
         ("session_locator", "oracle-other-12345678", "LOCATOR_MISMATCH"),
         ("transcript_sha256", "0" * 64, "HASH_MISMATCH"),
+        ("recovery_transcript_sha256", "0" * 64, "HASH_MISMATCH"),
         ("final_gate_output_sha256", "0" * 64, "HASH_MISMATCH"),
         ("pass_stage_receipt_sha256", "0" * 64, "HASH_MISMATCH"),
         ("prior_runtime_release_receipt_sha256", "0" * 64, "HASH_MISMATCH"),
@@ -173,6 +181,7 @@ def test_settlement_exclusively_materializes_final_gate_bytes_and_receipt(
     assert output.read_bytes() == final_output.read_bytes()
     assert receipt["bindings"]["state_sha256"] == manifest_value["state_sha256"]
     assert receipt["bindings"]["transcript_sha256"] == manifest_value["transcript_sha256"]
+    assert receipt["bindings"]["recovery_transcript_sha256"] == manifest_value["recovery_transcript_sha256"]
     assert receipt["bindings"]["prior_runtime_release_receipt_sha256"] == manifest_value["prior_runtime_release_receipt_sha256"]
     assert set(receipt["zero_action_counters"].values()) == {0}
     assert receipt["active_pid_count"] == 0

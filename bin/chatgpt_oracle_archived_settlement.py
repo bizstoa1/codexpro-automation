@@ -71,7 +71,7 @@ def settle(
         binding = CONTRACT.load_binding(manifest_path)
         if binding.project_root != preliminary.project_root:
             raise SettlementError("MANIFEST_CHANGED", "project binding changed while acquiring the exact mutex")
-        state, checked_pids, final_bytes = CONTRACT.validate(binding, process_alive)
+        state, checked_pids, final_bytes, recovery_transcript_path = CONTRACT.validate(binding, process_alive)
         output_path = binding.run_dir / "output.md"
         receipt_path = binding.run_dir / CONTRACT.SETTLEMENT_NAME
         _create_bytes_exclusive(output_path, final_bytes)
@@ -88,6 +88,8 @@ def settle(
                 "state_sha256": binding.state_sha256,
                 "transcript_path": str(binding.transcript_path),
                 "transcript_sha256": binding.transcript_sha256,
+                "recovery_transcript_path": str(recovery_transcript_path),
+                "recovery_transcript_sha256": binding.recovery_transcript_sha256,
                 "final_gate_output_path": str(binding.final_gate_output_path),
                 "final_gate_output_sha256": binding.final_gate_output_sha256,
                 "pass_stage_receipt_path": str(binding.pass_stage_receipt_path),

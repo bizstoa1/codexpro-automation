@@ -1,5 +1,18 @@
 # 기술 변경 기록
 
+## 1.14.5 - archived transcript source 분리
+
+- 승인된 answer source는 exact session locator에 해당하는
+  `~/.oracle/sessions/<locator>/artifacts/transcript.md`의 regular non-symlink
+  파일만 허용하고 SHA-256을 다시 검증합니다.
+- `state.artifacts.transcript`는 archived answer와 구분된 run-local recovery
+  증거로 보존합니다. state SHA가 경로를 결속하고 새 manifest hash가 현재
+  바이트를 결속하며, exact run containment와 regular-file 조건을 별도로
+  검증합니다.
+- confirmation, PASS receipt, output/PID/create-only/state transition 및 모든
+  zero-action 계약은 유지합니다. 이 교정은 Oracle, Chrome, recovery 또는
+  제품 작업을 실행하지 않습니다.
+
 ## 1.14.4 - archived exact transcript 정산
 
 - 별도 명시적 confirmation token과 exact run/locator, pre-state, transcript,
