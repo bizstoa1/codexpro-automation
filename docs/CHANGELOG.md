@@ -1,5 +1,14 @@
 # 기술 변경 기록
 
+## 1.14.7 - archived final output marker 교정
+
+- hash-bound final-gate output은 nonempty UTF-8 및 PASS receipt의 exact
+  output path/SHA-256 결속으로 검증하되, 자체 마지막 줄에
+  `TASK_OUTCOME: EXECUTED`를 중복 요구하지 않습니다.
+- archived transcript의 마지막 `TASK_OUTCOME: EXECUTED`, exact artifact
+  보고 필드, canonical archive/recovery hash, confirmation, PID 0,
+  create-only, state transition, zero-action 계약은 그대로 유지합니다.
+
 ## 1.14.6 - archived transcript 보고 형식 교정
 
 - archived Oracle transcript가 final-gate output 원문 전체를 포함해야 한다는

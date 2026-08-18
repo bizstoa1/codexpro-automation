@@ -223,10 +223,9 @@ def validate(
     if (
         not final_lines
         or not transcript_lines
-        or final_lines[-1].strip() != "TASK_OUTCOME: EXECUTED"
         or transcript_lines[-1].strip() != "TASK_OUTCOME: EXECUTED"
     ):
-        raise SettlementError("TRANSCRIPT_ANSWER_INVALID", "final output and transcript must report execution")
+        raise SettlementError("TRANSCRIPT_ANSWER_INVALID", "final output must be nonempty and transcript must report execution")
     report_fields: dict[str, list[str]] = {}
     for raw_line in transcript_lines[:-1]:
         line = raw_line.strip()

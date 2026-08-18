@@ -47,7 +47,7 @@ def fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path
 
     final_output = project / "workflow" / "stages" / "final" / "output.md"
     final_output.parent.mkdir(parents=True)
-    answer = b"Archived exact answer.\n\nTASK_OUTCOME: EXECUTED\n"
+    answer = b"Archived exact answer.\nFinal gate report complete.\n"
     final_output.write_bytes(answer)
     recovery_transcript = run_dir / "transcript.md"
     recovery_transcript.write_bytes(b"Recovered tab detached.\nNode.js v26.5.0\n")
@@ -161,7 +161,7 @@ def test_every_exact_binding_is_revalidated_before_output_creation(
     assert not (run_dir / "output.md").exists()
 
 
-def test_settlement_exclusively_materializes_final_gate_bytes_and_receipt(
+def test_settlement_materializes_markerless_final_gate_bytes_and_receipt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     module = load_module()
