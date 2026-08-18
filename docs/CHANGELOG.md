@@ -1,5 +1,17 @@
 # 기술 변경 기록
 
+## 1.14.8 - archived transcript 계층 보고 교정
+
+- archived transcript의 output과 PASS receipt 보고를 독립 section으로 해석해
+  실제 한국어 라벨과 부모 section 아래의 `SHA-256`을 정확한 artifact에
+  결속합니다. 기존 영문 flat 보고 형식도 그대로 허용합니다.
+- artifact 경로는 exact project root 기준의 canonical 절대경로 또는 정확한
+  프로젝트 상대경로만 허용합니다. 중복 section, 잘못된 parent association,
+  경로 탈출, symlink alias, 다른 root는 fail-closed로 거부합니다.
+- canonical archived transcript/recovery hash, final output 및 PASS receipt hash,
+  confirmation, PID 0, create-only, state transition, zero-action 계약은
+  변경하지 않습니다.
+
 ## 1.14.7 - archived final output marker 교정
 
 - hash-bound final-gate output은 nonempty UTF-8 및 PASS receipt의 exact

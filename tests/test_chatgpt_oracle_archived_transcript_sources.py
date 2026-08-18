@@ -192,3 +192,59 @@ def test_recovery_transcript_must_remain_a_run_local_regular_file(
 
     assert exc.value.code == code
     assert not (run_dir / "output.md").exists()
+
+
+def test_korean_nested_report_binds_project_relative_artifacts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fixtures = load_fixtures()
+    module = fixtures.load_module()
+    manifest, _, run_dir = fixtures.fixture(tmp_path, monkeypatch)
+    value = json.loads(manifest.read_text())
+    project = Path(value["project_root"])
+    old_output = Path(value["final_gate_output_path"])
+    old_receipt = Path(value["pass_stage_receipt_path"])
+    evidence_dir = project / ".ai-bridge" / "workflow" / "stages" / "final-web-gate"
+    evidence_dir.mkdir(parents=True)
+    final_output = evidence_dir / "final-web-gate-output.md"
+    final_output.write_bytes(old_output.read_bytes())
+    pass_receipt = evidence_dir / "stage-result.json"
+    receipt_value = json.loads(old_receipt.read_text())
+    receipt_value.update({
+        "output_path": str(final_output),
+        "output_sha256": fixtures.sha(final_output),
+    })
+    pass_receipt.write_text(json.dumps(receipt_value), encoding="utf-8")
+    output_relative = final_output.relative_to(project).as_posix()
+    receipt_relative = pass_receipt.relative_to(project).as_posix()
+    transcript = Path(value["transcript_path"])
+    transcript.write_text(
+        "\n".join([
+            f"* 최종 게이트 출력: {output_relative}",
+            f"  * SHA-256: {fixtures.sha(final_output)}",
+            f"* 단계 receipt: {receipt_relative}",
+            f"  * SHA-256: {fixtures.sha(pass_receipt)}",
+            "  * status: PASS",
+            "  * next_stage: complete",
+            "  * ready_for_next: true",
+            "",
+            "TASK_OUTCOME: EXECUTED",
+        ]) + "\n",
+        encoding="utf-8",
+    )
+    value.update({
+        "transcript_sha256": fixtures.sha(transcript),
+        "final_gate_output_path": str(final_output),
+        "final_gate_output_sha256": fixtures.sha(final_output),
+        "pass_stage_receipt_path": str(pass_receipt),
+        "pass_stage_receipt_sha256": fixtures.sha(pass_receipt),
+    })
+    manifest.write_text(json.dumps(value), encoding="utf-8")
+    result = module.settle(
+        manifest,
+        confirmation=module.CONFIRMATION_TOKEN,
+        process_alive=lambda _pid: False,
+    )
+    assert result["ok"] is True
+    assert (run_dir / "output.md").read_bytes() == final_output.read_bytes()
+    assert set(result["zero_action_counters"].values()) == {0}

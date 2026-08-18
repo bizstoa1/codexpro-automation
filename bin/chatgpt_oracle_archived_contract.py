@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+import bin.chatgpt_oracle_archived_report as REPORT
 import bin.chatgpt_oracle_run as RUNNER
 import bin.chatgpt_oracle_state as STATE
 
@@ -226,30 +227,19 @@ def validate(
         or transcript_lines[-1].strip() != "TASK_OUTCOME: EXECUTED"
     ):
         raise SettlementError("TRANSCRIPT_ANSWER_INVALID", "final output must be nonempty and transcript must report execution")
-    report_fields: dict[str, list[str]] = {}
-    for raw_line in transcript_lines[:-1]:
-        line = raw_line.strip()
-        if line.startswith(("- ", "* ", "+ ")):
-            line = line[2:].strip()
-        key, separator, value = line.partition(":")
-        if not separator:
-            continue
-        normalized_key = "_".join(key.strip(" `*_").casefold().replace("-", " ").split())
-        report_fields.setdefault(normalized_key, []).append(value.strip(" `*_"))
-    required_report = (
-        (("output", "output_path", "final_output", "final_output_path", "final_gate_output", "final_gate_output_path"), str(binding.final_gate_output_path)),
-        (("output_sha256", "output_sha_256", "final_output_sha256", "final_output_sha_256", "final_gate_output_sha256", "final_gate_output_sha_256"), binding.final_gate_output_sha256),
-        (("receipt", "receipt_path", "stage_receipt", "stage_receipt_path", "pass_receipt", "pass_receipt_path", "pass_stage_receipt", "pass_stage_receipt_path"), str(binding.pass_stage_receipt_path)),
-        (("receipt_sha256", "receipt_sha_256", "stage_receipt_sha256", "stage_receipt_sha_256", "pass_receipt_sha256", "pass_receipt_sha_256", "pass_stage_receipt_sha256", "pass_stage_receipt_sha_256"), binding.pass_stage_receipt_sha256),
-        (("status",), "PASS"),
-        (("next_stage",), "complete"),
-        (("ready_for_next",), "true"),
-    )
-    if any(
-        [value for key in keys for value in report_fields.get(key, ())] != [expected]
-        for keys, expected in required_report
-    ):
-        raise SettlementError("TRANSCRIPT_ANSWER_INVALID", "transcript lacks exact settlement report bindings")
+    try:
+        REPORT.validate_report(
+            transcript_lines[:-1],
+            project_root=binding.project_root,
+            output_path=binding.final_gate_output_path,
+            output_sha256=binding.final_gate_output_sha256,
+            receipt_path=binding.pass_stage_receipt_path,
+            receipt_sha256=binding.pass_stage_receipt_sha256,
+        )
+    except REPORT.ReportValidationError as exc:
+        raise SettlementError(
+            "TRANSCRIPT_ANSWER_INVALID", "transcript lacks exact settlement report bindings"
+        ) from exc
     receipt = read_json(binding.pass_stage_receipt_path, "PASS stage receipt")
     receipt_output = absolute(receipt.get("output_path"), "PASS receipt output")
     if (
