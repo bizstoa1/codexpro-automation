@@ -1,6 +1,6 @@
 {
   "schema": "codexpro.install-manifest/v1",
-  "version": "1.14.9",
+  "version": "1.14.10",
   "include": [
     "bin/chatgpt_agbrowse_bridge.py",
     "bin/chatgpt_agbrowse_composer.py",

@@ -140,8 +140,6 @@ def validate_report(
     active_kind = ""
     for raw_line in lines:
         if not raw_line.strip():
-            active = None
-            active_kind = ""
             continue
         parsed = _field(raw_line)
         if parsed is None:

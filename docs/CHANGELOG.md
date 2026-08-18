@@ -1,5 +1,17 @@
 # 기술 변경 기록
 
+## 1.14.10 - archived transcript 빈 줄 parent 결속 교정
+
+- 인식된 output/receipt heading과 그 아래 `SHA-256` 사이의 빈 줄은 artifact
+  parent context를 닫지 않습니다. 실제 한국어 상대경로 보고 형식에서 빈 줄이
+  있어도 hash가 정확한 부모 section에 결속됩니다.
+- 일반 문단, 동급 unrelated field, 새 output/receipt heading은 기존처럼 active
+  context를 닫거나 전환합니다. 따라서 빈 줄 뒤 일반 문단을 건너온 SHA가 앞선
+  artifact에 잘못 결속되지 않으며 중복·누락·오류 hash와 경로/receipt/terminal
+  marker 계약도 그대로 fail-closed입니다.
+- 실제 exact settlement, Oracle/Chrome 실행, 로그인 seed 및 제품 작업은 이
+  중앙 runtime 교정에서 수행하지 않습니다.
+
 ## 1.14.9 - archived transcript 선행 SHA 증거 교정
 
 - exact output/receipt section 밖의 일반 `SHA-256` 줄은 unrelated evidence로

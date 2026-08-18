@@ -194,7 +194,7 @@ def test_recovery_transcript_must_remain_a_run_local_regular_file(
     assert not (run_dir / "output.md").exists()
 
 
-def test_unrelated_prefix_hashes_do_not_block_korean_nested_report(
+def test_prefix_hashes_and_blank_lines_do_not_block_korean_nested_report(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fixtures = load_fixtures()
@@ -229,8 +229,10 @@ def test_unrelated_prefix_hashes_do_not_block_korean_nested_report(
             "* prefix evidence: .ai-bridge/prefix.md",
             f"  * SHA-256: {'4' * 64}",
             f"* 최종 게이트 출력: {output_relative}",
+            "",
             f"  * SHA-256: {fixtures.sha(final_output)}",
             f"* 단계 receipt: {receipt_relative}",
+            "",
             f"  * SHA-256: {fixtures.sha(pass_receipt)}",
             "  * status: PASS",
             "  * next_stage: complete",

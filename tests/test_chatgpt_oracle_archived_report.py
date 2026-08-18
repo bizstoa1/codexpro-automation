@@ -106,6 +106,28 @@ def test_shallow_unrelated_hash_closes_artifact_context(tmp_path: Path) -> None:
         )
 
 
+@pytest.mark.parametrize("blocker", ["ordinary paragraph", "* unrelated field: evidence"])
+def test_blank_line_context_closes_before_unrelated_nested_hash(
+    tmp_path: Path, blocker: str,
+) -> None:
+    # Given a recognized output, a blank line, and unrelated same-level content.
+    project, output, receipt, output_hash, receipt_hash = artifacts(tmp_path)
+    lines = lines_for(project, output, receipt, output_hash, receipt_hash)
+    lines[1:2] = ["", blocker, f"  * SHA-256: {output_hash}"]
+
+    # When an indented generic hash follows the unrelated content.
+    # Then the paragraph or field must have closed the output parent context.
+    with pytest.raises(ReportValidationError, match="artifact hashes do not match"):
+        validate_report(
+            lines,
+            project_root=project,
+            output_path=output,
+            output_sha256=output_hash,
+            receipt_path=receipt,
+            receipt_sha256=receipt_hash,
+        )
+
+
 @pytest.mark.parametrize("mode", ["traversal", "other_root", "symlink"])
 def test_report_paths_reject_escape_and_symlink_aliases(tmp_path: Path, mode: str) -> None:
     project, output, receipt, output_hash, receipt_hash = artifacts(tmp_path)
