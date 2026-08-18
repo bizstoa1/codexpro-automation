@@ -41,6 +41,7 @@ def fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path
     test_home.mkdir()
     receipts.mkdir(parents=True)
     monkeypatch.setenv("HOME", str(test_home))
+    monkeypatch.setenv("USERPROFILE", str(test_home))
     monkeypatch.setenv("CODEX_ORACLE_STATE_ROOT", str(state_root))
     monkeypatch.setenv("CODEX_HOME", str(receipts.parent))
 
