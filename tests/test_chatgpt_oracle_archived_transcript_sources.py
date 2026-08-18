@@ -194,7 +194,7 @@ def test_recovery_transcript_must_remain_a_run_local_regular_file(
     assert not (run_dir / "output.md").exists()
 
 
-def test_korean_nested_report_binds_project_relative_artifacts(
+def test_unrelated_prefix_hashes_do_not_block_korean_nested_report(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fixtures = load_fixtures()
@@ -220,6 +220,14 @@ def test_korean_nested_report_binds_project_relative_artifacts(
     transcript = Path(value["transcript_path"])
     transcript.write_text(
         "\n".join([
+            "* 검토 출력: .ai-bridge/review-output.md",
+            f"  * SHA-256: {'1' * 64}",
+            "* 최종 검토: .ai-bridge/final-review.md",
+            f"  * SHA-256: {'2' * 64}",
+            "* appendix: .ai-bridge/appendix.md",
+            f"  * SHA-256: {'3' * 64}",
+            "* prefix evidence: .ai-bridge/prefix.md",
+            f"  * SHA-256: {'4' * 64}",
             f"* 최종 게이트 출력: {output_relative}",
             f"  * SHA-256: {fixtures.sha(final_output)}",
             f"* 단계 receipt: {receipt_relative}",

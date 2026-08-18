@@ -1,5 +1,16 @@
 # 기술 변경 기록
 
+## 1.14.9 - archived transcript 선행 SHA 증거 교정
+
+- exact output/receipt section 밖의 일반 `SHA-256` 줄은 unrelated evidence로
+  무시합니다. 인식된 section과 같거나 얕은 들여쓰기의 일반 hash는 해당
+  section context를 닫으며, 이후 줄을 artifact hash로 오인하지 않습니다.
+- 인식된 output/receipt section보다 깊게 중첩된 hash만 해당 부모 artifact에
+  결속합니다. 중복·누락·오류 hash, 잘못된 부모, 경로 탈출·symlink, receipt
+  완료 필드 및 transcript의 마지막 `TASK_OUTCOME: EXECUTED` 검증은 유지합니다.
+- 실제 exact settlement, Oracle/Chrome 실행, 로그인 seed 및 제품 작업은 이
+  중앙 runtime 교정에서 수행하지 않습니다.
+
 ## 1.14.8 - archived transcript 계층 보고 교정
 
 - archived transcript의 output과 PASS receipt 보고를 독립 section으로 해석해

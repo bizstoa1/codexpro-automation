@@ -165,7 +165,9 @@ def validate_report(
             _bind_hash(receipt, parsed.value)
         elif parsed.key in GENERIC_HASH_KEYS:
             if active is None or parsed.indent <= active.indent:
-                raise ReportValidationError("generic hash must be nested under one artifact")
+                active = None
+                active_kind = ""
+                continue
             _bind_hash(active, parsed.value)
         elif parsed.key in RECEIPT_FIELDS:
             if active is not None and parsed.indent > active.indent and active_kind != "receipt":

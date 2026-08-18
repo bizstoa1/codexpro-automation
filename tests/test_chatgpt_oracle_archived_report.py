@@ -43,7 +43,15 @@ def lines_for(
 
 @pytest.mark.parametrize(
     "mutation",
-    ["duplicate", "wrong_parent", "swapped_hashes", "substring", "duplicate_status"],
+    [
+        "duplicate",
+        "duplicate_hash",
+        "missing_hash",
+        "wrong_parent",
+        "swapped_hashes",
+        "substring",
+        "duplicate_status",
+    ],
 )
 def test_report_sections_reject_ambiguous_or_misassociated_fields(
     tmp_path: Path, mutation: str,
@@ -52,6 +60,10 @@ def test_report_sections_reject_ambiguous_or_misassociated_fields(
     lines = lines_for(project, output, receipt, output_hash, receipt_hash)
     if mutation == "duplicate":
         lines[0:0] = lines[:2]
+    elif mutation == "duplicate_hash":
+        lines.insert(2, lines[1])
+    elif mutation == "missing_hash":
+        _ = lines.pop(1)
     elif mutation == "wrong_parent":
         lines.insert(2, f"  * Receipt SHA-256: {receipt_hash}")
     elif mutation == "swapped_hashes":
@@ -62,6 +74,28 @@ def test_report_sections_reject_ambiguous_or_misassociated_fields(
         lines.append("  * status: PASS")
 
     with pytest.raises(ReportValidationError):
+        validate_report(
+            lines,
+            project_root=project,
+            output_path=output,
+            output_sha256=output_hash,
+            receipt_path=receipt,
+            receipt_sha256=receipt_hash,
+        )
+
+
+def test_shallow_unrelated_hash_closes_artifact_context(tmp_path: Path) -> None:
+    # Given a recognized output followed by same-level unrelated evidence.
+    project, output, receipt, output_hash, receipt_hash = artifacts(tmp_path)
+    lines = lines_for(project, output, receipt, output_hash, receipt_hash)
+    lines[1:2] = [
+        f"* SHA-256: {'5' * 64}",
+        f"  * SHA-256: {output_hash}",
+    ]
+
+    # When the later nested hash has no active recognized artifact parent.
+    # Then neither unrelated hash may satisfy the output binding.
+    with pytest.raises(ReportValidationError, match="artifact hashes do not match"):
         validate_report(
             lines,
             project_root=project,
