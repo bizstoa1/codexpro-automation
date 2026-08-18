@@ -2205,6 +2205,99 @@ def test_standalone_qualified_pro_prompt_timeout_can_be_user_settled_and_unlocks
     assert proof["source_mission_sha256"] == proof["transport_mission_sha256"]
 
 
+def test_legacy_initial_page_ready_user_settlement_remains_hash_bound(tmp_path: Path) -> None:
+    runner = load_runner()
+    run_id = "d" * 32
+    config = runner.STATE.load_manifest(pro_readonly_manifest(tmp_path, run_id=run_id))
+    layout = runner.STATE.create_layout(config, run_id=run_id)
+    layout.run_dir.mkdir(parents=True)
+    mission_bytes = config.mission_path.read_bytes()
+    transport_mission_path = layout.run_dir / "mission.md"
+    transport_mission_path.write_bytes(mission_bytes)
+    stdout_bytes = (
+        f"Session: {layout.slug}\n"
+        "ERROR: Page did not reach ready state in time\n"
+        "User error (browser-automation): Page did not reach ready state in time\n"
+    ).encode()
+    layout.stdout_path.write_bytes(stdout_bytes)
+    layout.stderr_path.write_bytes(b"")
+    layout.transcript_path.write_bytes(stdout_bytes)
+    recovery_records = []
+    for action, stdout_content, stderr_content in (
+        ("harvest", b"oracle diagnostic one\n", b"note\n"),
+        ("live", b"oracle diagnostic two\n", b"note\n"),
+    ):
+        recovery_stdout = layout.run_dir / f"recovery-{action}-stdout.log"
+        recovery_stderr = layout.run_dir / f"recovery-{action}-stderr.log"
+        recovery_stdout.write_bytes(stdout_content)
+        recovery_stderr.write_bytes(stderr_content)
+        recovery_records.append({
+            "stdout_name": recovery_stdout.name,
+            "stdout_sha256": hashlib.sha256(stdout_content).hexdigest(),
+            "stderr_name": recovery_stderr.name,
+            "stderr_sha256": hashlib.sha256(stderr_content).hexdigest(),
+        })
+    state = runner.STATE.state_payload(
+        config,
+        layout,
+        status="attention_required",
+        resolved_version="oracle 0.17.1",
+    )
+    state.update({
+        "transport_status": "not_submitted_user_confirmed",
+        "task_outcome": "pending",
+        "task_outcome_reason": "user-confirmed-no-submission-after-initial-page-ready-failure",
+        "status": "attention_required",
+        "exit_code": 1,
+        "session_authority": "pre_submit",
+        "terminal_harvested": False,
+        "artifact_sha256": None,
+    })
+    source_sha256 = hashlib.sha256(mission_bytes).hexdigest()
+    receipt = {
+        "schema": "codex.chatgpt.oracle-user-confirmed-no-submission/v1",
+        "code": "ORACLE_USER_CONFIRMED_NO_SUBMISSION",
+        "confirmation": runner.STATE.USER_CONFIRMED_NO_SUBMISSION,
+        "reason": "user confirmed no submission or ChatGPT conversation",
+        "settlement_eligibility": "oracle-standalone-pro-initial-page-ready/v1",
+        "project_root": str(tmp_path.resolve()),
+        "run_id": run_id,
+        "transport": "pro-devspace",
+        "source_mission_path": str(config.mission_path),
+        "source_mission_sha256": source_sha256,
+        "transport_mission_path": str(transport_mission_path),
+        "transport_mission_sha256": source_sha256,
+        "mission_sha256": source_sha256,
+        "oracle_locator": layout.slug,
+        "oracle_version": "0.17.1",
+        "stdout_sha256": hashlib.sha256(stdout_bytes).hexdigest(),
+        "stderr_sha256": hashlib.sha256(b"").hexdigest(),
+        "recovery_evidence": recovery_records,
+        "output_absent": True,
+        "conversation_url_absent": True,
+    }
+    receipt_path = layout.run_dir / "user-confirmed-no-submission.json"
+    runner.STATE.write_json_atomic(receipt_path, receipt)
+    state["user_confirmed_no_submission"] = {
+        "schema": "codex.chatgpt.oracle-settlement-reference/v1",
+        "path": str(receipt_path),
+        "sha256": runner.STATE.sha256_file(receipt_path),
+    }
+    runner.STATE.write_json_atomic(layout.state_path, state)
+
+    proof = runner.STATE.proven_user_confirmed_no_submission(layout.state_path)
+    assert proof is not None
+    assert proof["settlement_eligibility"] == "oracle-standalone-pro-initial-page-ready/v1"
+    assert runner.STATE.unresolved_project_sessions(config.run_root, tmp_path) == []
+
+    (layout.run_dir / "recovery-live-stdout.log").write_text(
+        "State: running\n",
+        encoding="utf-8",
+    )
+    assert runner.STATE.proven_user_confirmed_no_submission(layout.state_path) is None
+    assert runner.STATE.unresolved_project_sessions(config.run_root, tmp_path)[0]["run_id"] == run_id
+
+
 def test_standalone_pro_attachment_upload_timeout_is_hash_bound_and_user_settled(tmp_path: Path) -> None:
     runner = load_runner()
     initial = execute_run(

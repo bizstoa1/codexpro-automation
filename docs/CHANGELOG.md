@@ -1,5 +1,15 @@
 # 기술 변경 기록
 
+## 1.14.11 - legacy pre-submit 정산 소유권 보존
+
+- 이전 runtime에서 사용자 확인으로 정산된 standalone Pro의 initial-page-ready
+  실패 receipt를 현재 runtime에서도 기존 파일을 변경하지 않고 재검증합니다.
+- legacy 경로는 이미 존재하는 exact receipt, mission, stdout/stderr/transcript,
+  recovery 파일 hash와 대화 URL 부재를 모두 다시 확인할 때만 소유권을
+  해제합니다. 신규 정산 자격을 만들거나 모호한 run을 자동 해제하지 않습니다.
+- recovery 파일 변경·추가, 실행 상태 또는 대화 URL이 관찰되면 기존처럼 즉시
+  fail-closed로 돌아가며 새 Oracle 제출을 차단합니다.
+
 ## 1.14.10 - archived transcript 빈 줄 parent 결속 교정
 
 - 인식된 output/receipt heading과 그 아래 `SHA-256` 사이의 빈 줄은 artifact

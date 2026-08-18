@@ -130,6 +130,10 @@ ORACLE_CDP_DISCONNECT_PRE_SUBMIT_ERROR = (
     "the browser target appears still alive."
 )
 ORACLE_STANDALONE_PRO_NO_SUBMISSION_VERSIONS = {"0.17.1"}
+ORACLE_LEGACY_INITIAL_PAGE_READY_MARKER = "Page did not reach ready state in time"
+ORACLE_LEGACY_INITIAL_PAGE_READY_SETTLEMENT = (
+    "oracle-standalone-pro-initial-page-ready/v1"
+)
 USER_CONFIRMED_NO_SUBMISSION = "user-confirmed-no-submission"
 USER_CONFIRMED_EXECUTION_ENDED = "user-confirmed-task-ended"
 ORACLE_RECOVERY_STATE_RE = re.compile(r"(?im)^\s*State:\s*[a-z][a-z0-9_-]*\s*$")
@@ -1738,6 +1742,192 @@ def _standalone_pro_no_submission_evidence(state_path: Path) -> dict[str, Any] |
     }
 
 
+def _legacy_initial_page_ready_no_submission_evidence(
+    state_path: Path,
+    recorded: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Revalidate one persisted pre-prompt settlement from the legacy contract.
+
+    This path never makes a new run settlement-eligible. It only preserves an
+    existing user confirmation whose receipt, run inputs, logs, and recovery
+    hashes still match byte-for-byte and contain no later contradictory state.
+    """
+    if recorded.get("settlement_eligibility") != ORACLE_LEGACY_INITIAL_PAGE_READY_SETTLEMENT:
+        return None
+    state = load_state(state_path)
+    run_dir = state_path.parent
+    run_id = str(state.get("run_id") or "")
+    profile_value = state.get("profile")
+    profile: dict[str, Any] = profile_value if isinstance(profile_value, dict) else {}
+    if (
+        state.get("schema") != "codex.chatgpt.oracle-run-state/v1"
+        or str(state.get("session_authority") or "") != "pre_submit"
+        or state.get("status") != "attention_required"
+        or state.get("transport_status") != "not_submitted_user_confirmed"
+        or state.get("task_outcome") != "pending"
+        or state.get("terminal_harvested") is True
+        or _state_has_conversation_url(state)
+        or int(state.get("exit_code") or 0) == 0
+        or str(state.get("mode") or "") != "browser"
+        or not is_pro_devspace_transport(str(state.get("transport") or ""))
+        or state.get("parallel_parent_id") is not None
+        or state.get("requested_run_id") not in (None, run_id)
+        or state.get("web_multi_child_provenance") is not None
+        or state.get("attachments") not in (None, [])
+        or run_dir.name != run_id
+        or str(profile.get("model") or "") != "gpt-5.6-sol"
+        or str(profile.get("model_strategy") or "") != "select"
+        or str(profile.get("thinking_time") or "") != "heavy"
+    ):
+        return None
+    oracle_value = state.get("oracle")
+    oracle: dict[str, Any] = oracle_value if isinstance(oracle_value, dict) else {}
+    version = str(oracle.get("resolved_version") or "").removeprefix("oracle ").strip()
+    locator = str(oracle.get("session_locator") or oracle.get("slug") or "").strip()
+    if version not in ORACLE_STANDALONE_PRO_NO_SUBMISSION_VERSIONS or not locator:
+        return None
+    artifacts_value = state.get("artifacts")
+    artifacts: dict[str, Any] = artifacts_value if isinstance(artifacts_value, dict) else {}
+    output = Path(str(artifacts.get("output") or ""))
+    if output.resolve() != (run_dir / "output.md").resolve() or output.is_symlink() or output_is_nonempty(output):
+        return None
+    stdout_record = _artifact_bytes(state, "stdout")
+    stderr_record = _artifact_bytes(state, "stderr")
+    transcript_record = _artifact_bytes(state, "transcript")
+    if stdout_record is None or stderr_record is None or transcript_record is None:
+        return None
+    stdout_path, stdout_bytes = stdout_record
+    stderr_path, stderr_bytes = stderr_record
+    transcript_path, transcript_bytes = transcript_record
+    if (
+        stdout_path.resolve() != (run_dir / "stdout.log").resolve()
+        or stderr_path.resolve() != (run_dir / "stderr.log").resolve()
+        or transcript_path.resolve() != (run_dir / "transcript.md").resolve()
+        or any(path.is_symlink() for path in (stdout_path, stderr_path, transcript_path))
+        or stderr_bytes
+        or transcript_bytes != stdout_bytes
+    ):
+        return None
+    try:
+        stdout_text = stdout_bytes.decode("utf-8", errors="strict")
+    except UnicodeDecodeError:
+        return None
+    marker_lines = {
+        line.strip()
+        for line in stdout_text.splitlines()
+        if ORACLE_LEGACY_INITIAL_PAGE_READY_MARKER in line
+    }
+    allowed_marker_lines = {
+        f"ERROR: {ORACLE_LEGACY_INITIAL_PAGE_READY_MARKER}",
+        f"User error (browser-automation): {ORACLE_LEGACY_INITIAL_PAGE_READY_MARKER}",
+    }
+    if (
+        not marker_lines
+        or not marker_lines.issubset(allowed_marker_lines)
+        or stdout_text.count(ORACLE_LEGACY_INITIAL_PAGE_READY_MARKER) != len(marker_lines)
+        or f"Session: {locator}" not in stdout_text
+        or CHATGPT_CONVERSATION_URL_RE.search(stdout_text)
+        or ORACLE_RECOVERY_STATE_RE.search(stdout_text)
+    ):
+        return None
+    mission_value = state.get("mission")
+    mission: dict[str, Any] = mission_value if isinstance(mission_value, dict) else {}
+    source_path = Path(str(mission.get("path") or ""))
+    transport_path = Path(str(mission.get("transport_path") or ""))
+    try:
+        project_root = Path(str(state.get("project_root") or "")).resolve(strict=True)
+        source_path = source_path.resolve(strict=True)
+        transport_path = transport_path.resolve(strict=True)
+        if (
+            not project_root.is_dir()
+            or not source_path.is_file()
+            or source_path.is_symlink()
+            or transport_path.is_symlink()
+            or not is_within(project_root, source_path)
+            or transport_path != (run_dir / "mission.md").resolve()
+        ):
+            return None
+        source_bytes = source_path.read_bytes()
+        transport_bytes = transport_path.read_bytes()
+    except OSError:
+        return None
+    mission_sha256 = str(mission.get("sha256") or "")
+    source_sha256 = hashlib.sha256(source_bytes).hexdigest()
+    transport_sha256 = hashlib.sha256(transport_bytes).hexdigest()
+    if (
+        not re.fullmatch(r"[a-f0-9]{64}", mission_sha256)
+        or source_sha256 != mission_sha256
+        or transport_sha256 != mission_sha256
+        or source_bytes != transport_bytes
+    ):
+        return None
+    recorded_recovery = recorded.get("recovery_evidence")
+    if not isinstance(recorded_recovery, list) or not recorded_recovery:
+        return None
+    recovery_records: list[dict[str, str]] = []
+    seen_stdout_names: set[str] = set()
+    for item in recorded_recovery:
+        if not isinstance(item, dict):
+            return None
+        stdout_name = str(item.get("stdout_name") or "")
+        stderr_name = str(item.get("stderr_name") or "")
+        if (
+            not re.fullmatch(r"recovery-[a-z0-9-]+-stdout\.log", stdout_name)
+            or stderr_name != stdout_name.replace("-stdout.log", "-stderr.log")
+            or stdout_name in seen_stdout_names
+        ):
+            return None
+        seen_stdout_names.add(stdout_name)
+        recovery_stdout = run_dir / stdout_name
+        recovery_stderr = run_dir / stderr_name
+        try:
+            if recovery_stdout.is_symlink() or recovery_stderr.is_symlink():
+                return None
+            recovery_stdout_bytes = recovery_stdout.read_bytes()
+            recovery_stderr_bytes = recovery_stderr.read_bytes()
+            recovery_text = b"\n".join((recovery_stdout_bytes, recovery_stderr_bytes)).decode(
+                "utf-8", errors="strict"
+            )
+        except (OSError, UnicodeDecodeError):
+            return None
+        current_record = {
+            "stdout_name": stdout_name,
+            "stdout_sha256": hashlib.sha256(recovery_stdout_bytes).hexdigest(),
+            "stderr_name": stderr_name,
+            "stderr_sha256": hashlib.sha256(recovery_stderr_bytes).hexdigest(),
+        }
+        if current_record != item:
+            return None
+        if CHATGPT_CONVERSATION_URL_RE.search(recovery_text) or ORACLE_RECOVERY_STATE_RE.search(recovery_text):
+            return None
+        recovery_records.append(current_record)
+    actual_recovery_names = {
+        path.name for path in run_dir.glob("recovery-*-stdout.log") if path.is_file()
+    }
+    if actual_recovery_names != seen_stdout_names:
+        return None
+    return {
+        "settlement_eligibility": ORACLE_LEGACY_INITIAL_PAGE_READY_SETTLEMENT,
+        "project_root": str(project_root),
+        "run_id": run_id,
+        "transport": str(state.get("transport") or ""),
+        "source_mission_path": str(source_path),
+        "source_mission_sha256": source_sha256,
+        "transport_mission_path": str(transport_path),
+        "transport_mission_sha256": transport_sha256,
+        "mission_sha256": mission_sha256,
+        "oracle_locator": locator,
+        "oracle_version": version,
+        "stdout_sha256": hashlib.sha256(stdout_bytes).hexdigest(),
+        "stderr_sha256": hashlib.sha256(stderr_bytes).hexdigest(),
+        "recovery_evidence": recovery_records,
+        "output_absent": True,
+        "conversation_url_absent": True,
+        "_source_mission_path": str(source_path),
+        "_transport_mission_path": str(transport_path),
+    }
+
+
 def _direct_devspace_no_submission_evidence(
     state_path: Path,
     *,
@@ -2013,6 +2203,8 @@ def proven_user_confirmed_no_submission(state_path: Path) -> dict[str, Any] | No
         return None
     current = _user_confirmable_no_submission_evidence(state_path)
     if current is None:
+        current = _legacy_initial_page_ready_no_submission_evidence(state_path, recorded)
+    if current is None:
         return None
     for key in (
         "project_root",
@@ -2035,6 +2227,12 @@ def proven_user_confirmed_no_submission(state_path: Path) -> dict[str, Any] | No
             "oracle_command", "pre_submit_marker",
         )
     elif current.get("settlement_eligibility") == "oracle-standalone-qualified-pro/v1":
+        required = (
+            "settlement_eligibility", "transport", "source_mission_path",
+            "source_mission_sha256", "transport_mission_path", "transport_mission_sha256",
+            "oracle_version",
+        )
+    elif current.get("settlement_eligibility") == ORACLE_LEGACY_INITIAL_PAGE_READY_SETTLEMENT:
         required = (
             "settlement_eligibility", "transport", "source_mission_path",
             "source_mission_sha256", "transport_mission_path", "transport_mission_sha256",
