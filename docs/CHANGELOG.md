@@ -1,5 +1,17 @@
 # 기술 변경 기록
 
+## 1.14.4 - archived exact transcript 정산
+
+- 별도 명시적 confirmation token과 exact run/locator, pre-state, transcript,
+  final-gate output, PASS stage receipt, 선행 runtime release receipt의 SHA-256을
+  모두 재검증한 뒤에만 archived exact transcript를 정산합니다.
+- final-web-gate가 `PASS`, `next_stage=complete`, `ready_for_next=true`이고
+  transcript에 동일한 최종 출력과 마지막 `TASK_OUTCOME: EXECUTED`가 있을 때만
+  그 출력 바이트를 exact run output으로 create-only 기록합니다.
+- active run-owned PID가 0인지 확인하고, 출력·정산 영수증·state 순서로 기록해
+  부분 실패 증거를 삭제·덮어쓰기·자동 재시도하지 않습니다. 이 경로는 Oracle,
+  Chrome, recovery, canary 또는 새 대화를 실행하지 않습니다.
+
 ## 1.14.3 - legacy exact recovery 프로필 격리
 
 - `copy-per-run` host policy 아래에서 생성된 pre-migration exact session도

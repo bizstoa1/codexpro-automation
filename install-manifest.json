@@ -1,6 +1,6 @@
 {
   "schema": "codexpro.install-manifest/v1",
-  "version": "1.14.3",
+  "version": "1.14.4",
   "include": [
     "bin/chatgpt_agbrowse_bridge.py",
     "bin/chatgpt_agbrowse_composer.py",
@@ -9,7 +9,10 @@
     "bin/chatgpt_agbrowse_state.py",
     "bin/chatgpt_agbrowse_tabs.py",
     "bin/chatgpt_git_isolation.py",
+    "bin/__init__.py",
     "bin/chatgpt_oracle_run.py",
+    "bin/chatgpt_oracle_archived_contract.py",
+    "bin/chatgpt_oracle_archived_settlement.py",
     "bin/chatgpt_oracle_host.py",
     "bin/chatgpt_oracle_host_policy.py",
     "bin/chatgpt_devspace_compat.py",

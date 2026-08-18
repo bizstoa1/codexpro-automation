@@ -11,6 +11,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FOCUSED = [
+    "tests/test_chatgpt_oracle_archived_settlement.py",
+    "tests/test_chatgpt_oracle_archived_settlement_cli.py",
     "tests/test_global_gpt_browser_policy.py",
     "tests/test_release_packaging.py",
     "tests/test_install_lifecycle.py",
