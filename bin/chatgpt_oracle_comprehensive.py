@@ -829,7 +829,18 @@ def _validate_receipt(
         and value.get("ready_for_next") is True
         and not value.get("blocker")
     )
-    status = "PLAN_READY" if completed_plan_compat else raw_status
+    completed_terminal_compat = (
+        stage == "implementation"
+        and raw_status.casefold() == "completed"
+        and next_stage == "complete"
+        and value.get("ready_for_next") is False
+        and not value.get("blocker")
+    )
+    status = (
+        "PLAN_READY"
+        if completed_plan_compat
+        else "COMPLETE" if completed_terminal_compat else raw_status
+    )
     if stage == "review":
         if status not in REVIEW_STATUSES:
             raise WorkflowError("review status must be PASS, PASS_WITH_NOTES, REVISE, or FAIL")
@@ -868,6 +879,7 @@ def _validate_receipt(
         and not (stage == "review" and status == "FAIL")
     ) or (
         not (stage == "review" and status == "FAIL")
+        and not completed_terminal_compat
         and value.get("ready_for_next") is not True
     ) or (
         value.get("blocker")
@@ -882,10 +894,12 @@ def _validate_receipt(
     path_compatibility: dict[str, dict[str, str]] = {}
     if output_relative:
         path_compatibility["output_path"] = {"source": str(output_raw), "resolved": str(output)}
-    compatibility = (
-        {"_receipt_status_original": raw_status, "_receipt_status_normalized": "PLAN_READY"}
-        if completed_plan_compat else {}
-    )
+    compatibility = {}
+    if completed_plan_compat or completed_terminal_compat:
+        compatibility = {
+            "_receipt_status_original": raw_status,
+            "_receipt_status_normalized": status,
+        }
     normalized = {
         **value,
         **compatibility,
@@ -913,7 +927,7 @@ def _validate_receipt(
                     "defects and must return PASS_WITH_NOTES, while a concrete external blocker must return FAIL"
                 ),
             }
-    if next_stage not in TRANSITIONS[stage]:
+    if next_stage not in TRANSITIONS[stage] and not completed_terminal_compat:
         raise WorkflowError(f"invalid transition {stage}->{next_stage}")
     if next_stage == "complete":
         return {

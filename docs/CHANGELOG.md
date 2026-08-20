@@ -1,5 +1,16 @@
 # 기술 변경 기록
 
+## 1.14.12 - legacy comprehensive terminal receipt 재개
+
+- 과거 comprehensive runtime이 final-web-gate 이후 deterministic local gate를
+  `implementation / completed / next_stage=complete / ready_for_next=false`로 기록한
+  exact terminal receipt를 현재 runtime에서도 hash-bound 상태로 소비합니다.
+- 호환성은 implementation terminal 전이, 빈 blocker, 기존 workflow/stage/attempt/
+  input 및 output hash가 모두 일치할 때만 적용합니다. 다른 stage, 비terminal 전이,
+  blocker가 있는 receipt는 계속 fail-closed입니다.
+- 기존 receipt를 소비할 때 Oracle/WebGPT를 재실행하지 않고 manifest의 local gate만
+  실행한 뒤 workflow와 scope를 완료합니다.
+
 ## 1.14.11 - legacy pre-submit 정산 소유권 보존
 
 - 이전 runtime에서 사용자 확인으로 정산된 standalone Pro의 initial-page-ready
