@@ -93,6 +93,40 @@ def write_legacy_terminal_receipt(module, tmp_path: Path, mission: Path) -> Path
     return receipt
 
 
+def write_attention_implementation_state(
+    module,
+    config,
+    mission: Path,
+    receipt: Path,
+    tmp_path: Path,
+) -> Path:
+    run_dir = tmp_path / "oracle-run"
+    run_dir.mkdir()
+    (run_dir / "state.json").write_text(
+        json.dumps({"schema": module.RUNNER.STATE.STATE_SCHEMA, "run_id": "b" * 32}),
+        encoding="utf-8",
+    )
+    module._write(
+        module._state_path(config, config["workflow_id"]),
+        {
+            "schema": module.STATE_SCHEMA,
+            "status": "attention_required",
+            "workflow_id": config["workflow_id"],
+            "manifest_sha256": config["manifest_sha256"],
+            "current_stage": "implementation",
+            "current_attempt_id": "b" * 32,
+            "current_input_sha256": module.sha(mission),
+            "current_mission_path": str(mission),
+            "receipt_path": str(receipt),
+            "oracle_run_id": "b" * 32,
+            "oracle_run_dir": str(run_dir),
+            "next_index": 4,
+            "records": [],
+        },
+    )
+    return run_dir
+
+
 def test_legacy_terminal_implementation_receipt_completes_without_oracle_replay(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -161,3 +195,100 @@ def test_legacy_terminal_compatibility_does_not_accept_a_blocker(
             "b" * 32,
             module.sha(mission),
         )
+
+
+def test_terminal_blocked_implementation_consumes_exact_local_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Given: a terminal blocked Oracle transport and its exact local implementation receipt.
+    module, manifest, mission = prepare_workflow(tmp_path, monkeypatch)
+    config = module.load_manifest(manifest)
+    receipt = write_legacy_terminal_receipt(module, tmp_path, mission)
+    run_dir = write_attention_implementation_state(
+        module, config, mission, receipt, tmp_path
+    )
+    recoveries: list[Path] = []
+
+    def terminal_blocked_recovery(
+        exact_run_dir: Path,
+        *,
+        action: str,
+        dry_run: bool,
+    ):
+        recoveries.append(exact_run_dir)
+        assert (action, dry_run) == ("live", False)
+        return {
+            "ok": False,
+            "status": "attention_required",
+            "result": {
+                "session_authority": "terminal",
+                "terminal_harvested": True,
+                "transport_status": "complete",
+                "task_outcome": "blocked",
+                "browser_observer": {"status": "process-exited"},
+            },
+        }
+
+    def reject_oracle_replay(*_args, **_kwargs):
+        raise AssertionError("terminal implementation settlement must not replay Oracle")
+
+    def pass_local_gate(command, **_kwargs):
+        return subprocess.CompletedProcess(command, 0, "gate passed", "")
+
+    # When: the original workflow resumes without a replacement submission.
+    result = module.run_workflow(
+        manifest,
+        oracle_execute=reject_oracle_replay,
+        oracle_recover=terminal_blocked_recovery,
+        local_gate_runner=pass_local_gate,
+    )
+
+    # Then: terminal ownership permits the bound receipt and local gate to complete.
+    assert (result["ok"], result["status"]) == (True, "complete")
+    assert recoveries == [run_dir]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("session_authority", "live"), ("terminal_harvested", False),
+        ("task_outcome", "success"), ("browser_observer", None),
+    ],
+)
+def test_unsettled_implementation_does_not_consume_local_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    value: str | bool | None,
+) -> None:
+    # Given: one required terminal settlement signal is absent.
+    module, manifest, mission = prepare_workflow(tmp_path, monkeypatch)
+    config = module.load_manifest(manifest)
+    receipt = write_legacy_terminal_receipt(module, tmp_path, mission)
+    write_attention_implementation_state(module, config, mission, receipt, tmp_path)
+    terminal_result = {
+        "session_authority": "terminal",
+        "terminal_harvested": True,
+        "transport_status": "complete",
+        "task_outcome": "blocked",
+        "browser_observer": {"status": "process-exited"},
+    }
+    terminal_result[field] = value
+
+    def unsettled_recovery(*_args, **_kwargs):
+        return {"ok": False, "status": "attention_required", "result": terminal_result}
+
+    def reject_side_effect(*_args, **_kwargs):
+        raise AssertionError("unsettled evidence must not advance the workflow")
+
+    # When: the workflow attempts exact recovery.
+    result = module.run_workflow(
+        manifest,
+        oracle_execute=reject_side_effect,
+        oracle_recover=unsettled_recovery,
+        local_gate_runner=reject_side_effect,
+    )
+
+    # Then: the existing attention owner remains bound and the receipt is untouched.
+    assert (result["ok"], result["status"]) == (False, "attention_required")

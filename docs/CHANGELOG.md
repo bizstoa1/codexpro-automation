@@ -1,5 +1,16 @@
 # 기술 변경 기록
 
+## 1.14.13 - terminal blocked implementation receipt 정산
+
+- comprehensive implementation transport가 exact terminal/harvested 상태에서
+  `task_outcome=blocked`로 종료되어도, 이미 존재하는 hash-bound local stage receipt를
+  같은 workflow에서 소비할 수 있습니다.
+- 이 전이는 implementation stage, regular non-symlink receipt, terminal authority,
+  completed transport, harvested terminal, blocked task outcome, process-exited observer가
+  모두 일치할 때만 허용합니다. 하나라도 다르면 기존 owner를 유지하고 fail-closed합니다.
+- receipt 검증은 기존 workflow/stage/attempt/input/output/next-mission SHA 계약을 그대로
+  사용하며 새 Oracle submission이나 replacement workflow를 만들지 않습니다.
+
 ## 1.14.12 - legacy comprehensive terminal receipt 재개
 
 - 과거 comprehensive runtime이 final-web-gate 이후 deterministic local gate를

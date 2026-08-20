@@ -1440,6 +1440,39 @@ def _run_workflow_locked(
                 "run_dir": stored.get("oracle_run_dir"), "recovered": True, "recovery_status": recovered.get("status"),
             })
             if not recovered.get("ok"):
+                terminal_result = recovered.get("result")
+                terminal_observer = (
+                    terminal_result.get("browser_observer")
+                    if isinstance(terminal_result, dict)
+                    else None
+                )
+                terminal_receipt_ready = (
+                    stored_stage == "implementation"
+                    and persisted_receipt.is_file()
+                    and not persisted_receipt.is_symlink()
+                    and recovered.get("status") == "attention_required"
+                    and isinstance(terminal_result, dict)
+                    and terminal_result.get("session_authority") == "terminal"
+                    and terminal_result.get("terminal_harvested") is True
+                    and terminal_result.get("transport_status") == "complete"
+                    and terminal_result.get("task_outcome") == "blocked"
+                    and isinstance(terminal_observer, dict)
+                    and terminal_observer.get("status") == "process-exited"
+                )
+                if terminal_receipt_ready:
+                    awaiting = {
+                        **stored, "status": "awaiting_receipt", "records": records,
+                        "recovery": {
+                            "status": "terminal-blocked-local-receipt",
+                            "run_id": stored.get("oracle_run_id") or stored.get("current_attempt_id"),
+                            "run_dir": stored.get("oracle_run_dir"),
+                        },
+                    }
+                    _write_workflow_state(state_path, config, awaiting)
+                    return _run_workflow_locked(
+                        manifest_path, oracle_execute=oracle_execute, oracle_recover=oracle_recover,
+                        multi_execute=multi_execute, local_gate_runner=local_gate_runner,
+                    )
                 blocked = {
                     **stored,
                     "status": "running" if recovered.get("status") == "session_live" else "attention_required",
