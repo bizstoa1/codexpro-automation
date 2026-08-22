@@ -326,6 +326,37 @@ def test_recursive_reads_reject_scopes_that_contain_subject_denies(tmp_path: Pat
     assert results[2] == {"ok": True}
 
 
+def test_open_context_filter_returns_only_exact_root_readable_paths(tmp_path: Path) -> None:
+    lease_module = load_lease()
+    project = tmp_path / "project"
+    state = tmp_path / "state"
+    global_agents = tmp_path / "host-agent-dir" / "AGENTS.md"
+    project.mkdir()
+    global_agents.parent.mkdir()
+    (project / "AGENTS.md").write_text("PROJECT_CONTEXT_MARKER\n", encoding="utf-8")
+    global_agents.write_text("HOST_GLOBAL_CONTEXT_MARKER\n", encoding="utf-8")
+    lease = lease_module.acquire_lease(capability(project, "read-only"), state, ["solver"])
+
+    results = run_guard(
+        state,
+        project,
+        lease.tokens["solver"],
+        [
+            {"kind": "open", "workspaceId": "ws-read"},
+            {
+                "kind": "filterReadable",
+                "workspaceId": "ws-read",
+                "paths": [str(global_agents.resolve()), str((project / "AGENTS.md").resolve())],
+            },
+        ],
+    )
+
+    assert results[1] == {
+        "ok": True,
+        "paths": [str((project / "AGENTS.md").resolve())],
+    }
+
+
 def test_capability_review_is_forbidden_and_control_files_remain_immutable(
     tmp_path: Path,
 ) -> None:

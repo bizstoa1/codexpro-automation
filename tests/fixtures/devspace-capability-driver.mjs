@@ -31,6 +31,9 @@ for (const action of actions) {
     } else if (action.kind === "recursiveRead") {
       await guard.authorizeRecursiveRead(action.workspaceId, action.path);
       results.push({ ok: true });
+    } else if (action.kind === "filterReadable") {
+      const paths = await guard.filterReadable(action.workspaceId, action.paths, (value) => value);
+      results.push({ ok: true, paths });
     } else if (action.kind === "review") {
       await guard.authorizeReview(action.workspaceId);
       results.push({ ok: true });

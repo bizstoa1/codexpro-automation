@@ -19,7 +19,7 @@ PATCHES = {
         "patch": "server-capability.patch",
         "pristine": "c49c1c607b42e040cdf0b15d5a4a93cfef9ddb8147d492a3cfa2a8c3889dab24",
         "legacy": ["d5d9b08c482b282f3390f415d69d460f4ee844046962a4013f11612cbb6b52e0"],
-        "patched": "f95d22ac0ec7b5ee9f7be84ce4bfba08f039650bac0c97dc0071a9b1d936e80c",
+        "patched": "5b2df0ebe9e17daf19a337b3eb8c0a0e604d1d5524f3e56ca7110c8b8bdaa355",
     },
     "dist/workspaces.js": {
         "patch": "workspaces.patch",
@@ -30,7 +30,7 @@ PATCHES = {
 COPIES = {
     "dist/capability-guard.js": {
         "source": "capability-guard.mjs",
-        "sha256": "3eeee605645b5950ea582dbc92479a7eea4a06555bccd8ad0b76df985a14971d",
+        "sha256": "8c860a5f0ec9c8713a1b6bf39132c31763ec4623357790685fabc658fcf05b98",
     },
 }
 

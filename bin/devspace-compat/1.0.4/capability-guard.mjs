@@ -271,6 +271,20 @@ function roots(authorization, key) {
   return [...values, ...subjectRoots(authorization, key)].map((item) => resolve(item));
 }
 
+async function isReadable(authorization, input) {
+  let target;
+  try {
+    target = await safeReadTarget(authorization.root, input);
+  } catch (error) {
+    if (error instanceof CapabilityGuardError && error.code === "CAPABILITY_READ_FORBIDDEN") return false;
+    throw error;
+  }
+  const denied = roots(authorization, "read_deny_roots");
+  if (denied.some((item) => inside(item, target))) return false;
+  const allowed = roots(authorization, "read_roots");
+  return allowed.some((item) => inside(item, target));
+}
+
 export function createCapabilityGuard({ stateRoot }) {
   const state = resolve(stateRoot);
   const bindings = new Map();
@@ -316,11 +330,21 @@ export function createCapabilityGuard({ stateRoot }) {
 
     async authorizeRead(workspaceId, input) {
       const authorization = await current(workspaceId);
-      const target = await safeReadTarget(authorization.root, input);
-      const denied = roots(authorization, "read_deny_roots");
-      if (denied.some((item) => inside(item, target))) fail("CAPABILITY_READ_FORBIDDEN", "read path is denied");
-      const allowed = roots(authorization, "read_roots");
-      if (!allowed.some((item) => inside(item, target))) fail("CAPABILITY_READ_FORBIDDEN", "read path is outside scope");
+      if (!(await isReadable(authorization, input))) {
+        fail("CAPABILITY_READ_FORBIDDEN", "read path is outside scope or denied");
+      }
+    },
+
+    async filterReadable(workspaceId, values, pathOf) {
+      if (!Array.isArray(values) || typeof pathOf !== "function") {
+        fail("CAPABILITY_LEASE_UNRESOLVED", "open context candidates are invalid");
+      }
+      const authorization = await current(workspaceId);
+      const visible = [];
+      for (const value of values) {
+        if (await isReadable(authorization, pathOf(value))) visible.push(value);
+      }
+      return visible;
     },
 
     async authorizeRecursiveRead(workspaceId, input) {

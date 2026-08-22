@@ -300,7 +300,7 @@ def test_server_patch_routes_every_devspace_tool_through_the_capability_guard() 
         "patch": "server-capability.patch",
         "pristine": "c49c1c607b42e040cdf0b15d5a4a93cfef9ddb8147d492a3cfa2a8c3889dab24",
         "legacy": ["d5d9b08c482b282f3390f415d69d460f4ee844046962a4013f11612cbb6b52e0"],
-        "patched": "f95d22ac0ec7b5ee9f7be84ce4bfba08f039650bac0c97dc0071a9b1d936e80c",
+        "patched": "5b2df0ebe9e17daf19a337b3eb8c0a0e604d1d5524f3e56ca7110c8b8bdaa355",
     }
     assert "const readPath = workspaces.resolveReadPath(workspace, input.path);" in patch
     assert "isDirectory = (await stat(readPath.absolutePath)).isDirectory();" in patch
@@ -311,6 +311,10 @@ def test_server_patch_routes_every_devspace_tool_through_the_capability_guard() 
     assert "await capabilityGuard.authorizeWrite" in patch
     assert "await capabilityGuard.authorizePatch" in patch
     assert "await capabilityGuard.authorizeCommand" in patch
+    assert "await capabilityGuard.filterReadable" in patch
+    assert "const visibleAgentProviders = [];" in patch
+    assert "const visibleAgents = [];" in patch
+    assert "const capabilitySkillDiagnostics = [];" in patch
     assert "-            void reviewCheckpoints.initializeWorkspace" in patch
     assert 'from "./capability-guard.js"' in patch
 

@@ -80,15 +80,77 @@ index 01e87e2..4341004 100644
 +            capabilityToken,
 +        });
          const { workspace, agentsFiles, availableAgentsFiles } = await workspaces.openWorkspace({ path, mode, baseRef });
-@@ -555,7 +569,2 @@ function createMcpServer(config, workspaces, reviewCheckpoints, processSessions,
+@@ -555,30 +569,33 @@ function createMcpServer(config, workspaces, reviewCheckpoints, processSessions,
 -        if (config.widgets === "changes") {
 -            void reviewCheckpoints.initializeWorkspace({
 -                workspaceId: workspace.id,
 -                root: workspace.root,
 -            });
 -        }
+-        const visibleSkills = workspace.skills
 +        capabilityGuard.bind(workspace.id, authorization);
-         const visibleSkills = workspace.skills
++        const capabilityAgentsFiles = await capabilityGuard.filterReadable(
++            workspace.id,
++            agentsFiles,
++            (file) => file.path,
++        );
++        const capabilityAvailableAgentsFiles = await capabilityGuard.filterReadable(
++            workspace.id,
++            availableAgentsFiles,
++            (file) => file.path,
++        );
++        const capabilitySkills = await capabilityGuard.filterReadable(
++            workspace.id,
++            workspace.skills,
++            (skill) => skill.filePath,
++        );
++        const visibleSkills = capabilitySkills
+             .filter((skill) => !skill.disableModelInvocation)
+             .map((skill) => ({
+             name: skill.name,
+             description: skill.description,
+             path: formatPathForPrompt(skill.filePath),
+         }));
+-        const visibleAgentProviders = config.subagents ? localAgentProviders : [];
+-        const visibleAgents = workspace.agentProfiles.map((profile) => {
+-            const summary = summarizeLocalAgentProfile(profile);
+-            const availability = visibleAgentProviders.find((provider) => provider.name === summary.provider);
+-            return {
+-                ...summary,
+-                providerAvailable: availability?.available,
+-                providerUnavailableReason: availability?.reason,
+-            };
+-        });
+-        const loadedAgentsFiles = agentsFiles.map((file) => ({
++        const visibleAgentProviders = [];
++        const visibleAgents = [];
++        const capabilitySkillDiagnostics = [];
++        const loadedAgentsFiles = capabilityAgentsFiles.map((file) => ({
+             path: formatAgentsPath(file.path, workspace.root),
+             content: file.content,
+         }));
+-        const availableAgentsFileOutputs = availableAgentsFiles.map((file) => ({
++        const availableAgentsFileOutputs = capabilityAvailableAgentsFiles.map((file) => ({
+             path: formatAgentsPath(file.path, workspace.root),
+         }));
+@@ -635,7 +652,7 @@ function createMcpServer(config, workspaces, reviewCheckpoints, processSessions,
+                         skills: visibleSkills.length,
+                         agentProviders: visibleAgentProviders.length,
+                         agents: visibleAgents.length,
+-                        skillDiagnostics: workspace.skillDiagnostics.length,
++                        skillDiagnostics: capabilitySkillDiagnostics.length,
+                     },
+                 },
+             },
+@@ -650,7 +667,7 @@ function createMcpServer(config, workspaces, reviewCheckpoints, processSessions,
+                 skills: visibleSkills,
+                 agentProviders: visibleAgentProviders,
+                 agents: visibleAgents,
+-                skillDiagnostics: workspace.skillDiagnostics,
++                skillDiagnostics: capabilitySkillDiagnostics,
+                 instruction,
+             },
+         };
 @@ -693,13 +702,26 @@ function createMcpServer(config, workspaces, reviewCheckpoints, processSessions,
          annotations: { readOnlyHint: true },
      }, async ({ workspaceId, ...input }) => {
