@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ventianima-lab.github.io/codex-web-gpt-automation/contracts/project-capability-lease-v1.schema.json",
+  "title": "Project capability lease v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "lease_id", "capability_id", "capability_path", "capability_sha256", "project_root", "owner", "state", "acquired_at", "subjects", "terminal_harvested", "postflight", "git_baseline"],
+  "properties": {
+    "schema": {"const": "codex.chatgpt.project-capability-lease/v1"},
+    "lease_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "capability_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "capability_path": {"type": "string", "minLength": 1},
+    "capability_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "project_root": {"type": "string", "minLength": 1},
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actor", "access"],
+      "properties": {"actor": {"enum": ["oracle", "pro", "web-multi"]}, "access": {"enum": ["read-only", "control-write", "bounded-write"]}}
+    },
+    "state": {"enum": ["active", "quarantined", "released", "aborted_pre_submit"]},
+    "acquired_at": {"type": "string", "format": "date-time"},
+    "subjects": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 26,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["subject_id", "token_sha256"],
+        "properties": {"subject_id": {"type": "string", "minLength": 1}, "token_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+      }
+    },
+    "terminal_harvested": {"type": "boolean"},
+    "postflight": {"enum": ["pending", "failed", "passed", "not_required"]},
+    "git_baseline": {"type": ["object", "null"]},
+    "released_at": {"type": "string", "format": "date-time"},
+    "abort_reason": {"type": "string", "minLength": 1}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"state": {"const": "active"}}},
+      "then": {
+        "properties": {"terminal_harvested": {"const": false}, "postflight": {"const": "pending"}},
+        "not": {"anyOf": [{"required": ["released_at"]}, {"required": ["abort_reason"]}]}
+      }
+    },
+    {
+      "if": {"properties": {"state": {"const": "quarantined"}}},
+      "then": {
+        "properties": {"terminal_harvested": {"const": true}, "postflight": {"const": "failed"}},
+        "not": {"anyOf": [{"required": ["released_at"]}, {"required": ["abort_reason"]}]}
+      }
+    },
+    {
+      "if": {"properties": {"state": {"const": "released"}}},
+      "then": {
+        "required": ["released_at"],
+        "properties": {"terminal_harvested": {"const": true}, "postflight": {"const": "passed"}},
+        "not": {"required": ["abort_reason"]}
+      }
+    },
+    {
+      "if": {"properties": {"state": {"const": "aborted_pre_submit"}}},
+      "then": {
+        "required": ["released_at", "abort_reason"],
+        "properties": {"terminal_harvested": {"const": false}, "postflight": {"const": "not_required"}}
+      }
+    }
+  ]
+}

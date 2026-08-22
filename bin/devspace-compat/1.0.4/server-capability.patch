@@ -1,0 +1,216 @@
+diff --git a/dist/server.js b/dist/server.js
+index 01e87e2..4341004 100644
+--- a/dist/server.js
++++ b/dist/server.js
+@@ -1,6 +1,8 @@
+ import { randomUUID } from "node:crypto";
+ import { readFileSync } from "node:fs";
+-import { access, realpath } from "node:fs/promises";
++import { access, realpath, stat } from "node:fs/promises";
++import { homedir } from "node:os";
++import { join } from "node:path";
+ import { fileURLToPath } from "node:url";
+ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+ import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
+@@ -12,7 +14,8 @@ import { checkResourceAllowed, resourceUrlFromServerUrl } from "@modelcontextpro
+ import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE, } from "@modelcontextprotocol/ext-apps/server";
+ import express from "express";
+ import * as z from "zod/v4";
+-import { applyPatch } from "./apply-patch.js";
++import { applyPatch, parsePatch } from "./apply-patch.js";
++import { createCapabilityGuard } from "./capability-guard.js";
+ import { loadConfig } from "./config.js";
+ import { logEvent, requestIp, requestPath, commandPreview, sessionIdPrefix, } from "./logger.js";
+ import { editFileTool, findFilesTool, grepFilesTool, listDirectoryTool, readFileTool, runShellTool, writeFileTool, } from "./pi-tools.js";
+@@ -354,7 +357,7 @@ function processToolResponse(tool, workspaceId, snapshot, summary) {
+         },
+     };
+ }
+-function registerCodexProcessTools(server, config, workspaces, processSessions) {
++function registerCodexProcessTools(server, config, workspaces, processSessions, capabilityGuard) {
+     registerAppTool(server, "exec_command", {
+         title: "Execute command",
+         description: "Run a command inside an open workspace. Returns its result when it exits during the yield window, otherwise returns a sessionId for write_stdin. Use this for file inspection, tests, builds, package scripts, and long-running processes. Call open_workspace first and pass workspaceId.",
+@@ -391,6 +394,7 @@ function registerCodexProcessTools(server, config, workspaces, processSessions)
+         annotations: SHELL_TOOL_ANNOTATIONS,
+     }, async ({ workspaceId, cmd, tty, columns, rows, workingDirectory, yieldTimeMs, maxOutputTokens }) => {
+         const startedAt = performance.now();
++        await capabilityGuard.authorizeCommand(workspaceId, cmd);
+         const workspace = workspaces.getWorkspace(workspaceId);
+         const cwd = workspaces.resolveWorkingDirectory(workspace, workingDirectory);
+         const snapshot = await processSessions.start({
+@@ -450,6 +454,7 @@ function registerCodexProcessTools(server, config, workspaces, processSessions)
+         annotations: SHELL_TOOL_ANNOTATIONS,
+     }, async ({ workspaceId, sessionId, chars, columns, rows, yieldTimeMs, maxOutputTokens }) => {
+         const startedAt = performance.now();
++        await capabilityGuard.authorizeCommand(workspaceId, chars ?? "");
+         workspaces.getWorkspace(workspaceId);
+         const snapshot = await processSessions.write({
+             workspaceId,
+@@ -475,7 +480,7 @@ function registerCodexProcessTools(server, config, workspaces, processSessions)
+         });
+     });
+ }
+-function createMcpServer(config, workspaces, reviewCheckpoints, processSessions, localAgentProviders) {
++function createMcpServer(config, workspaces, reviewCheckpoints, processSessions, localAgentProviders, capabilityGuard) {
+     const server = new McpServer({
+         name: "devspace",
+         title: "DevSpace",
+@@ -523,6 +528,10 @@ function createMcpServer(config, workspaces, reviewCheckpoints, processSessions,
+                 .string()
+                 .optional()
+                 .describe("Git ref to base a worktree on. Only used with mode=\"worktree\". Defaults to HEAD."),
++            capabilityToken: z
++                .string()
++                .min(1)
++                .describe("Opaque mission capability token supplied by the Oracle host. Never reuse it across projects or sessions."),
+         },
+         outputSchema: {
+             workspaceId: z.string(),
+@@ -549,6 +558,11 @@ function createMcpServer(config, workspaces, reviewCheckpoints, processSessions,
+         },
+         ...toolWidgetDescriptorMeta(config, "workspace"),
+         annotations: { readOnlyHint: true },
+-    }, async ({ path, mode, baseRef }) => {
++    }, async ({ path, mode, baseRef, capabilityToken }) => {
+         const startedAt = performance.now();
++        const authorization = await capabilityGuard.authorizeOpen({
++            path,
++            mode: mode ?? "checkout",
++            capabilityToken,
++        });
+         const { workspace, agentsFiles, availableAgentsFiles } = await workspaces.openWorkspace({ path, mode, baseRef });
+@@ -555,7 +569,2 @@ function createMcpServer(config, workspaces, reviewCheckpoints, processSessions,
+-        if (config.widgets === "changes") {
+-            void reviewCheckpoints.initializeWorkspace({
+-                workspaceId: workspace.id,
+-                root: workspace.root,
+-            });
+-        }
++        capabilityGuard.bind(workspace.id, authorization);
+         const visibleSkills = workspace.skills
+@@ -693,13 +702,26 @@ function createMcpServer(config, workspaces, reviewCheckpoints, processSessions,
+         annotations: { readOnlyHint: true },
+     }, async ({ workspaceId, ...input }) => {
+         const startedAt = performance.now();
++        await capabilityGuard.authorizeRead(workspaceId, input.path);
+         const workspace = workspaces.getWorkspace(workspaceId);
+         const readPath = workspaces.resolveReadPath(workspace, input.path);
+-        const response = await readFileTool({ ...input, path: readPath.absolutePath }, {
+-            cwd: workspace.root,
+-            root: workspace.root,
+-            readRoots: readPath.readRoots,
+-        });
++        let isDirectory = false;
++        try {
++            isDirectory = (await stat(readPath.absolutePath)).isDirectory();
++        }
++        catch { }
++        const response = isDirectory
++            ? await listDirectoryTool({ path: readPath.absolutePath }, {
++                cwd: workspace.root,
++                root: workspace.root,
++            })
++            : await readFileTool({ ...input, path: readPath.absolutePath }, {
++                cwd: workspace.root,
++                root: workspace.root,
++                readRoots: readPath.readRoots,
++            });
++        if (!response.isError)
++            await capabilityGuard.attestRead(workspaceId, input.path);
+         if (response.isError) {
+             logFailedToolResponse(config, {
+                 tool: toolNames.read,
+@@ -755,6 +775,7 @@ function createMcpServer(config, workspaces, reviewCheckpoints, processSessions,
+             annotations: WRITE_TOOL_ANNOTATIONS,
+         }, async ({ workspaceId, ...input }) => {
+             const startedAt = performance.now();
++            await capabilityGuard.authorizeWrite(workspaceId, input.path);
+             const workspace = workspaces.getWorkspace(workspaceId);
+             workspaces.resolvePath(workspace, input.path);
+             const response = await writeFileTool(input, {
+@@ -828,6 +849,7 @@ function createMcpServer(config, workspaces, reviewCheckpoints, processSessions,
+             annotations: EDIT_TOOL_ANNOTATIONS,
+         }, async ({ workspaceId, ...input }) => {
+             const startedAt = performance.now();
++            await capabilityGuard.authorizeWrite(workspaceId, input.path);
+             const workspace = workspaces.getWorkspace(workspaceId);
+             workspaces.resolvePath(workspace, input.path);
+             const response = await editFileTool(input, {
+@@ -902,6 +924,7 @@ function createMcpServer(config, workspaces, reviewCheckpoints, processSessions,
+             annotations: EDIT_TOOL_ANNOTATIONS,
+         }, async ({ workspaceId, patch }) => {
+             const startedAt = performance.now();
++            await capabilityGuard.authorizePatch(workspaceId, parsePatch(patch));
+             const workspace = workspaces.getWorkspace(workspaceId);
+             const applied = await applyPatch(workspace.root, patch);
+             const paths = applied.files.map((file) => file.path).join(", ");
+@@ -954,6 +977,7 @@ function createMcpServer(config, workspaces, reviewCheckpoints, processSessions,
+             annotations: { readOnlyHint: true },
+         }, async ({ workspaceId }) => {
+             const startedAt = performance.now();
++            await capabilityGuard.authorizeReview(workspaceId);
+             const workspace = workspaces.getWorkspace(workspaceId);
+             const review = await reviewCheckpoints.reviewChanges({
+                 workspaceId,
+@@ -1007,6 +1031,7 @@ function createMcpServer(config, workspaces, reviewCheckpoints, processSessions,
+             annotations: { readOnlyHint: true },
+         }, async ({ workspaceId, ...input }) => {
+             const startedAt = performance.now();
++            await capabilityGuard.authorizeRecursiveRead(workspaceId, input.path ?? ".");
+             const workspace = workspaces.getWorkspace(workspaceId);
+             if (input.path)
+                 workspaces.resolvePath(workspace, input.path);
+@@ -1068,6 +1093,7 @@ function createMcpServer(config, workspaces, reviewCheckpoints, processSessions,
+             annotations: { readOnlyHint: true },
+         }, async ({ workspaceId, ...input }) => {
+             const startedAt = performance.now();
++            await capabilityGuard.authorizeRecursiveRead(workspaceId, input.path ?? ".");
+             const workspace = workspaces.getWorkspace(workspaceId);
+             if (input.path)
+                 workspaces.resolvePath(workspace, input.path);
+@@ -1127,6 +1153,7 @@ function createMcpServer(config, workspaces, reviewCheckpoints, processSessions,
+             annotations: { readOnlyHint: true },
+         }, async ({ workspaceId, ...input }) => {
+             const startedAt = performance.now();
++            await capabilityGuard.authorizeRead(workspaceId, input.path);
+             const workspace = workspaces.getWorkspace(workspaceId);
+             workspaces.resolvePath(workspace, input.path);
+             const response = await listDirectoryTool(input, {
+@@ -1195,6 +1222,7 @@ function createMcpServer(config, workspaces, reviewCheckpoints, processSessions,
+             annotations: SHELL_TOOL_ANNOTATIONS,
+         }, async ({ workspaceId, workingDirectory, ...input }) => {
+             const startedAt = performance.now();
++            await capabilityGuard.authorizeCommand(workspaceId, input.command);
+             const workspace = workspaces.getWorkspace(workspaceId);
+             const cwd = workspaces.resolveWorkingDirectory(workspace, workingDirectory);
+             const response = await runShellTool(input, {
+@@ -1243,7 +1271,7 @@ function createMcpServer(config, workspaces, reviewCheckpoints, processSessions,
+         });
+     }
+     if (config.toolMode === "codex") {
+-        registerCodexProcessTools(server, config, workspaces, processSessions);
++        registerCodexProcessTools(server, config, workspaces, processSessions, capabilityGuard);
+     }
+     return server;
+ }
+@@ -1255,6 +1283,10 @@ export function createServer(config = loadConfig()) {
+         host: config.host,
+         ...(allowedHosts ? { allowedHosts } : {}),
+     });
++    const capabilityGuard = createCapabilityGuard({
++        stateRoot: process.env.CODEX_CAPABILITY_STATE_ROOT?.trim() ||
++            join(homedir(), ".codex", "state", "chatgpt-capabilities"),
++    });
+     const transports = new Map();
+     const mcpUrl = new URL("/mcp", config.publicBaseUrl);
+     const resourceServerUrl = resourceUrlFromServerUrl(mcpUrl);
+@@ -1379,7 +1411,7 @@ export function createServer(config = loadConfig()) {
+                         });
+                     }
+                 };
+-                const server = createMcpServer(config, workspaces, reviewCheckpoints, processSessions, localAgentProviders);
++                const server = createMcpServer(config, workspaces, reviewCheckpoints, processSessions, localAgentProviders, capabilityGuard);
+                 await server.connect(transport);
+             }
+             else {

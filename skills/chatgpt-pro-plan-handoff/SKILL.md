@@ -1,6 +1,6 @@
 ---
 name: chatgpt-pro-plan-handoff
-description: Run staged work with explicitly authorized read/write DevSpace Pro and Oracle-based regular comprehensive stages; explicit Pro attachments remain available for bounded evidence.
+description: Run staged work with explicitly authorized bounded-write DevSpace Pro and capability-gated regular comprehensive stages; explicit Pro attachments remain available for bounded evidence.
 ---
 
 # Pro and comprehensive handoff
@@ -8,9 +8,10 @@ description: Run staged work with explicitly authorized read/write DevSpace Pro 
 Pro uses Oracle and is quota-limited. A standard comprehensive workflow may
 select it only when its manifest has `allow_pro: true` after an explicit user
 request; regular work remains at the highest supported non-Pro reasoning tier.
-The qualified `GPT-5.6 Sol` Pro stage uses read/write DevSpace at the exact
-project root and may perform mission-authorized edits and commands under the
-repository safety policy. `pro-attachment` remains an explicit attachment-only
+The qualified `GPT-5.6 Sol` Pro stage uses bounded-write DevSpace at the exact
+project root and may perform only authority-listed edits on a clean
+non-protected branch. Capability v1 disables shell, Git, and external actions.
+`pro-attachment` remains an explicit attachment-only
 contract for immutable/external evidence or DevSpace-unreadable artifacts, not
 an automatic fallback. CodexPro and all agbrowse creation are frozen; legacy
 files remain only for exact persisted-run recovery.
@@ -56,7 +57,7 @@ bound `codex.chatgpt.oracle-stage-result/v1` receipt. The host validates
 workflow/stage/attempt/input hashes, UTF-8 paths, output hashes, PASS status,
 and the transition; it never rewrites the semantic prompt.
 
-An explicitly authorized Pro stage runs through Oracle with read/write DevSpace.
+An explicitly authorized Pro stage runs through Oracle with capability-gated bounded write.
 It returns one strict identity-bound JSON envelope containing its output and
 next-mission text. The host mechanically preserves those strings as UTF-8 files
 and computes the standard receipt; it does not summarize or rewrite them.
@@ -67,7 +68,7 @@ closed `[PRO_ATTACHMENT_CONTRACT]` block. The JSON body uses schema
 absolute project-root-contained regular non-symlink paths with optional
 SHA-256 values. The host attaches only the mission and these declared files; it
 never discovers ZIPs from prose. An authorized Pro mission without the block
-uses the read/write DevSpace route. Regular non-Pro DevSpace stages reject this block.
+uses the bounded-write DevSpace route. Regular non-Pro DevSpace stages reject this block.
 
 Plan receipts should use `PLAN_READY`. For compatibility, `completed` is
 accepted only when the plan receipt is otherwise a fully ready, blocker-free,
@@ -108,7 +109,7 @@ Transport or runner recovery keeps the same workflow and stage identity. It
 must never create a `workflow-retryN` replacement. The revision budget and
 remaining critical finding set are persisted in the workflow state for
 operator visibility. Only final web PASS plus a zero-exit local gate can
-complete. An explicitly authorized Pro selection launches the qualified read/write DevSpace stage unless
+complete. An explicitly authorized Pro selection launches the qualified bounded-write DevSpace stage unless
 its plan explicitly declares `pro-attachment`, then waits for a bound receipt;
 it is never downgraded. Missing receipt/output,
 crash, or ambiguity returns attention-required without a replacement submit.

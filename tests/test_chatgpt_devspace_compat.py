@@ -31,7 +31,7 @@ def test_native_runtime_probe_loads_exact_binding_and_fails_actionably(tmp_path:
     package = tmp_path / "devspace"
     package.mkdir()
     (package / "package.json").write_text(json.dumps({"version": "1.0.4"}), encoding="utf-8")
-    calls: list[tuple[list[str], dict]] = []
+    calls = []
 
     def passing(argv, **kwargs):
         calls.append((list(argv), dict(kwargs)))
@@ -72,14 +72,15 @@ def test_exact_devspace_patch_is_hash_gated_idempotent_and_backed_up(
         "+after\n",
         encoding="utf-8",
     )
-    compat.PATCHES = {
+    setattr(compat, "PATCHES", {
         "sample.txt": {
             "patch": "sample.patch",
             "pristine": digest(b"before\n"),
             "patched": digest(b"after\n"),
         }
-    }
-    compat.patch_root = lambda: patches
+    })
+    setattr(compat, "COPIES", {})
+    setattr(compat, "patch_root", lambda: patches)
     monkeypatch.setenv("CODEX_DEVSPACE_COMPAT_STATE_ROOT", str(tmp_path / "state"))
     backup = tmp_path / "backup"
 
@@ -116,13 +117,14 @@ def test_restart_confirmation_rejects_old_or_foreign_listener(
     package.mkdir()
     (package / "package.json").write_text(json.dumps({"version": "1.0.4"}), encoding="utf-8")
     (package / "sample.txt").write_bytes(b"after\n")
-    compat.PATCHES = {
+    setattr(compat, "PATCHES", {
         "sample.txt": {
             "patch": "unused.patch",
             "pristine": digest(b"before\n"),
             "patched": digest(b"after\n"),
         }
-    }
+    })
+    setattr(compat, "COPIES", {})
     monkeypatch.setenv("CODEX_DEVSPACE_COMPAT_STATE_ROOT", str(tmp_path / "state"))
     marker = compat._write_restart_marker([package])
     marker_payload = json.loads(marker.read_text(encoding="utf-8"))
@@ -256,13 +258,14 @@ def test_unknown_devspace_version_or_file_hash_fails_closed(tmp_path: Path) -> N
 
     (package / "package.json").write_text(json.dumps({"version": "1.0.4"}), encoding="utf-8")
     (package / "sample.txt").write_bytes(b"unknown\n")
-    compat.PATCHES = {
+    setattr(compat, "PATCHES", {
         "sample.txt": {
             "patch": "sample.patch",
             "pristine": digest(b"before\n"),
             "patched": digest(b"after\n"),
         }
-    }
+    })
+    setattr(compat, "COPIES", {})
     with pytest.raises(compat.DevSpaceCompatError) as mismatch:
         compat.ensure_devspace_compatibility(package_root=package)
     assert mismatch.value.code == "DEVSPACE_FILE_HASH_MISMATCH"
@@ -284,26 +287,96 @@ def test_bounded_workspace_patch_skips_transient_trees_and_batches_discovery() -
     assert "await Promise.all(batch.map" in patch
 
 
-def test_directory_read_patch_routes_directories_without_widening_read_access() -> None:
+def test_server_patch_routes_every_devspace_tool_through_the_capability_guard() -> None:
     compat = load_compat()
     patch = (
         MODULE_PATH.parent
         / "devspace-compat"
         / compat.SUPPORTED_VERSION
-        / "directory-read.patch"
+        / "server-capability.patch"
     ).read_text(encoding="utf-8")
 
     assert compat.PATCHES["dist/server.js"] == {
-        "patch": "directory-read.patch",
+        "patch": "server-capability.patch",
         "pristine": "c49c1c607b42e040cdf0b15d5a4a93cfef9ddb8147d492a3cfa2a8c3889dab24",
-        "patched": "d5d9b08c482b282f3390f415d69d460f4ee844046962a4013f11612cbb6b52e0",
+        "legacy": ["d5d9b08c482b282f3390f415d69d460f4ee844046962a4013f11612cbb6b52e0"],
+        "patched": "f95d22ac0ec7b5ee9f7be84ce4bfba08f039650bac0c97dc0071a9b1d936e80c",
     }
     assert "const readPath = workspaces.resolveReadPath(workspace, input.path);" in patch
     assert "isDirectory = (await stat(readPath.absolutePath)).isDirectory();" in patch
-    assert "? await listDirectoryTool({ path: readPath.absolutePath }, {" in patch
-    assert "+                root: workspace.root," in patch
-    assert ": await readFileTool({ ...input, path: readPath.absolutePath }, {" in patch
-    assert "+                readRoots: readPath.readRoots," in patch
+    assert "await capabilityGuard.authorizeOpen" in patch
+    assert "await capabilityGuard.authorizeRead" in patch
+    assert "await capabilityGuard.authorizeRecursiveRead" in patch
+    assert "await capabilityGuard.authorizeReview" in patch
+    assert "await capabilityGuard.authorizeWrite" in patch
+    assert "await capabilityGuard.authorizePatch" in patch
+    assert "await capabilityGuard.authorizeCommand" in patch
+    assert "-            void reviewCheckpoints.initializeWorkspace" in patch
+    assert 'from "./capability-guard.js"' in patch
+
+
+def test_managed_copy_payload_hash_matches_declared_contract() -> None:
+    compat = load_compat()
+    sources = MODULE_PATH.parent / "devspace-compat" / compat.SUPPORTED_VERSION
+
+    for spec in compat.COPIES.values():
+        source = sources / spec["source"]
+        assert digest(source.read_bytes()) == spec["sha256"]
+
+
+def test_legacy_server_patch_migrates_only_from_a_verified_pristine_backup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    compat = load_compat()
+    package = tmp_path / "package"
+    package.mkdir()
+    (package / "package.json").write_text(json.dumps({"version": "1.0.4"}), encoding="utf-8")
+    target = package / "sample.txt"
+    target.write_bytes(b"legacy\n")
+    patches = tmp_path / "patches"
+    patches.mkdir()
+    (patches / "sample.patch").write_text(
+        "diff --git a/sample.txt b/sample.txt\n"
+        "--- a/sample.txt\n"
+        "+++ b/sample.txt\n"
+        "@@ -1 +1 @@\n"
+        "-before\n"
+        "+after\n",
+        encoding="utf-8",
+    )
+    (patches / "guard.mjs").write_bytes(b"guard\n")
+    setattr(compat, "PATCHES", {
+        "sample.txt": {
+            "patch": "sample.patch",
+            "pristine": digest(b"before\n"),
+            "legacy": [digest(b"legacy\n")],
+            "patched": digest(b"after\n"),
+        }
+    })
+    setattr(compat, "COPIES", {
+        "dist/guard.js": {
+            "source": "guard.mjs",
+            "sha256": digest(b"guard\n"),
+        }
+    })
+    setattr(compat, "patch_root", lambda: patches)
+    monkeypatch.setenv("CODEX_DEVSPACE_COMPAT_STATE_ROOT", str(tmp_path / "state"))
+    backup = tmp_path / "backup"
+    backup.mkdir()
+    (backup / "sample.txt").write_bytes(b"before\n")
+
+    report = compat.ensure_devspace_compatibility(package_root=package, backup_root=backup)
+
+    assert report["changed"] == ["sample.txt", "dist/guard.js"]
+    assert target.read_bytes() == b"after\n"
+    assert (package / "dist/guard.js").read_bytes() == b"guard\n"
+
+    target.write_bytes(b"legacy\n")
+    (backup / "sample.txt").write_bytes(b"wrong\n")
+    with pytest.raises(compat.DevSpaceCompatError) as unsafe:
+        compat.ensure_devspace_compatibility(package_root=package, backup_root=backup)
+    assert unsafe.value.code == "DEVSPACE_LEGACY_BACKUP_INVALID"
 
 
 def test_directory_read_patch_unknown_upstream_hash_fails_closed(tmp_path: Path) -> None:
@@ -314,7 +387,7 @@ def test_directory_read_patch_unknown_upstream_hash_fails_closed(tmp_path: Path)
     server = package / "dist" / "server.js"
     server.parent.mkdir()
     server.write_text("unknown upstream bytes\\n", encoding="utf-8")
-    compat.PATCHES = {"dist/server.js": compat.PATCHES["dist/server.js"]}
+    setattr(compat, "PATCHES", {"dist/server.js": compat.PATCHES["dist/server.js"]})
 
     with pytest.raises(compat.DevSpaceCompatError) as mismatch:
         compat.ensure_devspace_compatibility(package_root=package)

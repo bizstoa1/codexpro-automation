@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import os
 import subprocess
@@ -23,6 +24,18 @@ def load():
 
 
 def manifest(tmp_path: Path) -> Path:
+    if not (tmp_path / ".git").is_dir():
+        (tmp_path / "src").mkdir(exist_ok=True)
+        (tmp_path / "src/app.py").write_text("VALUE = 1\n", encoding="utf-8")
+        (tmp_path / ".gitignore").write_text(
+            "*.md\n*.json\nworkflow/\n",
+            encoding="utf-8",
+        )
+        subprocess.run(["git", "init", "-q", "-b", "codex/comprehensive-test", str(tmp_path)], check=True)
+        subprocess.run(["git", "-C", str(tmp_path), "config", "user.name", "Comprehensive Test"], check=True)
+        subprocess.run(["git", "-C", str(tmp_path), "config", "user.email", "comprehensive@example.test"], check=True)
+        subprocess.run(["git", "-C", str(tmp_path), "add", ".gitignore", "src/app.py"], check=True)
+        subprocess.run(["git", "-C", str(tmp_path), "commit", "-qm", "baseline"], check=True)
     state_root = (tmp_path.parent / f"{tmp_path.name}-host-state").resolve()
     profile_seed = (tmp_path.parent / f"{tmp_path.name}-oracle-profile-seed").resolve()
     profile_seed.mkdir(parents=True, exist_ok=True)
@@ -36,6 +49,47 @@ def manifest(tmp_path: Path) -> Path:
     }), encoding="utf-8")
     os.environ["CODEX_ORACLE_STATE_ROOT"] = str(state_root)
     os.environ["CODEX_ORACLE_HOST_POLICY"] = str(policy_path)
+    capability_state = state_root / "capabilities"
+    os.environ["CODEX_CAPABILITY_STATE_ROOT"] = str(capability_state)
+    profile = tmp_path / ".codex/project-capabilities.json"
+    profile.parent.mkdir(exist_ok=True)
+    profile.write_text(json.dumps({
+        "schema": "codex.chatgpt.project-capability-profile/v1",
+        "pro": {
+            "enabled": True,
+            "write_root_ceiling": ["src"],
+            "commands": "none",
+            "require_clean_git": True,
+            "require_nonprotected_branch": True,
+        },
+        "web_multi": {
+            "enabled": True,
+            "access": "read-only",
+            "min_lanes": 2,
+            "max_lanes": 25,
+            "max_concurrency": 5,
+            "all_lanes_required": True,
+            "merger_policy": "exactly-one",
+            "nesting": "forbidden",
+        },
+        "protected_branches": ["main", "master"],
+        "write_deny_paths": [".git", ".codex", ".ai-bridge", "AGENTS.md"],
+        "external_actions": "deny",
+    }), encoding="utf-8")
+    capability_state.mkdir(parents=True, exist_ok=True)
+    (capability_state / "host-policy.json").write_text(json.dumps({
+        "schema": "codex.chatgpt.capability-host-policy/v1",
+        "max_web_multi_concurrency": 5,
+        "external_actions": "deny",
+        "projects": [{
+            "project_root": str(tmp_path.resolve()),
+            "profile_path": str(profile.resolve()),
+            "profile_sha256": hashlib.sha256(profile.read_bytes()).hexdigest(),
+            "pro": True,
+            "oracle_read": True,
+            "web_multi": True,
+        }],
+    }), encoding="utf-8")
     mission = tmp_path / "initial.md"
     mission.write_text("Plan the work broadly.", encoding="utf-8")
     path = tmp_path / "workflow.json"
@@ -47,6 +101,7 @@ def manifest(tmp_path: Path) -> Path:
         "initial_mission_path": str(mission.resolve()),
         "app_name": "DevSpace",
         "model": "gpt-5.6",
+        "pro_write_paths": ["src"],
         "local_gate_command": ["python", "-c", "raise SystemExit(0)"],
     }), encoding="utf-8")
     return path
@@ -80,7 +135,7 @@ def test_ultra_economy_dry_run_starts_with_explicit_pro_design(tmp_path: Path, m
     module = load()
     seen: dict[str, object] = {}
 
-    def preview(oracle_manifest: Path, *, dry_run: bool):
+    def preview(oracle_manifest: Path, *, dry_run: bool, capability_token: str | None = None):
         seen.update(json.loads(oracle_manifest.read_text(encoding="utf-8")))
         mission = Path(str(seen["mission_path"])).read_text(encoding="utf-8")
         assert "stage=pro\n" in mission
@@ -128,7 +183,7 @@ def test_web_authored_relay_reaches_complete_without_host_semantic_rewrite(tmp_p
     order = ["plan", "review", "implementation", "final-web-gate"]
     seen = []
 
-    def fake_execute(path: Path, *, dry_run: bool):
+    def fake_execute(path: Path, *, dry_run: bool, capability_token: str | None = None):
         config = json.loads(path.read_text(encoding="utf-8"))
         assert config["model_strategy"] == "select"
         assert config["thinking_time"] == "extra-high"
@@ -196,7 +251,7 @@ def test_explicit_pro_stage_runs_writable_devspace_and_materializes_bound_receip
             "next_mission_sha256": module.sha(next_mission), "ready_for_next": True, "blocker": "",
         }), encoding="utf-8")
 
-    def fake_execute(path: Path, *, dry_run: bool):
+    def fake_execute(path: Path, *, dry_run: bool, capability_token: str | None = None):
         payload = json.loads(path.read_text(encoding="utf-8"))
         mission = Path(payload["mission_path"])
         text = mission.read_text(encoding="utf-8")
@@ -247,7 +302,7 @@ def test_standard_workflow_blocks_plan_selected_pro_without_explicit_opt_in(tmp_
     module = load()
     calls: list[str] = []
 
-    def fake_execute(path: Path, *, dry_run: bool):
+    def fake_execute(path: Path, *, dry_run: bool, capability_token: str | None = None):
         payload = json.loads(path.read_text(encoding="utf-8"))
         mission = Path(payload["mission_path"])
         text = mission.read_text(encoding="utf-8")
@@ -290,7 +345,15 @@ def test_pro_exact_recovery_materializes_output_without_resubmission(tmp_path: P
     source = tmp_path / "pro-source.md"
     source.write_text("Pro review request", encoding="utf-8")
     mission, receipt, input_sha = module._pro_stage_mission(config, "a" * 32, 1, source, attempt)
-    oracle_manifest = module._oracle_manifest(config, mission, mission.parent, attempt, stage="pro")
+    authority = module._pro_authority(config, mission, mission.parent)
+    oracle_manifest = module._oracle_manifest(
+        config,
+        mission,
+        mission.parent,
+        attempt,
+        stage="pro",
+        capability_authority_path=authority,
+    )
     run_dir = _oracle_running_state(module, oracle_manifest)
     state_path = module._state_path(config, "a" * 32)
     module._write(state_path, {
@@ -311,7 +374,7 @@ def test_pro_exact_recovery_materializes_output_without_resubmission(tmp_path: P
     }), encoding="utf-8")
     submissions = 0
 
-    def no_pro_resubmit(path: Path, *, dry_run: bool):
+    def no_pro_resubmit(path: Path, *, dry_run: bool, capability_token: str | None = None):
         nonlocal submissions
         submissions += 1
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -368,7 +431,7 @@ def test_missing_receipt_fails_closed_without_duplicate_stage(tmp_path: Path) ->
     module = load()
     calls = 0
 
-    def fake_execute(path: Path, *, dry_run: bool):
+    def fake_execute(path: Path, *, dry_run: bool, capability_token: str | None = None):
         nonlocal calls
         calls += 1
         return {"ok": True, "run_dir": str(tmp_path / "run")}
@@ -382,7 +445,7 @@ def test_missing_receipt_fails_closed_without_duplicate_stage(tmp_path: Path) ->
 def test_failing_receipt_cannot_complete(tmp_path: Path) -> None:
     module = load()
 
-    def fake_execute(path: Path, *, dry_run: bool):
+    def fake_execute(path: Path, *, dry_run: bool, capability_token: str | None = None):
         config = json.loads(path.read_text(encoding="utf-8"))
         mission = Path(config["mission_path"])
         text = mission.read_text(encoding="utf-8")
@@ -424,16 +487,21 @@ def test_web_multi_branch_is_bound_and_resumes_at_review(tmp_path: Path) -> None
     for path, body in ((lane_one, "one"), (lane_two, "two"), (merger, "merge")):
         path.write_text(body, encoding="utf-8")
     multi_manifest = tmp_path / "multi.json"
+    multi_receipt = tmp_path / "multi-output" / "next-stage.json"
     multi_manifest.write_text(json.dumps({
         "schema": module.MULTI.SCHEMA,
         "project_root": str(tmp_path),
         "output_dir": str(tmp_path / "multi-output"),
+        "max_concurrency": 2,
+        "completion_policy": "all-lanes",
+        "merger_policy": "exactly-one",
+        "nesting": "forbidden",
         "solvers": [
-            {"id": "one", "mission_path": str(lane_one)},
-            {"id": "two", "mission_path": str(lane_two)},
+            {"id": "one", "mission_path": str(lane_one), "access": "read-only"},
+            {"id": "two", "mission_path": str(lane_two), "access": "read-only"},
         ],
         "merger_mission_path": str(merger),
-        "next_stage_result_path": str(tmp_path / "multi-next-receipt.json"),
+        "next_stage_result_path": str(multi_receipt),
         "next_stage_binding": {"workflow_id": "a" * 32, "stage": "web-multi"},
     }), encoding="utf-8")
     review_mission = tmp_path / "review-after-multi.md"
@@ -462,7 +530,7 @@ def test_web_multi_branch_is_bound_and_resumes_at_review(tmp_path: Path) -> None
             "blocker": "",
         }), encoding="utf-8")
 
-    def fake_oracle(path: Path, *, dry_run: bool):
+    def fake_oracle(path: Path, *, dry_run: bool, capability_token: str | None = None):
         value = json.loads(path.read_text(encoding="utf-8"))
         mission = Path(value["mission_path"])
         stage = next(item for item in ("plan", "review", "implementation", "final-web-gate") if f"stage={item}\n" in mission.read_text(encoding="utf-8"))
@@ -483,7 +551,8 @@ def test_web_multi_branch_is_bound_and_resumes_at_review(tmp_path: Path) -> None
         assert stored["multi_execution_id"]
         assert stored["multi_manifest_sha256"] == module.sha(multi_manifest)
         assert Path(stored["multi_result_path"]).name == "result.json"
-        receipt = tmp_path / "multi-result.json"
+        receipt = multi_receipt
+        receipt.parent.mkdir(parents=True, exist_ok=True)
         output = tmp_path / "multi-output.md"
         output.write_text("merged", encoding="utf-8")
         receipt.write_text(json.dumps({
@@ -516,21 +585,33 @@ def test_web_multi_branch_is_bound_and_resumes_at_review(tmp_path: Path) -> None
 def test_dry_run_leaves_no_host_workflow_state_and_real_run_can_follow(tmp_path: Path) -> None:
     module = load()
     path = manifest(tmp_path)
+    config = module.load_manifest(path)
+    before = {
+        item.relative_to(tmp_path).as_posix(): item.read_bytes()
+        for item in tmp_path.rglob("*")
+        if item.is_file()
+    }
     previews = []
 
-    def fake_preview(oracle_manifest: Path, *, dry_run: bool):
+    def fake_preview(oracle_manifest: Path, *, dry_run: bool, capability_token: str | None = None):
         previews.append(dry_run)
         return {"ok": True, "status": "dry-run"}
 
     preview = module.run_workflow(path, dry_run=True, oracle_execute=fake_preview)
     assert preview["ok"] is True
     assert previews == [True]
-    config = module.load_manifest(path)
     assert not module._state_path(config, "a" * 32).exists()
+    assert not config["workflow_dir"].exists()
+    after = {
+        item.relative_to(tmp_path).as_posix(): item.read_bytes()
+        for item in tmp_path.rglob("*")
+        if item.is_file()
+    }
+    assert after == before
 
     calls = 0
 
-    def fake_real(oracle_manifest: Path, *, dry_run: bool):
+    def fake_real(oracle_manifest: Path, *, dry_run: bool, capability_token: str | None = None):
         nonlocal calls
         calls += 1
         return {"ok": True, "run_dir": str(tmp_path / "fake-run")}
@@ -538,6 +619,21 @@ def test_dry_run_leaves_no_host_workflow_state_and_real_run_can_follow(tmp_path:
     real = module.run_workflow(path, oracle_execute=fake_real)
     assert real["status"] == "awaiting_receipt"
     assert calls == 1
+
+
+@pytest.mark.parametrize("relative", [".git/refs/heads/comprehensive", ".codex/comprehensive"])
+def test_manifest_rejects_workflow_below_protected_control_tree(
+    tmp_path: Path,
+    relative: str,
+) -> None:
+    module = load()
+    path = manifest(tmp_path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload["workflow_dir"] = str((tmp_path / relative).resolve())
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(module.WorkflowError, match="non-control project subtree"):
+        module.load_manifest(path)
 
 
 def _oracle_running_state(module, oracle_manifest: Path) -> Path:
@@ -556,7 +652,7 @@ def test_running_oracle_stage_recovers_exact_run_without_resubmission(tmp_path: 
     submitted = 0
     recovered = []
 
-    def fake_execute(oracle_manifest: Path, *, dry_run: bool):
+    def fake_execute(oracle_manifest: Path, *, dry_run: bool, capability_token: str | None = None):
         nonlocal submitted
         submitted += 1
         return {"ok": False, "run_dir": str(_oracle_running_state(module, oracle_manifest))}
@@ -574,6 +670,7 @@ def test_running_oracle_stage_recovers_exact_run_without_resubmission(tmp_path: 
     assert submitted == 1
     assert [item[1:] for item in recovered] == [("live", False)]
     assert second["recovery"]["status"] == "recovered"
+    assert not list(Path(os.environ["CODEX_CAPABILITY_STATE_ROOT"]).rglob("active-lease.json"))
 
 
 def test_post_submit_watchdog_persists_same_attempt_and_only_exact_recovers(
@@ -583,7 +680,7 @@ def test_post_submit_watchdog_persists_same_attempt_and_only_exact_recovers(
     submissions: list[Path] = []
     recoveries: list[tuple[Path, str]] = []
 
-    def watchdog_execute(oracle_manifest: Path, *, dry_run: bool):
+    def watchdog_execute(oracle_manifest: Path, *, dry_run: bool, capability_token: str | None = None):
         run_dir = _oracle_running_state(module, oracle_manifest)
         submissions.append(run_dir)
         state_path = run_dir / "state.json"
@@ -637,7 +734,7 @@ def test_unambiguous_app_mention_pre_submit_failure_retries_once(tmp_path: Path)
     module = load()
     submitted = 0
 
-    def fake_execute(oracle_manifest: Path, *, dry_run: bool):
+    def fake_execute(oracle_manifest: Path, *, dry_run: bool, capability_token: str | None = None):
         nonlocal submitted
         submitted += 1
         run_dir = _oracle_running_state(module, oracle_manifest)
@@ -670,7 +767,7 @@ def test_launch_time_pre_submit_failures_also_retry_once(tmp_path: Path, marker:
     module = load()
     submitted = 0
 
-    def fake_execute(oracle_manifest: Path, *, dry_run: bool):
+    def fake_execute(oracle_manifest: Path, *, dry_run: bool, capability_token: str | None = None):
         nonlocal submitted
         submitted += 1
         run_dir = _oracle_running_state(module, oracle_manifest)
@@ -693,7 +790,7 @@ def test_version_resolution_prelaunch_failure_retries_same_stage_once_then_stops
     submissions = 0
     recoveries = 0
 
-    def fake_execute(oracle_manifest: Path, *, dry_run: bool):
+    def fake_execute(oracle_manifest: Path, *, dry_run: bool, capability_token: str | None = None):
         nonlocal submissions
         submissions += 1
         run_dir = _oracle_running_state(module, oracle_manifest)
@@ -791,7 +888,7 @@ def test_user_confirmed_settlement_submits_one_bound_replacement_then_never_a_se
     module = load()
     submissions: list[Path] = []
 
-    def fake_execute(oracle_manifest: Path, *, dry_run: bool):
+    def fake_execute(oracle_manifest: Path, *, dry_run: bool, capability_token: str | None = None):
         run_dir = _oracle_running_state(module, oracle_manifest)
         submissions.append(run_dir)
         state_path = run_dir / "state.json"
@@ -956,7 +1053,7 @@ def test_durable_output_prevents_pre_submit_retry_even_with_a_launch_marker(tmp_
     module = load()
     submitted = 0
 
-    def fake_execute(oracle_manifest: Path, *, dry_run: bool):
+    def fake_execute(oracle_manifest: Path, *, dry_run: bool, capability_token: str | None = None):
         nonlocal submitted
         submitted += 1
         run_dir = _oracle_running_state(module, oracle_manifest)
@@ -980,7 +1077,7 @@ def test_running_stage_does_not_trust_existing_receipt_before_terminal_authority
     next_mission = tmp_path / "review.md"
     next_mission.write_text("review", encoding="utf-8")
 
-    def fake_execute(oracle_manifest: Path, *, dry_run: bool):
+    def fake_execute(oracle_manifest: Path, *, dry_run: bool, capability_token: str | None = None):
         config = json.loads(oracle_manifest.read_text(encoding="utf-8"))
         mission = Path(config["mission_path"])
         submitted.append(mission)
@@ -1096,7 +1193,7 @@ def _review_receipt(
 
 def test_legacy_revise_never_creates_another_plan(tmp_path: Path) -> None:
     module = load()
-    config = {
+    config: dict[str, object] = {
         "project_root": tmp_path,
         "_review_policy": module._default_review_policy(),
     }
@@ -1121,8 +1218,10 @@ def test_legacy_revise_never_creates_another_plan(tmp_path: Path) -> None:
 
     assert all(value["_next_mission"] is None for value in values)
     assert all("cannot create a new plan" in value["_terminal_attention"] for value in values)
-    assert config["_review_policy"]["plan_revisions_used"] == 0
-    assert config["_review_policy"]["plan_revisions_remaining"] == 2
+    review_policy = config["_review_policy"]
+    assert isinstance(review_policy, dict)
+    assert review_policy["plan_revisions_used"] == 0
+    assert review_policy["plan_revisions_remaining"] == 2
 
 
 def test_review_mission_assigns_inline_plan_repair_and_exact_workspace_entry(tmp_path: Path) -> None:
@@ -1345,7 +1444,7 @@ def test_awaiting_receipt_rebind_advances_to_next_stage_without_replaying_plan(t
     review = tmp_path / "review.md"
     review.write_text("review", encoding="utf-8")
 
-    def fake_execute(oracle_manifest: Path, *, dry_run: bool):
+    def fake_execute(oracle_manifest: Path, *, dry_run: bool, capability_token: str | None = None):
         config = json.loads(oracle_manifest.read_text(encoding="utf-8"))
         mission = Path(config["mission_path"])
         text = mission.read_text(encoding="utf-8")
@@ -1418,7 +1517,7 @@ def test_awaiting_relative_receipt_resumes_same_workflow_without_replaying_plan(
     })
     calls: list[str] = []
 
-    def review_only(oracle_manifest: Path, *, dry_run: bool):
+    def review_only(oracle_manifest: Path, *, dry_run: bool, capability_token: str | None = None):
         data = json.loads(oracle_manifest.read_text(encoding="utf-8"))
         stage_mission = Path(data["mission_path"])
         text = stage_mission.read_text(encoding="utf-8")
@@ -1468,7 +1567,7 @@ def test_running_web_multi_rebinds_only_persisted_parent_result(tmp_path: Path) 
     })
     calls = 0
 
-    def fake_oracle(oracle_manifest: Path, *, dry_run: bool):
+    def fake_oracle(oracle_manifest: Path, *, dry_run: bool, capability_token: str | None = None):
         nonlocal calls
         calls += 1
         return {"ok": False, "run_dir": str(_oracle_running_state(module, oracle_manifest))}
@@ -1588,12 +1687,24 @@ def test_regular_manifest_never_attaches_pro_packets_and_default_pro_uses_devspa
     ).read_text(encoding="utf-8"))
     assert "attachments" not in regular
     assert regular["transport"] == "devspace"
+    assert regular["capability_required"] is True
+    assert regular["capability_kind"] == "oracle-control-write"
+    authority = tmp_path / "mission-authority.json"
+    authority.write_text("{}\n", encoding="utf-8")
     default_pro = json.loads(module._oracle_manifest(
-        config, mission, tmp_path / "legacy-pro", "d" * 32, stage="pro"
+        config,
+        mission,
+        tmp_path / "legacy-pro",
+        "d" * 32,
+        stage="pro",
+        capability_authority_path=authority,
     ).read_text(encoding="utf-8"))
     assert default_pro["transport"] == "pro-devspace"
     assert default_pro["task_outcome_contract"] == "v1"
     assert default_pro["app_name"] == config["app_name"]
+    assert default_pro["capability_required"] is True
+    assert default_pro["capability_kind"] == "pro-bounded-write"
+    assert default_pro["capability_authority_path"] == str(authority.resolve())
     assert "attachments" not in default_pro
 
 
@@ -1819,7 +1930,7 @@ def test_web_multi_preflight_failure_stays_prepared_and_rejects_changed_mission(
     invalid_multi = tmp_path / "multi.json"
     invalid_multi.write_text(json.dumps({"next_stage_binding": {"workflow_id": "wrong", "stage": "web-multi"}}), encoding="utf-8")
 
-    def fake_plan(oracle_manifest: Path, *, dry_run: bool):
+    def fake_plan(oracle_manifest: Path, *, dry_run: bool, capability_token: str | None = None):
         payload = json.loads(oracle_manifest.read_text(encoding="utf-8"))
         mission = Path(payload["mission_path"])
         text = mission.read_text(encoding="utf-8")
@@ -1960,7 +2071,7 @@ def test_awaiting_receipt_preserves_source_and_augmented_mission_bindings(tmp_pa
     module = load()
     path = manifest(tmp_path)
 
-    def fake_oracle(oracle_manifest: Path, *, dry_run: bool):
+    def fake_oracle(oracle_manifest: Path, *, dry_run: bool, capability_token: str | None = None):
         data = json.loads(oracle_manifest.read_text(encoding="utf-8"))
         mission = Path(data["mission_path"])
         contract = mission.read_text(encoding="utf-8")

@@ -26,7 +26,15 @@
 
 - Default ordinary web work to `gpt-5.6` with `extra-high`, the highest supported non-Pro reasoning tier. Never select or upgrade to Pro automatically.
 - Treat Pro as quota-limited and explicit-only. Use `GPT-5.6 Sol` at the Pro effort only after the user explicitly requests Pro; a standard comprehensive workflow additionally requires `allow_pro: true`.
-- New explicit Pro runs use the `pro-devspace` route. Inside the exact qualified project root, Pro may inspect, create, edit, and remove mission-owned files and run mission-required commands under the applicable `AGENTS.md` and repository safety rules.
-- Pro must not alter accounts, ChatGPT app settings, or external state unless the mission explicitly grants that authority. `pro-attachment` remains a separate explicit immutable-evidence route, never an automatic fallback.
+- New explicit Pro runs use the `pro-devspace` route. They require an exact-root
+  tracked capability profile, host-bound profile SHA-256, immutable mission,
+  current HEAD, clean non-protected branch, and explicit relative write paths.
+  Pro may edit only those paths under the applicable `AGENTS.md` chain.
+- Capability v1 grants no shell, Git mutation, push, merge, tag, deploy,
+  account, ChatGPT app-setting, or external-state authority. `pro-attachment`
+  remains a separate explicit immutable-evidence route, never an automatic fallback.
+- Web Multi v2 is read-only all-of-N, forbids nested Multi and worktree writers,
+  runs at most five provider sessions concurrently, and invokes exactly one
+  merger only after every terminal lane handoff exists.
 - Preserve persisted `pro-devspace-readonly` runs with their original read-only meaning during exact recovery; never reinterpret historical authority.
 <!-- END CODEX WEB GPT SUBAGENT POLICY -->

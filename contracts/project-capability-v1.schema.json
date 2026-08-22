@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ventianima-lab.github.io/codex-web-gpt-automation/contracts/project-capability-v1.schema.json",
+  "title": "Compiled project capability v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "actor", "access", "binding", "paths", "commands", "git", "topology", "external_actions"],
+  "properties": {
+    "schema": {"const": "codex.chatgpt.project-capability/v1"},
+    "actor": {"enum": ["oracle", "pro", "web-multi"]},
+    "access": {"enum": ["read-only", "control-write", "bounded-write"]},
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project_root", "profile_path", "profile_sha256", "head_oid", "required_reads"],
+      "properties": {
+        "project_root": {"type": "string", "minLength": 1},
+        "profile_path": {"type": "string", "minLength": 1},
+        "profile_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "head_oid": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+        "mission_path": {"type": "string", "minLength": 1},
+        "mission_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "authority_path": {"type": "string", "minLength": 1},
+        "authority_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "host_control_paths": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "required_reads": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "sha256"],
+            "properties": {
+              "path": {"type": "string", "minLength": 1},
+              "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+            }
+          }
+        }
+      }
+    },
+    "paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["read_roots", "read_deny_roots", "write_roots", "write_deny_roots"],
+      "properties": {
+        "read_roots": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "read_deny_roots": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "write_roots": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "write_deny_roots": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}}
+      }
+    },
+    "commands": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "rules"],
+      "properties": {"mode": {"const": "none"}, "rules": {"const": []}}
+    },
+    "git": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["head_policy", "index_policy", "protected_refs", "push_policy"],
+      "properties": {
+        "head_policy": {"const": "unchanged"},
+        "index_policy": {"const": "unchanged"},
+        "protected_refs": {"type": "array", "uniqueItems": true, "items": {"type": "string", "pattern": "^refs/heads/"}},
+        "push_policy": {"const": "forbidden"}
+      }
+    },
+    "topology": {"type": "object", "minProperties": 2},
+    "subjects": {"type": "object"},
+    "external_actions": {"const": []}
+  },
+  "allOf": [
+    {"if": {"properties": {"actor": {"const": "pro"}}}, "then": {"properties": {"access": {"const": "bounded-write"}, "binding": {"properties": {"required_reads": {"minItems": 1}}}, "paths": {"properties": {"write_roots": {"minItems": 1}}}}}},
+    {"if": {"properties": {"actor": {"const": "oracle"}, "access": {"const": "read-only"}}, "required": ["actor", "access"]}, "then": {"properties": {"binding": {"properties": {"required_reads": {"maxItems": 0}}}, "paths": {"properties": {"write_roots": {"maxItems": 0}}}}}},
+    {"if": {"properties": {"actor": {"const": "oracle"}, "access": {"const": "control-write"}}, "required": ["actor", "access"]}, "then": {"properties": {"binding": {"properties": {"required_reads": {"minItems": 1}}}, "paths": {"properties": {"write_roots": {"minItems": 1}}}}}},
+    {"if": {"properties": {"actor": {"const": "oracle"}}}, "then": {"properties": {"access": {"enum": ["read-only", "control-write"]}}}},
+    {"if": {"properties": {"actor": {"const": "web-multi"}}}, "then": {"properties": {"access": {"const": "read-only"}, "paths": {"properties": {"write_roots": {"maxItems": 0}}}}}}
+  ]
+}

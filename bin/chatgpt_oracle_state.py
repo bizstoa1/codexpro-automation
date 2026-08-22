@@ -270,6 +270,7 @@ class OracleConfig:
     requested_run_id: str | None
     web_multi_child_provenance_path: Path | None
     web_multi_child_provenance_sha256: str | None
+    capability_required: bool
 
 
 @dataclass(frozen=True)
@@ -398,6 +399,14 @@ def load_manifest(path: Path, *, platform_name: str | None = None) -> OracleConf
         raise OracleStateError("MANIFEST_JSON_INVALID", "manifest must contain one JSON object", {"line": exc.lineno, "column": exc.colno}) from exc
     if not isinstance(payload, dict) or payload.get("schema") != SCHEMA:
         raise OracleStateError("MANIFEST_SCHEMA_INVALID", f"manifest schema must be {SCHEMA}")
+    capability_required = payload.get("capability_required", False)
+    if not isinstance(capability_required, bool):
+        raise OracleStateError("CAPABILITY_REQUIREMENT_INVALID", "capability_required must be boolean")
+    if capability_required and "run_root" in payload:
+        raise OracleStateError(
+            "RUN_ROOT_OVERRIDE_FORBIDDEN",
+            "capability submissions use only the canonical Oracle run namespace",
+        )
     project_root = absolute_path(payload.get("project_root"), label="project_root", must_exist=True)
     if not project_root.is_dir():
         raise OracleStateError("PROJECT_ROOT_NOT_DIRECTORY", "project_root must identify a directory")
@@ -623,6 +632,7 @@ def load_manifest(path: Path, *, platform_name: str | None = None) -> OracleConf
         requested_run_id,
         provenance_path,
         provenance_sha256,
+        capability_required,
     )
 
 
@@ -716,6 +726,7 @@ def state_payload(config: OracleConfig, layout: RunLayout, *, status: str, resol
         },
         "parallel_parent_id": config.parallel_parent_id,
         "requested_run_id": config.requested_run_id,
+        "capability_required": config.capability_required,
         "web_multi_child_provenance": (
             {"path": str(config.web_multi_child_provenance_path), "sha256": config.web_multi_child_provenance_sha256}
             if config.web_multi_child_provenance_path else None
@@ -1211,7 +1222,10 @@ def _web_multi_child_provenance(
             parent = json.loads(parent_manifest.read_text(encoding="utf-8", errors="strict"))
             lanes = parent.get("solvers") if isinstance(parent.get("solvers"), list) else []
             lane = next((item for item in lanes if isinstance(item, dict) and str(item.get("id") or "") == str(value.get("lane_id") or "")), None)
-            if not isinstance(lane, dict) or parent.get("schema") != "codex.chatgpt.oracle-multi/v1":
+            if not isinstance(lane, dict) or parent.get("schema") not in {
+                "codex.chatgpt.oracle-multi/v1",
+                "codex.chatgpt.oracle-multi/v2",
+            }:
                 return None
             if Path(str(parent.get("project_root") or "")).resolve() != project_root or Path(str(lane.get("mission_path") or "")).resolve() != source_path:
                 return None

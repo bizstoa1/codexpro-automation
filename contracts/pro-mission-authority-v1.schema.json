@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ventianima-lab.github.io/codex-web-gpt-automation/contracts/pro-mission-authority-v1.schema.json",
+  "title": "Pro mission authority v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "project_root", "mission_path", "mission_sha256", "expected_head", "allowed_write_paths", "allowed_command_ids", "external_actions"],
+  "properties": {
+    "schema": {"const": "codex.chatgpt.pro-mission-authority/v1"},
+    "project_root": {"type": "string", "minLength": 1},
+    "mission_path": {"type": "string", "minLength": 1},
+    "mission_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "expected_head": {"type": "string", "pattern": "^[0-9a-f]{40,64}$"},
+    "allowed_write_paths": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "allowed_command_ids": {"const": []},
+    "external_actions": {"const": "deny"}
+  }
+}

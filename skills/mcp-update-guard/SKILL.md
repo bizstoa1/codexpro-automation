@@ -23,7 +23,7 @@ preserve unrelated local customizations.
      Oracle plus the manually registered DevSpace app;
    - regular web work defaults to the highest supported non-Pro reasoning tier;
      only explicit user opt-in selects qualified Pro with `GPT-5.6 Sol` at the
-     Pro effort and read/write DevSpace; explicit `pro-attachment` is limited to immutable or
+     Pro effort and capability-gated bounded-write DevSpace; explicit `pro-attachment` is limited to immutable or
      DevSpace-unreadable evidence and is never an automatic fallback;
    - CodexPro/agbrowse may be used only for exact recovery of an already
      persisted legacy run and never as a fallback.

@@ -1,4 +1,5 @@
 from __future__ import annotations
+# noqa: SIZE_OK - one hash-gated patch and restart transaction; split ordering would weaken deployment checks
 
 import hashlib
 import importlib.util
@@ -15,14 +16,21 @@ SUPPORTED_VERSION = "1.0.4"
 CREATE_NO_WINDOW = 0x08000000
 PATCHES = {
     "dist/server.js": {
-        "patch": "directory-read.patch",
+        "patch": "server-capability.patch",
         "pristine": "c49c1c607b42e040cdf0b15d5a4a93cfef9ddb8147d492a3cfa2a8c3889dab24",
-        "patched": "d5d9b08c482b282f3390f415d69d460f4ee844046962a4013f11612cbb6b52e0",
+        "legacy": ["d5d9b08c482b282f3390f415d69d460f4ee844046962a4013f11612cbb6b52e0"],
+        "patched": "f95d22ac0ec7b5ee9f7be84ce4bfba08f039650bac0c97dc0071a9b1d936e80c",
     },
     "dist/workspaces.js": {
         "patch": "workspaces.patch",
         "pristine": "b4438d551f5ecccfa7942f8ec92f16fda1b0ab7b3256014c8983404acb0b9dcb",
         "patched": "d5014ef0bcbab51750e3eea74f58fa131d258aa98f60bf65ed30cd8b732e42bf",
+    },
+}
+COPIES = {
+    "dist/capability-guard.js": {
+        "source": "capability-guard.mjs",
+        "sha256": "3eeee605645b5950ea582dbc92479a7eea4a06555bccd8ad0b76df985a14971d",
     },
 }
 
@@ -168,6 +176,11 @@ def _write_restart_marker(roots: Sequence[Path]) -> Path:
                     str(root / relative): contract["patched"]
                     for root in roots
                     for relative, contract in PATCHES.items()
+                }
+                | {
+                    str(root / relative): contract["sha256"]
+                    for root in roots
+                    for relative, contract in COPIES.items()
                 },
             },
             ensure_ascii=False,
@@ -389,6 +402,21 @@ def ensure_devspace_compatibility(
             if current == contract["patched"]:
                 already.append(item)
                 continue
+            legacy = contract.get("legacy", [])
+            if current in legacy:
+                backup_path = backup / Path(relative)
+                if (
+                    backup_path.is_symlink()
+                    or not backup_path.is_file()
+                    or sha256_file(backup_path) != contract["pristine"]
+                ):
+                    raise DevSpaceCompatError(
+                        "DEVSPACE_LEGACY_BACKUP_INVALID",
+                        "DevSpace legacy patch migration requires the verified pristine backup",
+                        {"path": str(backup_path), "target": str(target)},
+                    )
+                shutil.copy2(backup_path, target)
+                current = sha256_file(target)
             if current != contract["pristine"]:
                 raise DevSpaceCompatError(
                     "DEVSPACE_FILE_HASH_MISMATCH",
@@ -396,13 +424,19 @@ def ensure_devspace_compatibility(
                     {
                         "path": str(target),
                         "actual": current,
-                        "expected": [contract["pristine"], contract["patched"]],
+                        "expected": [contract["pristine"], *legacy, contract["patched"]],
                     },
                 )
             backup_path = backup / Path(relative)
             backup_path.parent.mkdir(parents=True, exist_ok=True)
             if not backup_path.exists():
                 shutil.copy2(target, backup_path)
+            elif backup_path.is_symlink() or sha256_file(backup_path) != contract["pristine"]:
+                raise DevSpaceCompatError(
+                    "DEVSPACE_BACKUP_INVALID",
+                    "DevSpace pristine backup differs from the tested upstream file",
+                    {"path": str(backup_path)},
+                )
             _apply_patch(root, patch_root() / str(contract["patch"]))
             actual = sha256_file(target)
             if actual != contract["patched"]:
@@ -411,6 +445,28 @@ def ensure_devspace_compatibility(
                     "DevSpace compatibility patch output hash is unexpected",
                     {"path": str(target), "actual": actual, "expected": contract["patched"]},
                 )
+            changed.append(item)
+        for relative, contract in COPIES.items():
+            source = patch_root() / str(contract["source"])
+            if source.is_symlink() or not source.is_file() or sha256_file(source) != contract["sha256"]:
+                raise DevSpaceCompatError(
+                    "DEVSPACE_MANAGED_SOURCE_INVALID",
+                    "DevSpace managed compatibility source is missing or changed",
+                    {"path": str(source)},
+                )
+            target = root / Path(relative)
+            item = relative if len(roots) == 1 else f"{root}:{relative}"
+            if target.exists() or target.is_symlink():
+                if not target.is_symlink() and target.is_file() and sha256_file(target) == contract["sha256"]:
+                    already.append(item)
+                    continue
+                raise DevSpaceCompatError(
+                    "DEVSPACE_FILE_HASH_MISMATCH",
+                    "DevSpace compatibility refuses an unknown managed file",
+                    {"path": str(target)},
+                )
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
             changed.append(item)
     marker = restart_marker_path()
     if changed:
@@ -453,6 +509,14 @@ def confirm_service_restarted(
                     "DEVSPACE_RESTART_CONFIRM_HASH_MISMATCH",
                     "DevSpace restart cannot be confirmed before every tested file is patched",
                     {"path": str(root / relative), "actual": actual, "expected": contract["patched"]},
+                )
+        for relative, contract in COPIES.items():
+            target = root / relative
+            if target.is_symlink() or not target.is_file() or sha256_file(target) != contract["sha256"]:
+                raise DevSpaceCompatError(
+                    "DEVSPACE_RESTART_CONFIRM_HASH_MISMATCH",
+                    "DevSpace restart cannot be confirmed before every managed guard file is installed",
+                    {"path": str(target), "expected": contract["sha256"]},
                 )
     marker = restart_marker_path()
     existed = marker.is_file()

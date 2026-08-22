@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ventianima-lab.github.io/codex-web-gpt-automation/contracts/project-capability-profile-v1.schema.json",
+  "title": "Project capability profile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "pro", "web_multi", "protected_branches", "write_deny_paths", "external_actions"],
+  "properties": {
+    "schema": {"const": "codex.chatgpt.project-capability-profile/v1"},
+    "pro": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "write_root_ceiling", "commands", "require_clean_git", "require_nonprotected_branch"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "write_root_ceiling": {"type": "array", "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+        "commands": {"const": "none"},
+        "require_clean_git": {"const": true},
+        "require_nonprotected_branch": {"const": true}
+      }
+    },
+    "web_multi": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "access", "min_lanes", "max_lanes", "max_concurrency", "all_lanes_required", "merger_policy", "nesting"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "access": {"const": "read-only"},
+        "min_lanes": {"type": "integer", "minimum": 2, "maximum": 25},
+        "max_lanes": {"type": "integer", "minimum": 2, "maximum": 25},
+        "max_concurrency": {"type": "integer", "minimum": 1, "maximum": 5},
+        "all_lanes_required": {"const": true},
+        "merger_policy": {"const": "exactly-one"},
+        "nesting": {"const": "forbidden"}
+      }
+    },
+    "protected_branches": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "write_deny_paths": {"type": "array", "minItems": 3, "uniqueItems": true, "items": {"type": "string", "minLength": 1}},
+    "external_actions": {"const": "deny"}
+  },
+  "allOf": [
+    {"properties": {"protected_branches": {"contains": {"const": "main"}}}},
+    {"properties": {"write_deny_paths": {"contains": {"const": ".git"}}}},
+    {"properties": {"write_deny_paths": {"contains": {"const": ".codex"}}}},
+    {"properties": {"write_deny_paths": {"contains": {"const": ".ai-bridge"}}}},
+    {"properties": {"write_deny_paths": {"contains": {"const": "AGENTS.md"}}}}
+  ]
+}

@@ -49,9 +49,10 @@ def manifest(tmp_path: Path, **extra) -> Path:
         "mission_path": str(mission.resolve()),
         "app_name": "DevSpace",
         "mode": "browser",
-        "run_root": str((state_root / "runs").resolve()),
         "oracle_command": ["oracle"],
     }
+    if extra.get("capability_required") is not True:
+        payload["run_root"] = str((state_root / "runs").resolve())
     payload.update(extra)
     path.write_text(json.dumps(payload), encoding="utf-8")
     os.environ["CODEX_ORACLE_STATE_ROOT"] = str(state_root)
@@ -564,6 +565,58 @@ def test_dry_run_never_executes_and_has_no_file_flag(tmp_path: Path) -> None:
     assert result["argv"].count("--browser-hide-window") == 1
     assert calls == []
     assert not (tmp_path / "runs").exists()
+
+
+def test_capability_required_run_binds_token_only_in_memory_and_dry_run_uses_placeholder(
+    tmp_path: Path,
+) -> None:
+    runner = load_runner()
+    manifest_path = manifest(tmp_path, capability_required=True)
+
+    dry = execute_run(runner, manifest_path, dry_run=True)
+    bound = execute_run(
+        runner,
+        manifest_path,
+        dry_run=True,
+        capability_token="opaque.signed-token",
+    )
+
+    assert "dry-run-token-not-issued" in dry["argv"][dry["argv"].index("--prompt") + 1]
+    assert "opaque.signed-token" in bound["argv"][bound["argv"].index("--prompt") + 1]
+    assert "opaque.signed-token" not in manifest_path.read_text(encoding="utf-8")
+
+
+def test_capability_required_new_submission_rejects_arbitrary_run_root(tmp_path: Path) -> None:
+    runner = load_runner()
+    override = tmp_path.parent / f"{tmp_path.name}-alternate-run-root"
+
+    with pytest.raises(runner.STATE.OracleStateError) as failure:
+        execute_run(
+            runner,
+            manifest(
+                tmp_path,
+                capability_required=True,
+                run_root=str(override.resolve()),
+            ),
+            dry_run=True,
+        )
+
+    assert failure.value.code == "RUN_ROOT_OVERRIDE_FORBIDDEN"
+
+
+def test_capability_required_live_run_fails_before_qualification_without_token(tmp_path: Path) -> None:
+    runner = load_runner()
+    calls = []
+
+    with pytest.raises(runner.OracleRunError) as failure:
+        execute_run(
+            runner,
+            manifest(tmp_path, capability_required=True),
+            devspace_qualification_factory=lambda root: calls.append(root),
+        )
+
+    assert failure.value.code == "CAPABILITY_TOKEN_REQUIRED"
+    assert calls == []
 
 
 def test_copy_profile_is_first_class_without_unsupported_manual_login_flags(

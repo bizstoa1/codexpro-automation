@@ -19,6 +19,7 @@ STATE_PATH = Path(__file__).resolve().with_name("chatgpt_oracle_state.py")
 COMPAT_PATH = Path(__file__).resolve().with_name("chatgpt_oracle_compat.py")
 DEVSPACE_COMPAT_PATH = Path(__file__).resolve().with_name("chatgpt_devspace_compat.py")
 DEVSPACE_PREFLIGHT_PATH = Path(__file__).resolve().with_name("chatgpt_devspace_preflight.py")
+CAPABILITY_RUNTIME_PATH = Path(__file__).resolve().with_name("chatgpt_capability_runtime.py")
 
 
 def load_state_module():
@@ -77,6 +78,22 @@ def load_devspace_preflight_module():
 
 
 DEVSPACE_PREFLIGHT = load_devspace_preflight_module()
+
+
+def load_capability_runtime_module():
+    spec = importlib.util.spec_from_file_location(
+        "chatgpt_oracle_capability_runtime",
+        CAPABILITY_RUNTIME_PATH,
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"capability runtime unavailable: {CAPABILITY_RUNTIME_PATH}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+CAPABILITY_RUNTIME = load_capability_runtime_module()
 
 
 class OracleRunError(RuntimeError):
@@ -677,6 +694,7 @@ def execute_run(
     manifest_path: Path,
     *,
     dry_run: bool = False,
+    capability_token: str | None = None,
     run_factory: Callable[..., subprocess.CompletedProcess[Any]] = subprocess.run,
     popen_factory: Callable[..., Any] = subprocess.Popen,
     platform_name: str | None = None,
@@ -690,12 +708,24 @@ def execute_run(
     exact_recovery_factory: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     config = STATE.load_manifest(manifest_path, platform_name=platform_name)
+    capability_required = config.capability_required
+    if capability_required and not STATE.is_devspace_transport(config.transport):
+        raise OracleRunError("CAPABILITY_TRANSPORT_INVALID", "capabilities require a DevSpace transport")
+    if capability_required and not dry_run and not capability_token:
+        raise OracleRunError("CAPABILITY_TOKEN_REQUIRED", "live capability run requires an in-memory token")
     validate_oracle_attachment_sizes(config)
     layout = STATE.create_layout(config, run_id=config.requested_run_id)
     transport_mission_path = layout.run_dir / "mission.md"
     # The app reads the project mission. The copied bytes below are host-only
     # immutable evidence and are never exposed as the workspace handoff path.
     prompt = STATE.composer_prompt(config, config.mission_path)
+    if capability_required:
+        prompt = CAPABILITY_RUNTIME.bind_prompt(
+            prompt,
+            config.project_root,
+            capability_token or "dry-run-token-not-issued",
+            mission_path=config.mission_path,
+        )
     argv = build_oracle_argv(config, layout, prompt)
     if dry_run:
         return dry_run_payload(config, layout, argv, prompt)

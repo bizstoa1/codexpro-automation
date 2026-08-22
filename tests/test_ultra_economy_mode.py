@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -25,6 +27,17 @@ def load_comprehensive():
 
 
 def workflow_manifest(tmp_path: Path) -> Path:
+    (tmp_path / "src").mkdir(exist_ok=True)
+    (tmp_path / "src/app.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (tmp_path / ".gitignore").write_text(
+        "*.md\n*.json\nworkflow/\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "init", "-q", "-b", "codex/ultra-economy-test", str(tmp_path)], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "config", "user.name", "Ultra Economy Test"], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "config", "user.email", "ultra-economy@example.test"], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "add", ".gitignore", "src/app.py"], check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "commit", "-qm", "baseline"], check=True)
     state_root = (tmp_path.parent / f"{tmp_path.name}-host").resolve()
     profile_seed = (tmp_path.parent / f"{tmp_path.name}-oracle-profile-seed").resolve()
     profile_seed.mkdir(parents=True, exist_ok=True)
@@ -38,6 +51,47 @@ def workflow_manifest(tmp_path: Path) -> Path:
     }), encoding="utf-8")
     os.environ["CODEX_ORACLE_STATE_ROOT"] = str(state_root)
     os.environ["CODEX_ORACLE_HOST_POLICY"] = str(policy_path)
+    capability_state = state_root / "capabilities"
+    os.environ["CODEX_CAPABILITY_STATE_ROOT"] = str(capability_state)
+    profile = tmp_path / ".codex/project-capabilities.json"
+    profile.parent.mkdir(exist_ok=True)
+    profile.write_text(json.dumps({
+        "schema": "codex.chatgpt.project-capability-profile/v1",
+        "pro": {
+            "enabled": True,
+            "write_root_ceiling": ["src"],
+            "commands": "none",
+            "require_clean_git": True,
+            "require_nonprotected_branch": True,
+        },
+        "web_multi": {
+            "enabled": True,
+            "access": "read-only",
+            "min_lanes": 2,
+            "max_lanes": 25,
+            "max_concurrency": 5,
+            "all_lanes_required": True,
+            "merger_policy": "exactly-one",
+            "nesting": "forbidden",
+        },
+        "protected_branches": ["main", "master"],
+        "write_deny_paths": [".git", ".codex", ".ai-bridge", "AGENTS.md"],
+        "external_actions": "deny",
+    }), encoding="utf-8")
+    capability_state.mkdir(parents=True, exist_ok=True)
+    (capability_state / "host-policy.json").write_text(json.dumps({
+        "schema": "codex.chatgpt.capability-host-policy/v1",
+        "max_web_multi_concurrency": 5,
+        "external_actions": "deny",
+        "projects": [{
+            "project_root": str(tmp_path.resolve()),
+            "profile_path": str(profile.resolve()),
+            "profile_sha256": hashlib.sha256(profile.read_bytes()).hexdigest(),
+            "pro": True,
+            "oracle_read": True,
+            "web_multi": True,
+        }],
+    }), encoding="utf-8")
     mission = tmp_path / "mission.md"
     mission.write_text("Design the implementation.", encoding="utf-8")
     path = tmp_path / "workflow.json"
@@ -51,6 +105,7 @@ def workflow_manifest(tmp_path: Path) -> Path:
         "initial_mission_path": str(mission.resolve()),
         "app_name": "codex",
         "model": "gpt-5.6",
+        "pro_write_paths": ["src"],
         "max_stages": 4,
         "local_gate_command": ["python", "-c", "raise SystemExit(0)"],
     }), encoding="utf-8")
@@ -91,7 +146,8 @@ def test_ultra_economy_runtime_does_not_reinspect_model_or_reasoning(tmp_path: P
 
     seen: dict[str, object] = {}
 
-    def preview(oracle_manifest: Path, *, dry_run: bool):
+    def preview(oracle_manifest: Path, *, dry_run: bool, capability_token: str | None = None):
+        assert capability_token is None
         seen.update(json.loads(oracle_manifest.read_text(encoding="utf-8")))
         return {"ok": True}
 
@@ -104,8 +160,9 @@ def test_ultra_economy_runtime_dry_run_is_pro_first_and_writable(tmp_path: Path,
     module = load_comprehensive()
     seen: dict[str, object] = {}
 
-    def preview(path: Path, *, dry_run: bool):
+    def preview(path: Path, *, dry_run: bool, capability_token: str | None = None):
         assert dry_run is True
+        assert capability_token is None
         seen.update(json.loads(path.read_text(encoding="utf-8")))
         mission = Path(str(seen["mission_path"])).read_text(encoding="utf-8")
         assert "[ULTRA_ECONOMY_DESIGN_CONTRACT]" in mission

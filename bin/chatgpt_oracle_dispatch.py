@@ -22,6 +22,7 @@ def _load(name: str, path: Path):
 
 PROFILES = _load("oracle_dispatch_profiles", BIN / "chatgpt_oracle_profiles.py")
 RUNNER = _load("oracle_dispatch_runner", BIN / "chatgpt_oracle_run.py")
+CAPABILITY = _load("oracle_dispatch_capability", BIN / "chatgpt_capability_runtime.py")
 
 
 def compile_manifest(
@@ -33,6 +34,7 @@ def compile_manifest(
     reasoning_level: str | None = None,
     attachment_paths: Iterable[Path] | None = None,
     app_name: str | None = None,
+    mission_authority_path: Path | None = None,
 ) -> dict[str, Any]:
     contract = PROFILES.build_launch_contract(
         mode,
@@ -70,6 +72,17 @@ def compile_manifest(
     else:
         manifest["app_name"] = contract["app_name"]
         manifest["task_outcome_contract"] = "v1"
+        manifest["capability_required"] = True
+        if contract["route"] == "oracle-pro-devspace":
+            if mission_authority_path is None:
+                raise ValueError("Pro DevSpace requires an explicit mission authority")
+            authority = mission_authority_path.expanduser().resolve(strict=True)
+            if authority.is_symlink() or not authority.is_file():
+                raise ValueError("mission authority must be an exact regular file")
+            manifest["capability_kind"] = "pro-bounded-write"
+            manifest["capability_authority_path"] = str(authority)
+        else:
+            manifest["capability_kind"] = "read-only"
     target.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     result["oracle_manifest_path"] = str(target)
     return result
@@ -84,6 +97,7 @@ def main(argv: Iterable[str] | None = None) -> int:
     parser.add_argument("--reasoning-level")
     parser.add_argument("--attachment", type=Path, action="append", default=[])
     parser.add_argument("--app-name")
+    parser.add_argument("--mission-authority", type=Path)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     try:
@@ -95,10 +109,45 @@ def main(argv: Iterable[str] | None = None) -> int:
             reasoning_level=args.reasoning_level,
             attachment_paths=args.attachment,
             app_name=args.app_name,
+            mission_authority_path=args.mission_authority,
         )
         if compiled["oracle_manifest_path"]:
-            run = RUNNER.execute_run(Path(compiled["oracle_manifest_path"]), dry_run=args.dry_run)
-            value = {**compiled, "run": run, "ok": bool(run.get("ok"))}
+            manifest_path = Path(compiled["oracle_manifest_path"])
+            manifest_value = json.loads(manifest_path.read_text(encoding="utf-8"))
+            if manifest_value.get("capability_kind") == "pro-bounded-write":
+                session = CAPABILITY.open_pro(
+                    args.project_root,
+                    args.mission_path,
+                    args.mission_authority,
+                    dry_run=args.dry_run,
+                )
+            elif manifest_value.get("capability_kind") == "read-only":
+                session = CAPABILITY.open_read_only(
+                    args.project_root,
+                    args.mission_path,
+                    dry_run=args.dry_run,
+                )
+            else:
+                session = None
+            run = RUNNER.execute_run(
+                manifest_path,
+                dry_run=args.dry_run,
+                capability_token=session.token if session else None,
+            )
+            capability_receipt = None
+            if session is not None:
+                run_state = run.get("result") if isinstance(run.get("result"), dict) else {}
+                capability_receipt = CAPABILITY.finish(
+                    session,
+                    terminal_harvested=run_state.get("terminal_harvested") is True,
+                    safe_pre_submit=bool(run.get("safe_for_fresh_run")),
+                )
+            value = {
+                **compiled,
+                "run": run,
+                "capability_receipt": capability_receipt,
+                "ok": bool(run.get("ok")),
+            }
         else:
             value = compiled
     except Exception as exc:

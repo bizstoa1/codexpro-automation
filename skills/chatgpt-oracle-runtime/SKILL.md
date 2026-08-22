@@ -1,6 +1,6 @@
 ---
 name: chatgpt-oracle-runtime
-description: "Current Oracle runtime path for new ChatGPT work: regular modes use highest-tier non-Pro DevSpace, explicitly requested qualified Pro uses read/write DevSpace, and explicit Pro attachments remain for bounded evidence."
+description: "Current Oracle runtime path for new ChatGPT work: regular modes use highest-tier non-Pro capability-gated DevSpace, explicitly requested qualified Pro uses bounded write, and explicit Pro attachments remain for bounded evidence."
 ---
 
 # ChatGPT Oracle Runtime
@@ -8,7 +8,7 @@ description: "Current Oracle runtime path for new ChatGPT work: regular modes us
 This is the only active browser path for all new GPT work. CodexPro and
 agbrowse are frozen for exact legacy recovery only. Regular modes use DevSpace;
 explicitly requested qualified Pro uses the same app with mission-scoped
-read/write authority, while `pro-attachment` uses Oracle
+bounded-write authority, while `pro-attachment` uses Oracle
 attachment transport for its explicit evidence boundary.
 
 `chatgpt_oracle_dispatch.py` supports exactly `direct`, `plan`, `review`, `edit`,
@@ -24,8 +24,9 @@ It must not substitute a parent, child, active workspace, or shell boundary
 workaround. Regular routes default to `gpt-5.6` with `extra-high`, the highest
 supported non-Pro reasoning tier, and never auto-upgrade to Pro. Only explicit
 `pro` mode selects `GPT-5.6 Sol` at the Pro effort. It uses DevSpace at the same
-exact root and may perform mission-authorized writes and commands under the
-repository safety policy. Explicit
+exact root and may perform only authority-listed writes under the repository
+safety policy. Capability v1 exposes no shell command or Git/external-action
+authority. Explicit
 `pro-attachment` sends one short instruction plus exact attachment files.
 Never infer Pro from task difficulty, invent xhigh, or silently downgrade.
 
@@ -45,10 +46,19 @@ Require schema `codex.chatgpt.oracle-run/v1` with:
 - `task_kind: pro`; qualified Pro uses `app_name: DevSpace`, while explicit
   `pro-attachment` includes one or more exact `attachments`.
 - `mode`: `browser`.
-- Optional `run_root`, `oracle_command`, `oracle_args`, `thinking_time`,
-  host-policy-matching `copy_profile`, and mutex timeout. A manifest cannot
-  select a different seed or lower the host capacity policy.
+- Optional `run_root` for legacy non-capability runs, plus `oracle_command`,
+  `oracle_args`, `thinking_time`, host-policy-matching `copy_profile`, and
+  mutex timeout. Every `capability_required: true` manifest omits `run_root`
+  and uses the canonical host-only namespace. A manifest cannot select a
+  different seed or lower the host capacity policy.
 - Regular direct/orchestrator manifests use `task_outcome_contract: "v1"`.
+- Every DevSpace manifest sets `capability_required: true`. A regular
+  comprehensive stage receives control-write only for its exact handoff
+  directory; ordinary regular runs and every Web Multi lane remain read-only.
+- Qualified Pro additionally requires `capability_kind: pro-bounded-write` and
+  an exact `codex.chatgpt.pro-mission-authority/v1` path. Its subject must
+  actually read the immutable mission and every applicable `AGENTS.md` before
+  any write; the tool guard re-hashes them immediately before each write.
 
 ## Run
 

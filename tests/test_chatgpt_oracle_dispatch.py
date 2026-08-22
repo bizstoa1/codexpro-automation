@@ -42,6 +42,8 @@ def test_regular_and_deep_research_compile_to_oracle_without_attachments(tmp_pat
         assert value["model_strategy"] == "select"
         assert value["thinking_time"] == "extra-high"
         assert value["research"] == research
+        assert value["capability_required"] is True
+        assert value["capability_kind"] == "read-only"
 
 
 def test_regular_high_is_forwarded_as_the_visible_high_tier(tmp_path: Path) -> None:
@@ -140,10 +142,16 @@ def test_pro_defaults_to_devspace_without_attachments(tmp_path: Path) -> None:
     module = load()
     mission = tmp_path / "mission.md"
     mission.write_text("read only", encoding="utf-8")
+    authority = tmp_path / "authority.json"
+    authority.write_text("{}\n", encoding="utf-8")
     target = tmp_path / "pro-devspace.json"
 
     result = module.compile_manifest(
-        mode="pro", project_root=tmp_path, mission_path=mission, output_path=target
+        mode="pro",
+        project_root=tmp_path,
+        mission_path=mission,
+        output_path=target,
+        mission_authority_path=authority,
     )
 
     value = json.loads(target.read_text(encoding="utf-8"))
@@ -155,7 +163,24 @@ def test_pro_defaults_to_devspace_without_attachments(tmp_path: Path) -> None:
     assert value["thinking_time"] == "heavy"
     assert value["research"] == "off"
     assert value["task_outcome_contract"] == "v1"
+    assert value["capability_required"] is True
+    assert value["capability_kind"] == "pro-bounded-write"
+    assert value["capability_authority_path"] == str(authority.resolve())
     assert "attachments" not in value
+
+
+def test_pro_devspace_compile_requires_explicit_mission_authority(tmp_path: Path) -> None:
+    module = load()
+    mission = tmp_path / "mission.md"
+    mission.write_text("write\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="mission authority"):
+        module.compile_manifest(
+            mode="pro",
+            project_root=tmp_path,
+            mission_path=mission,
+            output_path=tmp_path / "pro.json",
+        )
 
 
 def test_pro_cli_dry_run_validates_compiled_manifest_without_submission(
@@ -167,7 +192,19 @@ def test_pro_cli_dry_run_validates_compiled_manifest_without_submission(
     target = tmp_path / "pro-dry-run.json"
     prompt.write_text("instructions", encoding="utf-8")
     packet.write_bytes(b"PK\x03\x04packet")
-    monkeypatch.setenv("CODEX_ORACLE_STATE_ROOT", str(tmp_path.parent / "host-state-pro-dry-run"))
+    state_root = tmp_path.parent / "host-state-pro-dry-run"
+    profile_seed = tmp_path.parent / "profile-seed-pro-dry-run"
+    state_root.mkdir()
+    profile_seed.mkdir()
+    policy = state_root / "host-policy.json"
+    policy.write_text(json.dumps({
+        "schema": "codex.chatgpt.oracle-host-policy/v1",
+        "profile_seed": str(profile_seed.resolve()),
+        "profile_mode": "copy-per-run",
+        "max_total_concurrency": 5,
+    }), encoding="utf-8")
+    monkeypatch.setenv("CODEX_ORACLE_STATE_ROOT", str(state_root))
+    monkeypatch.setenv("CODEX_ORACLE_HOST_POLICY", str(policy))
 
     exit_code = module.main([
         "--mode", "pro-attachment",

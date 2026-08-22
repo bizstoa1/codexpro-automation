@@ -1,0 +1,51 @@
+{
+  "schema": "codex.chatgpt.project-capability-profile/v1",
+  "pro": {
+    "enabled": true,
+    "write_root_ceiling": [
+      "bin",
+      "contracts",
+      "docs",
+      "scripts",
+      "skills",
+      "tests",
+      "README.md",
+      "README.en.md",
+      "package.json",
+      "package-lock.json",
+      "install-manifest.json"
+    ],
+    "commands": "none",
+    "require_clean_git": true,
+    "require_nonprotected_branch": true
+  },
+  "web_multi": {
+    "enabled": true,
+    "access": "read-only",
+    "min_lanes": 2,
+    "max_lanes": 25,
+    "max_concurrency": 5,
+    "all_lanes_required": true,
+    "merger_policy": "exactly-one",
+    "nesting": "forbidden"
+  },
+  "protected_branches": [
+    "main",
+    "master",
+    "production"
+  ],
+  "write_deny_paths": [
+    ".git",
+    ".codex",
+    ".ai-bridge",
+    ".github",
+    "AGENTS.md",
+    ".env",
+    "credentials",
+    "secrets",
+    "state",
+    "runtime",
+    "logs"
+  ],
+  "external_actions": "deny"
+}

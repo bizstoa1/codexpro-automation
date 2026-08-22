@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ventianima-lab.github.io/codex-web-gpt-automation/contracts/oracle-multi-v2.schema.json",
+  "title": "Oracle Web Multi manifest v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "project_root", "output_dir", "max_concurrency", "completion_policy", "merger_policy", "nesting", "solvers", "merger_mission_path"],
+  "properties": {
+    "schema": {"const": "codex.chatgpt.oracle-multi/v2"},
+    "project_root": {"type": "string", "minLength": 1},
+    "output_dir": {"type": "string", "minLength": 1},
+    "app_name": {"type": "string", "minLength": 1},
+    "model": {"type": "string", "minLength": 1},
+    "copy_profile": {"type": "string", "minLength": 1},
+    "max_concurrency": {"type": "integer", "minimum": 1, "maximum": 5},
+    "completion_policy": {"const": "all-lanes"},
+    "merger_policy": {"const": "exactly-one"},
+    "nesting": {"const": "forbidden"},
+    "solvers": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 25,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "mission_path", "access"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"},
+          "mission_path": {"type": "string", "minLength": 1},
+          "access": {"const": "read-only"}
+        }
+      }
+    },
+    "merger_mission_path": {"type": "string", "minLength": 1},
+    "next_stage_result_path": {"type": "string", "minLength": 1},
+    "next_stage_binding": {"type": "object"}
+  }
+}

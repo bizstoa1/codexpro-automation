@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ventianima-lab.github.io/codex-web-gpt-automation/contracts/oracle-multi-result-v2.schema.json",
+  "title": "Oracle Web Multi result v2",
+  "type": "object",
+  "required": ["schema", "status", "ok", "writes_performed", "merger_count", "lanes", "merger_run_dir", "capability"],
+  "properties": {
+    "schema": {"const": "codex.chatgpt.oracle-multi-result/v2"},
+    "status": {"enum": ["dry-run", "running", "failed", "merger_ready", "merger_submitting", "complete", "attention_required"]},
+    "ok": {"type": "boolean"},
+    "writes_performed": {"type": "boolean"},
+    "merger_count": {"type": "integer", "minimum": 0, "maximum": 1},
+    "lanes": {"type": "array"},
+    "merger_run_dir": {"type": ["string", "null"]},
+    "capability": {"type": "object"}
+  }
+}

@@ -1,4 +1,5 @@
 from __future__ import annotations
+# noqa: SIZE_OK - one persisted workflow state machine; splitting would weaken monotonic recovery review
 
 import argparse
 import hashlib
@@ -8,6 +9,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -54,10 +56,16 @@ TRANSITIONS = {
 BIN = Path(__file__).resolve().parent
 
 
+class WorkflowModuleLoadError(RuntimeError):
+    def __init__(self, path: Path):
+        super().__init__(f"module unavailable: {path}")
+        self.path = path
+
+
 def _load(name: str, path: Path):
     spec = importlib.util.spec_from_file_location(name, path)
     if spec is None or spec.loader is None:
-        raise RuntimeError(f"module unavailable: {path}")
+        raise WorkflowModuleLoadError(path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
     spec.loader.exec_module(module)
@@ -67,6 +75,7 @@ def _load(name: str, path: Path):
 RUNNER = _load("oracle_comprehensive_runner", BIN / "chatgpt_oracle_run.py")
 MULTI = _load("oracle_comprehensive_multi", BIN / "chatgpt_oracle_multi.py")
 WORKSPACE_CONFIG = _load("oracle_comprehensive_workspace_config", BIN / "chatgpt_workspace_config.py")
+CAPABILITY = _load("oracle_comprehensive_capability", BIN / "chatgpt_capability_runtime.py")
 
 
 class WorkflowError(RuntimeError):
@@ -121,6 +130,9 @@ def load_manifest(path: Path) -> dict[str, Any]:
         raise WorkflowError(f"schema must be {SCHEMA}")
     root = Path(str(value.get("project_root") or "")).expanduser().resolve(strict=True)
     workflow_dir = _inside(root, value.get("workflow_dir"), exists=False)
+    protected = ((root / ".git").resolve(strict=False), (root / ".codex").resolve(strict=False))
+    if workflow_dir == root or any(workflow_dir == item or item in workflow_dir.parents for item in protected):
+        raise WorkflowError("workflow_dir must be a dedicated non-control project subtree")
     mission = _inside(root, value.get("initial_mission_path"))
     maximum = int(value.get("max_stages", 8))
     if not 1 <= maximum <= 12:
@@ -132,6 +144,21 @@ def load_manifest(path: Path) -> dict[str, Any]:
     if not isinstance(allow_pro_raw, bool):
         raise WorkflowError("allow_pro must be a boolean explicit opt-in")
     allow_pro = allow_pro_raw or workflow_profile == ULTRA_ECONOMY_PROFILE
+    pro_write_paths_raw = value.get("pro_write_paths", [])
+    if (
+        not isinstance(pro_write_paths_raw, list)
+        or any(
+            not isinstance(item, str)
+            or not item
+            or "\0" in item
+            or Path(item).is_absolute()
+            for item in pro_write_paths_raw
+        )
+        or len(set(pro_write_paths_raw)) != len(pro_write_paths_raw)
+    ):
+        raise WorkflowError("pro_write_paths must be unique nonempty relative paths")
+    if allow_pro and not pro_write_paths_raw:
+        raise WorkflowError("explicit Pro workflows require nonempty pro_write_paths")
     initial_stage = str(
         value.get("initial_stage")
         or ("pro" if workflow_profile == ULTRA_ECONOMY_PROFILE else "plan")
@@ -182,6 +209,7 @@ def load_manifest(path: Path) -> dict[str, Any]:
         "max_stages": maximum,
         "workflow_profile": workflow_profile,
         "allow_pro": allow_pro,
+        "pro_write_paths": list(pro_write_paths_raw),
         "initial_stage": initial_stage,
         "app_name": app_name,
         "model": str(value.get("model") or "gpt-5.6"),
@@ -196,6 +224,96 @@ def load_manifest(path: Path) -> dict[str, Any]:
 def _write(path: Path, value: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _pro_authority(config: dict[str, Any], mission: Path, stage_dir: Path) -> Path:
+    completed = subprocess.run(
+        ["git", "-C", str(config["project_root"]), "rev-parse", "HEAD"],
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    head = completed.stdout.strip()
+    if completed.returncode != 0 or not head:
+        raise WorkflowError("Pro mission authority requires a Git HEAD")
+    path = stage_dir / "mission-authority.json"
+    _write(
+        path,
+        {
+            "schema": "codex.chatgpt.pro-mission-authority/v1",
+            "project_root": str(config["project_root"]),
+            "mission_path": str(mission.resolve(strict=True)),
+            "mission_sha256": sha(mission),
+            "expected_head": head,
+            "allowed_write_paths": list(config["pro_write_paths"]),
+            "allowed_command_ids": [],
+            "external_actions": "deny",
+        },
+    )
+    return path.resolve(strict=True)
+
+
+def _open_stage_capability(
+    config: dict[str, Any],
+    mission: Path,
+    stage_dir: Path,
+    stage: str,
+    *,
+    authority_path: Path | None,
+    attachments: tuple[Path, ...],
+    dry_run: bool,
+):
+    if attachments:
+        return None
+    if stage == "pro":
+        if authority_path is None:
+            raise WorkflowError("Pro DevSpace stage requires a mission authority")
+        return CAPABILITY.open_pro(
+            config["project_root"],
+            mission,
+            authority_path,
+            dry_run=dry_run,
+            subject_id="pro",
+        )
+    return CAPABILITY.open_read_only(
+        config["project_root"],
+        mission,
+        control_write_root=stage_dir,
+        dry_run=dry_run,
+        subject_id="oracle",
+    )
+
+
+def _finish_stage_capability(session, run: dict[str, Any]) -> dict[str, Any] | None:
+    if session is None:
+        return None
+    raw_result = run.get("result")
+    result: dict[str, Any] = raw_result if isinstance(raw_result, dict) else {}
+    terminal = bool(run.get("ok")) or result.get("terminal_harvested") is True
+    return CAPABILITY.finish(
+        session,
+        terminal_harvested=terminal,
+        safe_pre_submit=bool(run.get("safe_for_fresh_run")),
+        pre_submit_reason="comprehensive-oracle-pre-submit-failed",
+    )
+
+
+def _resume_workflow_capability(
+    config: dict[str, Any],
+    stored: dict[str, Any],
+):
+    lease_id = stored.get("capability_lease_id")
+    if not isinstance(lease_id, str) or not lease_id:
+        return None
+    stage = str(stored.get("current_stage") or "")
+    session = CAPABILITY.resume_single(
+        config["project_root"],
+        expected_actor="pro" if stage == "pro" else "oracle",
+    )
+    if session.lease_id != lease_id:
+        raise WorkflowError("stored capability lease identity changed")
+    return session
 
 
 def _finding_hash(ids: list[str]) -> str:
@@ -460,6 +578,7 @@ def _oracle_manifest(
     *,
     stage: str,
     pro_attachments: Iterable[Path] = (),
+    capability_authority_path: Path | None = None,
 ) -> Path:
     pro_attachments = tuple(pro_attachments)
     path = stage_dir / "oracle.json"
@@ -484,13 +603,22 @@ def _oracle_manifest(
             payload["transport"] = "pro-attachment-only"
             payload["attachments"] = [str(mission), *(str(item) for item in pro_attachments)]
         else:
+            if capability_authority_path is None:
+                raise WorkflowError("Pro DevSpace stage requires a mission authority")
             payload["transport"] = "pro-devspace"
             payload["app_name"] = config["app_name"]
             payload["task_outcome_contract"] = "v1"
+            payload["capability_required"] = True
+            payload["capability_kind"] = "pro-bounded-write"
+            payload["capability_authority_path"] = str(
+                capability_authority_path.expanduser().resolve(strict=True)
+            )
     else:
         payload["transport"] = "devspace"
         payload["app_name"] = config["app_name"]
         payload["task_outcome_contract"] = "v1"
+        payload["capability_required"] = True
+        payload["capability_kind"] = "oracle-control-write"
     _write(path, payload)
     return path
 
@@ -773,7 +901,7 @@ def _materialize_pro_receipt(
     next_mission = stage_dir / "next-mission.md"
     materialized_output.write_bytes(output_text.encode("utf-8"))
     next_mission.write_bytes(next_mission_text.encode("utf-8"))
-    receipt = {
+    receipt: dict[str, Any] = {
         "schema": RECEIPT_SCHEMA,
         "workflow_id": workflow_id,
         "stage": "pro",
@@ -961,10 +1089,11 @@ def _is_unambiguous_pre_submit_failure(run_dir: Path) -> bool:
     state_path = run_dir / "state.json"
     if state_path.is_file():
         try:
-            if RUNNER.STATE.proven_pre_submit_failure(state_path) is not None:
-                return True
+            pre_submit_failure = RUNNER.STATE.proven_pre_submit_failure(state_path)
         except RUNNER.STATE.OracleStateError:
-            pass
+            pre_submit_failure = None
+        if pre_submit_failure is not None:
+            return True
     output = run_dir / "output.md"
     if output.is_file() and output.read_bytes().strip():
         return False
@@ -1166,7 +1295,7 @@ def _recover_exact_oracle_stage(
     try:
         directory = run_dir.resolve(strict=True)
         run_state = RUNNER.STATE.load_state(directory / "state.json")
-    except Exception as exc:
+    except (OSError, RUNNER.STATE.OracleStateError) as exc:
         return {"ok": False, "error": "ORACLE_RECOVERY_RUN_UNAVAILABLE", "detail": str(exc)}
     if str(run_state.get("run_id") or "") != expected_run_id:
         return {"ok": False, "error": "ORACLE_RECOVERY_IDENTITY_MISMATCH"}
@@ -1206,12 +1335,12 @@ def _recover_exact_multi_stage(stored: dict[str, Any]) -> dict[str, Any]:
         return {"ok": False, "error": "MULTI_RECOVERY_IDENTITY_MISSING"}
     try:
         result = _json(result_path.resolve(strict=True))
-    except Exception as exc:
+    except (OSError, json.JSONDecodeError, WorkflowError) as exc:
         return {"ok": False, "error": "MULTI_RESULT_UNAVAILABLE", "detail": str(exc)}
     if result.get("schema") != MULTI.RESULT_SCHEMA or not str(result.get("parent_id") or ""):
         return {"ok": False, "error": "MULTI_RESULT_IDENTITY_INVALID"}
     return {
-        "ok": result.get("status") in {"complete", "partial"},
+        "ok": result.get("status") == "complete",
         "parent_id": str(result["parent_id"]),
         "next_stage_result_path": result.get("next_stage_result_path"),
         "status": result.get("status"),
@@ -1233,41 +1362,81 @@ def _run_workflow_locked(
     workflow_id = config["workflow_id"]
     config["_review_policy"] = _review_policy_from_history(config)
     config["_parallel_parent_id"] = hashlib.sha256(workflow_id.encode("utf-8")).hexdigest()
-    config["workflow_dir"].mkdir(parents=True, exist_ok=True)
     if dry_run:
-        attempt_id = uuid.uuid4().hex
-        initial_stage = config["initial_stage"]
-        if initial_stage == "pro":
-            mission, receipt_path, input_sha = _pro_stage_mission(
-                config, workflow_id, 0, config["initial_mission_path"], attempt_id
+        with tempfile.TemporaryDirectory(
+            prefix=".codex-oracle-preview-",
+            dir=config["project_root"],
+        ) as temporary:
+            preview_config = {**config, "workflow_dir": Path(temporary)}
+            attempt_id = uuid.uuid4().hex
+            initial_stage = str(preview_config["initial_stage"])
+            if initial_stage == "pro":
+                mission, receipt_path, input_sha = _pro_stage_mission(
+                    preview_config,
+                    workflow_id,
+                    0,
+                    preview_config["initial_mission_path"],
+                    attempt_id,
+                )
+                pro_attachments = _declared_pro_attachments(
+                    preview_config,
+                    preview_config["initial_mission_path"],
+                )
+            else:
+                mission, receipt_path, input_sha = _stage_mission(
+                    preview_config,
+                    workflow_id,
+                    0,
+                    initial_stage,
+                    preview_config["initial_mission_path"],
+                    attempt_id,
+                )
+                pro_attachments = ()
+            authority_path = (
+                _pro_authority(preview_config, mission, mission.parent)
+                if initial_stage == "pro" and not pro_attachments
+                else None
             )
-            pro_attachments = _declared_pro_attachments(config, config["initial_mission_path"])
-        else:
-            mission, receipt_path, input_sha = _stage_mission(
-                config, workflow_id, 0, initial_stage, config["initial_mission_path"], attempt_id
+            capability_session = _open_stage_capability(
+                preview_config,
+                mission,
+                mission.parent,
+                initial_stage,
+                authority_path=authority_path,
+                attachments=tuple(pro_attachments),
+                dry_run=True,
             )
-            pro_attachments = ()
-        oracle_manifest = _oracle_manifest(
-            config,
-            mission,
-            mission.parent,
-            attempt_id,
-            stage=initial_stage,
-            pro_attachments=pro_attachments,
-        )
-        preview = oracle_execute(oracle_manifest, dry_run=True)
-        return {
-            "ok": bool(preview.get("ok")),
-            "schema": STATE_SCHEMA,
-            "status": "dry-run",
-            "workflow_id": workflow_id,
-            "stage": initial_stage,
-            "workflow_profile": config["workflow_profile"],
-            "attempt_id": attempt_id,
-            "input_mission_sha256": input_sha,
-            "receipt_path": str(receipt_path),
-            "oracle_preview": preview,
-        }
+            oracle_manifest = _oracle_manifest(
+                preview_config,
+                mission,
+                mission.parent,
+                attempt_id,
+                stage=initial_stage,
+                pro_attachments=pro_attachments,
+                capability_authority_path=authority_path,
+            )
+            preview = oracle_execute(
+                oracle_manifest,
+                dry_run=True,
+                capability_token=capability_session.token if capability_session else None,
+            )
+            capability_receipt = _finish_stage_capability(capability_session, preview)
+            planned_receipt = config["workflow_dir"] / receipt_path.relative_to(preview_config["workflow_dir"])
+            result = {
+                "ok": bool(preview.get("ok")),
+                "schema": STATE_SCHEMA,
+                "status": "dry-run",
+                "workflow_id": workflow_id,
+                "stage": initial_stage,
+                "workflow_profile": config["workflow_profile"],
+                "attempt_id": attempt_id,
+                "input_mission_sha256": input_sha,
+                "receipt_path": str(planned_receipt),
+                "oracle_preview": preview,
+                "capability_receipt": capability_receipt,
+            }
+        return result
+    config["workflow_dir"].mkdir(parents=True, exist_ok=True)
     _claim_scope(config, workflow_id)
     state_path = _state_path(config, workflow_id)
     if state_path.is_file():
@@ -1405,6 +1574,20 @@ def _run_workflow_locked(
                 )
             ):
                 source = Path(str(stored["current_mission_path"])).resolve(strict=True)
+                capability_lease_id = stored.get("capability_lease_id")
+                if isinstance(capability_lease_id, str) and capability_lease_id:
+                    recovered_capability = CAPABILITY.resume_single(
+                        config["project_root"],
+                        expected_actor="pro" if stored_stage == "pro" else "oracle",
+                    )
+                    if recovered_capability.lease_id != capability_lease_id:
+                        raise WorkflowError("stored capability lease identity changed")
+                    CAPABILITY.finish(
+                        recovered_capability,
+                        terminal_harvested=False,
+                        safe_pre_submit=True,
+                        pre_submit_reason="comprehensive-user-confirmed-no-submission",
+                    )
                 retry_record = _pre_submit_retry_record(
                     persisted_run_dir,
                     stage=stored_stage,
@@ -1433,11 +1616,26 @@ def _run_workflow_locked(
                     manifest_path, oracle_execute=oracle_execute, oracle_recover=oracle_recover,
                     multi_execute=multi_execute, local_gate_runner=local_gate_runner,
                 )
+            recovered_capability = _resume_workflow_capability(config, stored)
             recovered = _recover_exact_oracle_stage(stored, oracle_recover=oracle_recover)
+            recovered_result = recovered.get("result")
+            capability_receipt = None
+            if recovered_capability is not None and (
+                recovered.get("ok") is True
+                or (
+                    isinstance(recovered_result, dict)
+                    and recovered_result.get("terminal_harvested") is True
+                )
+            ):
+                capability_receipt = CAPABILITY.finish(
+                    recovered_capability,
+                    terminal_harvested=True,
+                )
             records = list(stored.get("records") or [])
             records.append({
                 "stage": stored["current_stage"], "run_id": stored.get("oracle_run_id") or stored.get("current_attempt_id"),
                 "run_dir": stored.get("oracle_run_dir"), "recovered": True, "recovery_status": recovered.get("status"),
+                "capability": capability_receipt,
             })
             if not recovered.get("ok"):
                 terminal_result = recovered.get("result")
@@ -1529,7 +1727,8 @@ def _run_workflow_locked(
             # error, not an active/uncertain provider workflow.
             multi_config = MULTI.load_manifest(source)
             multi_source = _json(source)
-            binding = multi_source.get("next_stage_binding") if isinstance(multi_source.get("next_stage_binding"), dict) else {}
+            raw_binding = multi_source.get("next_stage_binding")
+            binding: dict[str, Any] = raw_binding if isinstance(raw_binding, dict) else {}
             if binding.get("workflow_id") != workflow_id or binding.get("stage") != "web-multi":
                 raise WorkflowError("web-multi manifest is not bound to this workflow")
             multi_result_path = multi_config["output_dir"] / "result.json"
@@ -1577,8 +1776,28 @@ def _run_workflow_locked(
                 config, workflow_id, index, stage, source, attempt_id
             )
         stage_dir = mission.parent
+        authority_path = (
+            _pro_authority(config, mission, stage_dir)
+            if stage == "pro" and not pro_attachments
+            else None
+        )
         oracle_manifest = _oracle_manifest(
-            config, mission, stage_dir, attempt_id, stage=stage, pro_attachments=pro_attachments
+            config,
+            mission,
+            stage_dir,
+            attempt_id,
+            stage=stage,
+            pro_attachments=pro_attachments,
+            capability_authority_path=authority_path,
+        )
+        capability_session = _open_stage_capability(
+            config,
+            mission,
+            stage_dir,
+            stage,
+            authority_path=authority_path,
+            attachments=tuple(pro_attachments),
+            dry_run=False,
         )
         oracle_config = RUNNER.STATE.load_manifest(oracle_manifest)
         oracle_layout = RUNNER.STATE.create_layout(oracle_config, run_id=attempt_id)
@@ -1593,10 +1812,22 @@ def _run_workflow_locked(
             "current_augmented_mission_path": str(mission),
             "current_augmented_mission_sha256": sha(mission),
             "oracle_run_id": attempt_id, "oracle_run_dir": str(oracle_layout.run_dir), "oracle_manifest_path": str(oracle_manifest),
+            "capability_lease_id": capability_session.lease_id if capability_session else None,
+            "capability_actor": "pro" if stage == "pro" else "oracle",
             "next_index": index, "records": records, "pre_submit_retries": stage_pre_submit_retries,
         })
-        run = oracle_execute(oracle_manifest, dry_run=False)
-        records.append({"stage": stage, "run_dir": run.get("run_dir"), "ok": bool(run.get("ok"))})
+        run = oracle_execute(
+            oracle_manifest,
+            dry_run=False,
+            capability_token=capability_session.token if capability_session else None,
+        )
+        capability_receipt = _finish_stage_capability(capability_session, run)
+        records.append({
+            "stage": stage,
+            "run_dir": run.get("run_dir"),
+            "ok": bool(run.get("ok")),
+            "capability": capability_receipt,
+        })
         if stage == "pro" and run.get("ok") and not receipt_path.is_file():
             _materialize_pro_receipt(
                 config,
@@ -1646,6 +1877,13 @@ def _run_workflow_locked(
                     binding_source_path=source,
                 )
             ):
+                if isinstance(capability_receipt, dict) and capability_receipt.get("status") == "retained":
+                    CAPABILITY.finish(
+                        capability_session,
+                        terminal_harvested=False,
+                        safe_pre_submit=True,
+                        pre_submit_reason="comprehensive-proven-pre-submit-failed",
+                    )
                 retry_record = _pre_submit_retry_record(
                     failed_run_dir,
                     stage=stage,
@@ -1747,7 +1985,7 @@ def main(argv: Iterable[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         value = run_workflow(args.manifest, dry_run=args.dry_run)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BROAD_EXCEPT_OK - CLI boundary renders one structured failure
         value = {"ok": False, "error": {"code": "ORACLE_COMPREHENSIVE_FAILED", "message": str(exc)}}
     print(json.dumps(value, ensure_ascii=False, indent=2))
     return 0 if value.get("ok") else 1

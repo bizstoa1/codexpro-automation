@@ -1,6 +1,6 @@
 ---
 name: chatgpt-pro-browser
-description: Use for an explicitly requested one-shot ChatGPT Pro plan, research, implementation, or review through Oracle. Qualified Pro uses read/write DevSpace; `pro-attachment` is an explicit immutable-evidence route. Return the Pro result only.
+description: Use for an explicitly requested one-shot ChatGPT Pro plan, research, bounded-write implementation, or review through Oracle. Qualified Pro uses capability-gated DevSpace; `pro-attachment` is an explicit immutable-evidence route. Return the Pro result only.
 ---
 
 # ChatGPT Pro through Oracle
@@ -35,11 +35,14 @@ project do not repeat endpoint/read probes; a changed config is revalidated.
 Failure returns `DEVSPACE_EXACT_ROOT_UNAVAILABLE` before Oracle or a browser is
 created and points to the complete root-preserving setup preview.
 
-Pro reads the mission and applicable `AGENTS.md` chain completely. Within the
-exact root it may inspect, create, edit, and remove mission-owned files and run
-commands required by the mission. Repository safety rules remain authoritative.
-It must not change accounts, app settings, or external state unless the mission
-explicitly authorizes that action. It may not substitute a parent, child,
+Pro reads the mission and applicable `AGENTS.md` chain completely. A tracked
+project profile and host policy must bind the exact root and profile SHA-256.
+A matching mission-authority document then narrows writes to explicit relative
+paths below that profile ceiling. The repository must be clean and on a
+non-protected branch. Capability v1 exposes no shell commands, Git mutations,
+push, merge, tag, deploy, or external actions. Repository safety rules remain
+authoritative. It must not change accounts, app settings, or external state.
+It may not substitute a parent, child,
 similarly named, active, or shell-boundary workspace, and may retry only the
 same root once after a timeout.
 
@@ -81,7 +84,9 @@ does not turn the standalone Pro result into a review-to-implementation chain.
 1. Resolve and hash-validate the tested Oracle compatibility contract.
 2. Bind the same normalized-project mutex used by regular Oracle work.
 3. Build a short UTF-8 mission that states the exact root, question, explicit
-   file/command authority, and any evidence limitations. For `pro-attachment`,
+   file authority, and any evidence limitations. Issue a matching
+   `codex.chatgpt.pro-mission-authority/v1` document bound to the mission hash,
+   current HEAD, and exact relative write paths. For `pro-attachment`,
    freeze the required attachments and their hashes instead.
 4. Use a fresh Oracle slug and require Oracle model and transport evidence
    before accepting a send.
@@ -89,13 +94,23 @@ does not turn the standalone Pro result into a review-to-implementation chain.
 The public dispatcher entry points are:
 
 ```powershell
-python "$env:USERPROFILE\.codex\bin\chatgpt_oracle_dispatch.py" --mode pro --project-root <ROOT> --mission-path <MISSION> --manifest-output <MANIFEST> --dry-run
+python "$env:USERPROFILE\.codex\bin\chatgpt_oracle_dispatch.py" --mode pro --project-root <ROOT> --mission-path <MISSION> --mission-authority <AUTHORITY> --manifest-output <MANIFEST> --dry-run
 python "$env:USERPROFILE\.codex\bin\chatgpt_oracle_dispatch.py" --mode pro-attachment --project-root <ROOT> --mission-path <MISSION> --attachment <PACKET> --manifest-output <MANIFEST> --dry-run
 ```
 
-Remove `--dry-run` only after the manifest, project mutex, Oracle version, and
-compatibility hashes pass preflight. The default `pro` command never accepts
-attachments; `pro-attachment` never invokes DevSpace.
+Remove `--dry-run` only after the capability profile, authority, clean Git
+baseline, manifest, project mutex, Oracle version, and compatibility hashes
+pass preflight. Dry-run creates no capability lease. The default `pro` command
+never accepts attachments; `pro-attachment` never invokes DevSpace.
+
+Every DevSpace write is rechecked against the signed active lease. Before the
+first write, use `read_file` on the exact immutable mission and every
+applicable root-to-write-path `AGENTS.md`; prompt claims or earlier local reads
+do not count. The guard keeps only in-memory attestations and re-hashes those
+files immediately before each write. A terminal answer releases the lease only
+after postflight proves unchanged HEAD, index, protected refs, and no changed
+path outside the exact allowance. An escaped or ambiguous diff quarantines the
+lease and preserves same-project ownership.
 
 Completion requires the requested Pro model/effort evidence, exit zero, fresh
 nonempty host-only `output.md`, immutable run identity, and a refreshed

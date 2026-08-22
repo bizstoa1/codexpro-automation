@@ -34,13 +34,13 @@
   distinct worktrees. Oracle Web Multi remains separately bounded to five
   provider sessions, and local-subagent and Oracle-web phases do not overlap.
 
-- Every new ChatGPT submission uses Oracle. Regular web work defaults to `GPT-5.6` at the highest supported non-Pro reasoning tier (`extra-high`). Pro is quota-limited and must never be selected or upgraded automatically: only an explicit user Pro request may select `GPT-5.6 Sol` at the Pro effort. Qualified Pro uses the same DevSpace app with mission-scoped read/write/command authority inside the exact root; explicit `pro-attachment` is reserved for immutable or external evidence that DevSpace cannot read and is never an automatic fallback.
+- Every new ChatGPT submission uses Oracle. Regular web work defaults to `GPT-5.6` at the highest supported non-Pro reasoning tier (`extra-high`). Pro is quota-limited and must never be selected or upgraded automatically: only an explicit user Pro request may select `GPT-5.6 Sol` at the Pro effort. Qualified Pro uses the same DevSpace app with mission-scoped bounded-write authority inside the exact root; capability v1 disables shell commands. Explicit `pro-attachment` is reserved for immutable or external evidence that DevSpace cannot read and is never an automatic fallback.
 - New GPT comprehensive workflows use `codex.chatgpt.oracle-comprehensive/v1`. Existing CodexPro/agbrowse comprehensive v1-v4 state remains exact recovery-only.
 - The completing web GPT stage authors the next stage's semantic prompt. Local Codex may validate UTF-8, hashes, stage identity, immutable bindings, transport, recovery, and deterministic final tests, but must not rewrite the next prompt or take over expensive exploration/implementation.
 - A selected Web Multi advisory uses genuine independent Oracle sessions. Provider generation is limited to at most five concurrent children; larger accepted topologies run in capacity waves without reducing their logical lane count.
 - Comprehensive review owns plan repair and finalization. It fixes every locally resolvable defect inline, writes the corrected final plan and implementation mission, then returns PASS or PASS_WITH_NOTES. New work never loops review back to plan; legacy REVISE is terminal compatibility only, and FAIL requires a concrete external blocker.
 - Every regular Oracle stage is bound to one exact project root and one exact mission path. DevSpace may retry that same root once after listing registered workspaces, but must never substitute a parent, child, similarly named, active workspace, or shell boundary workaround.
-- A Pro DevSpace stage has the same exact-root binding. It may broadly inspect decision-relevant material and perform mission-authorized file edits and commands inside that root, subject to the repository `AGENTS.md` chain and normal safety rules. It must not alter accounts, app settings, or external state unless the mission explicitly authorizes that action. Once the one-time DevSpace qualification is complete, do not re-check app/settings state per run.
+- A Pro DevSpace stage has the same exact-root binding. It may broadly inspect decision-relevant material and perform only mission-authorized file edits inside that root, subject to the repository `AGENTS.md` chain and normal safety rules. Capability v1 exposes no shell command authority. It must not alter accounts, app settings, or external state. Once the one-time DevSpace qualification is complete, do not re-check app/settings state per run.
 - Before the first DevSpace-backed Oracle submission for a new exact project root, verify exact equality against the current local DevSpace `allowedRoots`. Cache that qualification against the config hash; revalidate only when the config changes. Missing, parent, child, or similarly named roots fail before Oracle/browser creation. This lightweight root guard must not automate or repeatedly inspect ChatGPT app/settings state.
 - Pro DevSpace completion requires a v1 `TASK_OUTCOME` marker as the final nonempty line, with citations and reference definitions before it. A bounded provider-rendering exception may accept exactly one marker followed only by single-line HTTP(S) Markdown reference definitions; ordinary prose or another marker remains unknown. Exit zero plus a durable answer is not successful execution when the session exposed no callable DevSpace tools or could not read the exact mission/root. A durably terminal `NOT_EXECUTED` run may release the project lock for one fresh retry with identical mission bytes and SHA-256; a repeated tool-exposure failure is `attention_required`, with no automatic app-settings manipulation or attachment fallback.
 - Transport and runner recovery retain the exact workflow/stage identity. They must not create a replacement workflow or reset the semantic revision budget.
@@ -49,3 +49,25 @@
 - Exact-slug recovery may relaunch a bounded recovery browser from the persisted profile seed and open only the recorded conversation URL. It must never restart, resubmit, or create a replacement conversation.
 - A nonzero Oracle exit after submission, including a browser response timeout, is attention-required rather than web-terminal failure. It retains exact-session ownership and allows only exact-slug live/harvest recovery.
 - Exact session authority is monotonic. `terminal_observed` cannot regress to `live`; observer disagreement remains attention-required under the same project lock until a later exact terminal harvest produces fresh nonempty durable output.
+
+## Project capability gate v2
+
+- `.codex/project-capabilities.json` is the tracked project ceiling. The host
+  policy must bind the exact canonical root and exact profile SHA-256 before a
+  DevSpace-backed Oracle browser can be created. Missing or changed bindings
+  fail closed.
+- Pro bounded write requires an explicit Pro request, a project-contained
+  immutable mission, a matching mission-authority document, a clean
+  non-protected branch, and exact write paths below the tracked ceiling. Every
+  DevSpace file mutation is checked again at the tool boundary. Capability v1
+  provides no shell, Git, push, merge, tag, deploy, or external-action authority.
+- A terminal Pro result releases its durable lease only after Git postflight
+  proves unchanged HEAD, index, protected refs, and no changed path outside the
+  exact allowance. Ambiguous or escaped results remain quarantined under the
+  same project owner.
+- Oracle Web Multi v2 is read-only, non-nested, and all-of-N. It uses genuine
+  independent Oracle sessions in waves of at most five and invokes exactly one
+  merger only after every lane has a durable terminal handoff. Lane subjects
+  cannot read host handoffs or another lane's control state.
+- Dry-run compiles and validates only. It must not create a lease, output tree,
+  browser, session, or replacement workflow.

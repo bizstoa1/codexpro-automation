@@ -27,21 +27,22 @@ def test_new_regular_modes_route_only_to_oracle_devspace() -> None:
     assert "app picker" not in value.casefold()
 
 
-def test_qualified_pro_requires_explicit_opt_in_and_uses_read_write_devspace() -> None:
+def test_qualified_pro_requires_explicit_opt_in_and_uses_bounded_write_devspace() -> None:
     value = text(PRO)
     flat = " ".join(value.split())
     assert "Oracle is the only backend for a new Pro run" in flat
     assert "Pro is quota-limited" in flat
     assert "never infer Pro from task difficulty" in flat
     assert "exact absolute project root" in flat
-    assert "create, edit, and remove mission-owned files and run commands" in flat
+    assert "matching mission-authority document" in flat
+    assert "Capability v1 exposes no shell commands" in flat
     assert "`pro-attachment` is attachment-only through Oracle" in flat
     assert "immutable/external evidence or artifacts that DevSpace cannot read" in flat
     assert "never an automatic fallback from qualified Pro DevSpace" in flat
     assert "There is no new agbrowse,\nCodexPro" in value
     handoff = text(HANDOFF)
     assert "allow_pro: true" in handoff
-    assert "read/write DevSpace" in handoff
+    assert "bounded-write DevSpace" in handoff
     assert "`pro-attachment` remains an explicit attachment-only" in handoff
 
 
@@ -50,7 +51,7 @@ def test_qualified_pro_has_exact_root_mission_scoped_write_authority() -> None:
     flat = " ".join(value.split())
     assert "applicable `AGENTS.md` chain completely" in flat
     assert "Repository safety rules remain authoritative" in flat
-    assert "must not change accounts, app settings, or external state unless the mission explicitly authorizes" in flat
+    assert "must not change accounts, app settings, or external state" in flat
 
 
 def test_qualified_pro_fails_closed_when_devspace_tools_are_not_exposed() -> None:
@@ -85,12 +86,13 @@ def test_deep_research_uses_oracle_deep_without_silent_fallback() -> None:
     assert "Do not silently replace Deep Research" in value
 
 
-def test_web_multi_is_genuine_sessions_with_wave_cap_and_worktrees() -> None:
+def test_web_multi_is_genuine_read_only_all_of_n_sessions() -> None:
     value = text(MULTI)
     assert "chatgpt_oracle_multi.py" in value
     assert "waves of at most five" in value
-    assert "worktree-write" in value
-    assert "distinct pre-created worktree" in value
+    assert "all-of-N" in value
+    assert "worktrees are forbidden" in value
+    assert "exactly one merger" in value
     assert "single-GPT role simulation" in value
 
 
@@ -147,10 +149,18 @@ def test_install_inventory_contains_new_active_runtime_and_keeps_legacy_recovery
     manifest = json.loads((ROOT / "install-manifest.json").read_text(encoding="utf-8"))
     include = set(manifest["include"])
     for path in (
+        "bin/chatgpt_capability_git.py",
+        "bin/chatgpt_capability_lease.py",
+        "bin/chatgpt_capability_policy.py",
+        "bin/chatgpt_capability_runtime.py",
+        "bin/chatgpt_project_capability.py",
         "bin/chatgpt_oracle_dispatch.py",
         "bin/chatgpt_oracle_multi.py",
         "bin/chatgpt_oracle_comprehensive.py",
-        "bin/devspace-compat/1.0.4/directory-read.patch",
+        "bin/devspace-compat/1.0.4/capability-guard.mjs",
+        "bin/devspace-compat/1.0.4/server-capability.patch",
+        "contracts/oracle-multi-v2.schema.json",
+        "contracts/project-capability-profile-v1.schema.json",
         "bin/oracle-compat/0.17.1/cliBrowserConfig.copy-profile-default.patch",
         "skills/chatgpt-workspace-setup/SKILL.md",
     ):
@@ -194,7 +204,7 @@ def test_english_readme_maps_modes_to_the_same_oracle_routes() -> None:
     assert "comprehensive mode" in value
     assert "Web Multi-GPT" in value
     assert "Pro is quota-limited, never auto-selected" in value
-    assert "Oracle + read/write DevSpace" in value
+    assert "Oracle plus capability-gated bounded-write DevSpace" in value
     assert "never resubmits the task" in value
 
 
