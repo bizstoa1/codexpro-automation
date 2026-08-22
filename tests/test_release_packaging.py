@@ -206,9 +206,11 @@ def test_package_is_publishable_and_lockfile_matches() -> None:
     } <= set(package['files'])
 
 
-def test_release_workflow_installs_pytest_before_running_contract_runner() -> None:
+def test_release_workflow_installs_test_dependencies_before_running_contract_runner() -> None:
     workflow = (ROOT / '.github/workflows/release-portability.yml').read_text(encoding='utf-8')
-    install = workflow.index('python -m pip install "pytest>=8,<10"')
+    install = workflow.index(
+        'python -m pip install "pytest>=8,<10" "jsonschema>=4.23,<5"'
+    )
     run_tests = workflow.index('python scripts/run_v4_contract_tests.py --focused')
     assert install < run_tests
 
