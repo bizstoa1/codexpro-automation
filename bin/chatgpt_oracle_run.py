@@ -13,7 +13,7 @@ import sys
 import time
 from contextlib import ExitStack
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Sequence, cast
 
 STATE_PATH = Path(__file__).resolve().with_name("chatgpt_oracle_state.py")
 COMPAT_PATH = Path(__file__).resolve().with_name("chatgpt_oracle_compat.py")
@@ -86,7 +86,9 @@ def load_capability_runtime_module():
         CAPABILITY_RUNTIME_PATH,
     )
     if spec is None or spec.loader is None:
-        raise RuntimeError(f"capability runtime unavailable: {CAPABILITY_RUNTIME_PATH}")
+        raise RuntimeError(  # noqa: GENERIC_ERR_OK - module bootstrap follows the existing loader contract
+            f"capability runtime unavailable: {CAPABILITY_RUNTIME_PATH}"
+        )
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
@@ -245,7 +247,7 @@ def wait_for_oracle_process(
         except subprocess.TimeoutExpired:
             poll = getattr(process, "poll", None)
             if callable(poll):
-                raced_exit_code = poll()
+                raced_exit_code = cast(int | None, poll())
                 if raced_exit_code is not None:
                     return int(raced_exit_code)
             audit_count += 1
@@ -413,7 +415,8 @@ def exact_session_url(path: Path) -> str | None:
 
 
 def historical_conversation_url(run_dir: Path, state: dict[str, Any]) -> str | None:
-    oracle = state.get("oracle") if isinstance(state.get("oracle"), dict) else {}
+    oracle_value = state.get("oracle")
+    oracle = oracle_value if isinstance(oracle_value, dict) else {}
     persisted = str(oracle.get("conversation_url") or "").strip()
     if persisted:
         return persisted
@@ -425,7 +428,8 @@ def historical_conversation_url(run_dir: Path, state: dict[str, Any]) -> str | N
 
 
 def conversation_url_conflict(state: dict[str, Any], observed: str | None) -> dict[str, str] | None:
-    oracle = state.get("oracle") if isinstance(state.get("oracle"), dict) else {}
+    oracle_value = state.get("oracle")
+    oracle = oracle_value if isinstance(oracle_value, dict) else {}
     persisted = str(oracle.get("conversation_url") or "").strip()
     candidate = str(observed or "").strip()
     if persisted and candidate and persisted != candidate:
@@ -487,7 +491,8 @@ def provider_delivery_timed_out(*paths: Path) -> bool:
 
 def provider_delivery_timeout_evidence(run_dir: Path, state: dict[str, Any]) -> bool:
     """Find exact-run timeout evidence despite later recovery log rotation."""
-    artifacts = state.get("artifacts") if isinstance(state.get("artifacts"), dict) else {}
+    artifacts_value = state.get("artifacts")
+    artifacts = artifacts_value if isinstance(artifacts_value, dict) else {}
     durable_paths = [
         run_dir / "transcript.md",
         Path(str(artifacts.get("output") or "")),
@@ -503,11 +508,13 @@ def provider_delivery_timeout_evidence(run_dir: Path, state: dict[str, Any]) -> 
 def run_owned_process_ids(run_dir: Path, state: dict[str, Any]) -> tuple[int, ...]:
     """Return only PIDs durably attributed to this exact Oracle run."""
     pids: set[int] = set()
-    watchdog = state.get("host_watchdog") if isinstance(state.get("host_watchdog"), dict) else {}
+    watchdog_value = state.get("host_watchdog")
+    watchdog = watchdog_value if isinstance(watchdog_value, dict) else {}
     value = watchdog.get("oracle_process_pid")
     if isinstance(value, int) and value > 0:
         pids.add(value)
-    observer = state.get("browser_observer") if isinstance(state.get("browser_observer"), dict) else {}
+    observer_value = state.get("browser_observer")
+    observer = observer_value if isinstance(observer_value, dict) else {}
     observer_pid = observer.get("oracle_process_pid")
     if isinstance(observer_pid, int) and observer_pid > 0:
         pids.add(observer_pid)
@@ -591,7 +598,8 @@ def pro_output_satisfies_required_schema(state: dict[str, Any], output_path: Pat
     """
     if not STATE.is_pro_transport(str(state.get("transport") or "")):
         return True
-    mission = state.get("mission") if isinstance(state.get("mission"), dict) else {}
+    mission_value = state.get("mission")
+    mission = mission_value if isinstance(mission_value, dict) else {}
     mission_path = Path(str(mission.get("transport_path") or mission.get("path") or ""))
     labels = pro_required_answer_labels(mission_path)
     if not labels:
@@ -886,13 +894,14 @@ def execute_run(
                         "decision": "wait-for-first-audit-threshold",
                     },
                 )
-                audit_callback = lambda count: record_exact_run_status_audit(
-                    layout,
-                    process=process,
-                    audit_count=count,
-                    status_audit_seconds=status_audit_seconds,
-                    prior_observations=prior_audit_observations,
-                )
+                def audit_callback(count: int) -> None:
+                    record_exact_run_status_audit(
+                        layout,
+                        process=process,
+                        audit_count=count,
+                        status_audit_seconds=status_audit_seconds,
+                        prior_observations=prior_audit_observations,
+                    )
                 if not config.parallel_parent_id:
                     exit_code = wait_for_oracle_process(
                         process, status_audit_seconds, on_status_audit=audit_callback

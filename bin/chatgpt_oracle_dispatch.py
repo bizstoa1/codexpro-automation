@@ -75,10 +75,14 @@ def compile_manifest(
         manifest["capability_required"] = True
         if contract["route"] == "oracle-pro-devspace":
             if mission_authority_path is None:
-                raise ValueError("Pro DevSpace requires an explicit mission authority")
+                raise ValueError(  # noqa: GENERIC_ERR_OK - invalid caller input is a value contract
+                    "Pro DevSpace requires an explicit mission authority"
+                )
             authority = mission_authority_path.expanduser().resolve(strict=True)
             if authority.is_symlink() or not authority.is_file():
-                raise ValueError("mission authority must be an exact regular file")
+                raise ValueError(  # noqa: GENERIC_ERR_OK - invalid caller input is a value contract
+                    "mission authority must be an exact regular file"
+                )
             manifest["capability_kind"] = "pro-bounded-write"
             manifest["capability_authority_path"] = str(authority)
         else:
