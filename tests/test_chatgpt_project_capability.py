@@ -179,11 +179,11 @@ def test_pro_contract_write_denies_exact_mission_and_authority_under_source(
 def test_pro_clean_gate_treats_metacharacter_mission_as_literal(tmp_path: Path) -> None:
     module = load()
     initialize_repository(tmp_path)
-    mission = tmp_path / "*"
+    mission = tmp_path / "[x]"
     mission.write_text("literal filename\n", encoding="utf-8")
     write_profile(tmp_path)
     authority = write_authority(tmp_path, mission, ["src"])
-    (tmp_path / "outside.txt").write_text("dirty\n", encoding="utf-8")
+    (tmp_path / "x").write_text("dirty\n", encoding="utf-8")
 
     with pytest.raises(module.CapabilityError) as dirty:
         module.compile_pro_contract(tmp_path, mission, authority)

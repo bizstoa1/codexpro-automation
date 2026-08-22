@@ -328,6 +328,12 @@ def test_managed_copy_payload_hash_matches_declared_contract() -> None:
         assert digest(source.read_bytes()) == spec["sha256"]
 
 
+def test_managed_payloads_are_checked_out_with_lf_bytes() -> None:
+    attributes = (MODULE_PATH.parents[1] / ".gitattributes").read_text(encoding="utf-8")
+
+    assert "bin/devspace-compat/** text eol=lf" in attributes.splitlines()
+
+
 def test_legacy_server_patch_migrates_only_from_a_verified_pristine_backup(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

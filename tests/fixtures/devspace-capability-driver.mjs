@@ -1,7 +1,8 @@
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
-const { createCapabilityGuard } = await import(process.argv[2]);
+const { createCapabilityGuard } = await import(pathToFileURL(process.argv[2]).href);
 
 const stateRoot = process.argv[3];
 const root = process.argv[4];

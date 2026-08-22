@@ -163,13 +163,13 @@ def test_ignored_metacharacter_filename_is_a_literal_git_pathspec(tmp_path: Path
     module = load()
     initialize(tmp_path)
     value = contract(tmp_path)
-    wildcard = tmp_path / "*"
+    wildcard = tmp_path / "[x]"
     wildcard.write_text("mission\n", encoding="utf-8")
     binding = value["binding"]
     assert isinstance(binding, dict)
     binding["mission_path"] = str(wildcard.resolve())
     baseline = module.capture_baseline(value)
-    (tmp_path / "outside.txt").write_text("must remain visible\n", encoding="utf-8")
+    (tmp_path / "x").write_text("must remain visible\n", encoding="utf-8")
 
     with pytest.raises(module.CapabilityGitError) as changed:
         module.verify_postflight(value, baseline)
