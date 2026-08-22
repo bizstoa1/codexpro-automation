@@ -374,9 +374,15 @@ def test_reconcile_recovered_lanes_restores_stable_order_without_submission(tmp_
     module._write_json(config["output_dir"] / "result.json", {
         "schema": module.RESULT_SCHEMA,
         "status": "failed",
+        "ok": False,
+        "writes_performed": True,
         "parent_id": parent_id,
+        "manifest_sha256": config["manifest_sha256"],
+        "merger_count": 0,
+        "merger_submission_count": 0,
         "lanes": recorded,
-        "merger_run_dir": str(tmp_path / "failed-pre-submit-merger"),
+        "merger_run_dir": None,
+        "capability": {"status": "retained"},
     })
 
     result = module.reconcile_recovered_lanes(manifest)
@@ -390,7 +396,8 @@ def test_reconcile_recovered_lanes_restores_stable_order_without_submission(tmp_
         for index in range(3)
     ]
     assert positions == sorted(positions)
-    assert result["merger_run_dir"].endswith("failed-pre-submit-merger")
+    assert result["merger_run_dir"] is None
+    assert result["merger_submission_count"] == 0
     assert_result_schema(result)
 
 
@@ -402,11 +409,18 @@ def test_reconcile_recovered_lanes_rejects_parent_identity_mismatch(tmp_path: Pa
     module._write_json(config["output_dir"] / "result.json", {
         "schema": module.RESULT_SCHEMA,
         "status": "failed",
+        "ok": False,
+        "writes_performed": True,
         "parent_id": "a" * 64,
+        "manifest_sha256": config["manifest_sha256"],
+        "merger_count": 0,
+        "merger_submission_count": 0,
         "lanes": [
             {"id": lane["id"], "run_dir": str(state_root / lane["id"]), "session_locator": f"oracle-{lane['id']}"}
             for lane in config["solvers"]
         ],
+        "merger_run_dir": None,
+        "capability": {"status": "retained"},
     })
     first = config["solvers"][0]
     run_dir = state_root / first["id"]
@@ -462,9 +476,15 @@ def test_resume_recovered_merger_submits_only_stable_order_merger(tmp_path: Path
     module._write_json(config["output_dir"] / "result.json", {
         "schema": module.RESULT_SCHEMA,
         "status": "failed",
+        "ok": False,
+        "writes_performed": True,
         "parent_id": parent_id,
+        "manifest_sha256": config["manifest_sha256"],
+        "merger_count": 0,
+        "merger_submission_count": 0,
         "lanes": recorded,
-        "merger_run_dir": str(tmp_path / "old-pre-submit-merger"),
+        "merger_run_dir": None,
+        "capability": {"status": "retained"},
     })
     module.reconcile_recovered_lanes(manifest)
     calls = []
@@ -485,5 +505,5 @@ def test_resume_recovered_merger_submits_only_stable_order_merger(tmp_path: Path
     assert calls[0]["parallel_parent_id"] == parent_id
     assert Path(calls[0]["mission_path"]).name == "mission.md"
     assert result["merger_run_dir"].endswith("new-merger-run")
-    assert result["prior_merger_run_dirs"] == [str(tmp_path / "old-pre-submit-merger")]
+    assert result["prior_merger_run_dirs"] == []
     assert_result_schema(result)

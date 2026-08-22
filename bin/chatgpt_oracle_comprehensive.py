@@ -86,8 +86,11 @@ def sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _json(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
+def _json(path: Path, expected_sha256: str | None = None) -> dict[str, Any]:
+    data = path.read_bytes()
+    if expected_sha256 is not None and hashlib.sha256(data).hexdigest() != expected_sha256:
+        raise WorkflowError("JSON bytes changed after host attestation")
+    value = json.loads(data)
     if not isinstance(value, dict):
         raise WorkflowError(f"JSON object required: {path}")
     return value
@@ -928,8 +931,10 @@ def _validate_receipt(
     stage: str,
     attempt_id: str,
     input_sha: str,
+    *,
+    expected_receipt_sha256: str | None = None,
 ) -> dict[str, Any]:
-    value = _json(receipt_path)
+    value = _json(receipt_path, expected_receipt_sha256)
     has_schema = "schema" in value
     has_legacy_schema = "schema_version" in value
     schema = value.get("schema")
@@ -1327,24 +1332,39 @@ def _recover_oracle_under_workflow_mutex(
     return RUNNER.recover_run(directory, action=action, dry_run=dry_run)
 
 
-def _recover_exact_multi_stage(stored: dict[str, Any]) -> dict[str, Any]:
+def _recover_exact_multi_stage(
+    config: dict[str, Any],
+    stored: dict[str, Any],
+) -> dict[str, Any]:
     """Read a persisted Multi result only; absent identity is never a retry signal."""
     result_path = Path(str(stored.get("multi_result_path") or "")).expanduser()
+    receipt_path = Path(str(stored.get("multi_receipt_path") or "")).expanduser()
     expected_manifest_sha = str(stored.get("multi_manifest_sha256") or "")
-    if not result_path.is_absolute() or not expected_manifest_sha:
+    if not result_path.is_absolute() or not receipt_path.is_absolute() or not expected_manifest_sha:
         return {"ok": False, "error": "MULTI_RECOVERY_IDENTITY_MISSING"}
     try:
-        result = _json(result_path.resolve(strict=True))
-    except (OSError, json.JSONDecodeError, WorkflowError) as exc:
-        return {"ok": False, "error": "MULTI_RESULT_UNAVAILABLE", "detail": str(exc)}
-    if result.get("schema") != MULTI.RESULT_SCHEMA or not str(result.get("parent_id") or ""):
-        return {"ok": False, "error": "MULTI_RESULT_IDENTITY_INVALID"}
+        verified = MULTI.verify_completion(
+            MULTI.CompletionExpectation(
+                config["project_root"],
+                expected_manifest_sha,
+                result_path,
+                receipt_path,
+            )
+        )
+    except (MULTI.MultiError, OSError, json.JSONDecodeError, WorkflowError) as exc:
+        return {
+            "ok": False,
+            "error": "MULTI_COMPLETION_ATTESTATION_INVALID",
+            "detail": str(exc),
+        }
+    result = verified.result
     return {
-        "ok": result.get("status") == "complete",
-        "parent_id": str(result["parent_id"]),
-        "next_stage_result_path": result.get("next_stage_result_path"),
-        "status": result.get("status"),
-        "result_path": str(result_path.resolve()),
+        "ok": True,
+        "parent_id": verified.parent_id,
+        "next_stage_result_path": str(verified.receipt_path),
+        "receipt_sha256": verified.receipt_sha256,
+        "status": "complete",
+        "result_path": str(verified.result_path),
         "manifest_sha256": expected_manifest_sha,
     }
 
@@ -1505,7 +1525,7 @@ def _run_workflow_locked(
                 "next_index": start_index, "records": records,
             })
         elif stored.get("status") in {"running", "attention_required"} and stored.get("current_stage") == "web-multi":
-            recovered = _recover_exact_multi_stage(stored)
+            recovered = _recover_exact_multi_stage(config, stored)
             records = list(stored.get("records") or [])
             if not recovered.get("ok"):
                 blocked = {
@@ -1529,7 +1549,15 @@ def _run_workflow_locked(
                 _write_workflow_state(state_path, config, blocked)
                 return {"ok": False, **blocked}
             attempt_id = str(recovered["parent_id"])
-            receipt = _validate_receipt(config, result_path, workflow_id, "web-multi", attempt_id, sha(Path(str(stored["current_mission_path"]))))
+            receipt = _validate_receipt(
+                config,
+                result_path,
+                workflow_id,
+                "web-multi",
+                attempt_id,
+                sha(Path(str(stored["current_mission_path"]))),
+                expected_receipt_sha256=str(recovered["receipt_sha256"]),
+            )
             records.append({"stage": "web-multi", "parent_id": attempt_id, "result_path": recovered["result_path"], "recovered": True})
             prepared = {
                 "schema": STATE_SCHEMA, "status": "prepared", "workflow_id": workflow_id,
@@ -1748,12 +1776,38 @@ def _run_workflow_locked(
             records.append({"stage": stage, "result": multi_result})
             if not multi_result.get("ok"):
                 break
-            result_path = Path(str(multi_result.get("next_stage_result_path") or ""))
+            recovered = _recover_exact_multi_stage(
+                config,
+                {
+                    "multi_manifest_sha256": sha(source),
+                    "multi_result_path": str(multi_result_path),
+                    "multi_receipt_path": str(multi_receipt_path or ""),
+                },
+            )
+            if not recovered.get("ok"):
+                blocked = {
+                    **_json(state_path),
+                    "status": "attention_required",
+                    "blocker": "web-multi completion has no valid host attestation",
+                    "recovery": recovered,
+                    "records": records,
+                }
+                _write_workflow_state(state_path, config, blocked)
+                return {"ok": False, **blocked}
+            result_path = Path(str(recovered.get("next_stage_result_path") or ""))
             if not result_path.is_file():
                 return {"ok": False, "status": "attention_required", "workflow_id": workflow_id,
                         "error": "web-multi merger did not provide next_stage_result_path", "records": records}
-            attempt_id = str(multi_result.get("parent_id") or "")
-            receipt = _validate_receipt(config, result_path, workflow_id, "web-multi", attempt_id, sha(source))
+            attempt_id = str(recovered["parent_id"])
+            receipt = _validate_receipt(
+                config,
+                result_path,
+                workflow_id,
+                "web-multi",
+                attempt_id,
+                sha(source),
+                expected_receipt_sha256=str(recovered["receipt_sha256"]),
+            )
             stage, source = str(receipt["next_stage"]), receipt["_next_mission"]
             _write_workflow_state(state_path, config, {
                 "schema": STATE_SCHEMA, "status": "prepared", "workflow_id": workflow_id,

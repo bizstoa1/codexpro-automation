@@ -478,7 +478,10 @@ def test_failing_receipt_cannot_complete(tmp_path: Path) -> None:
         raise AssertionError("FAIL receipt must not advance")
 
 
-def test_web_multi_branch_is_bound_and_resumes_at_review(tmp_path: Path) -> None:
+def test_web_multi_branch_is_bound_and_resumes_at_review(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     module = load()
     workflow_path = manifest(tmp_path)
     lane_one = tmp_path / "lane-one.md"
@@ -571,6 +574,24 @@ def test_web_multi_branch_is_bound_and_resumes_at_review(tmp_path: Path) -> None
             "blocker": "",
         }), encoding="utf-8")
         return {"ok": True, "parent_id": "b" * 64, "next_stage_result_path": str(receipt)}
+
+    def verified_multi(expectation):
+        return module.MULTI.VerifiedCompletion(
+            {
+                "schema": module.MULTI.RESULT_SCHEMA,
+                "status": "complete",
+                "ok": True,
+                "parent_id": "b" * 64,
+                "manifest_sha256": module.sha(multi_manifest),
+                "next_stage_result_path": str(multi_receipt),
+            },
+            expectation.result_path,
+            multi_receipt,
+            module.sha(multi_receipt),
+            "b" * 64,
+        )
+
+    monkeypatch.setattr(module.MULTI, "verify_completion", verified_multi)
 
     result = module.run_workflow(
         workflow_path,
@@ -1533,7 +1554,9 @@ def test_awaiting_relative_receipt_resumes_same_workflow_without_replaying_plan(
     assert calls == ["review"]
 
 
-def test_running_web_multi_rebinds_only_persisted_parent_result(tmp_path: Path) -> None:
+def test_running_web_multi_rejects_project_visible_completion_without_host_attestation(
+    tmp_path: Path,
+) -> None:
     module = load()
     path = manifest(tmp_path)
     config = module.load_manifest(path)
@@ -1577,9 +1600,9 @@ def test_running_web_multi_rebinds_only_persisted_parent_result(tmp_path: Path) 
 
     result = module.run_workflow(path, oracle_execute=fake_oracle, multi_execute=never_multi)
     assert result["status"] == "attention_required"
-    assert result["current_stage"] == "review"
-    assert calls == 1
-    assert result["records"][0]["parent_id"] == parent_id
+    assert result["current_stage"] == "web-multi"
+    assert calls == 0
+    assert result["recovery"]["error"] == "MULTI_COMPLETION_ATTESTATION_INVALID"
 
 
 def test_default_recovery_uses_the_persisted_parallel_child_mutex(monkeypatch, tmp_path: Path) -> None:

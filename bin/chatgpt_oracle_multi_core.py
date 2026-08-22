@@ -221,6 +221,7 @@ def _result_base(
     lanes: list[dict[str, Any]],
     merger_run_dir: Any,
     capability: dict[str, Any],
+    merger_submission_count: int = 0,
     **extra: Any,
 ) -> dict[str, Any]:
     return {
@@ -229,6 +230,7 @@ def _result_base(
         "ok": ok,
         "writes_performed": writes_performed,
         "merger_count": merger_count,
+        "merger_submission_count": merger_submission_count,
         "lanes": lanes,
         "merger_run_dir": merger_run_dir,
         "capability": capability,

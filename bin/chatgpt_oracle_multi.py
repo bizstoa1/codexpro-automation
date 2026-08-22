@@ -29,6 +29,14 @@ def _load(name: str, path: Path):
 
 CORE = _load("chatgpt_oracle_multi_core", BIN / "chatgpt_oracle_multi_core.py")
 ARTIFACTS = _load("chatgpt_oracle_multi_artifacts", BIN / "chatgpt_oracle_multi_artifacts.py")
+ATTESTATION = _load(
+    "chatgpt_oracle_multi_attestation",
+    BIN / "chatgpt_oracle_multi_attestation.py",
+)
+RECONCILE = _load(
+    "chatgpt_oracle_multi_reconcile",
+    BIN / "chatgpt_oracle_multi_reconcile.py",
+)
 RECOVERY = _load("chatgpt_oracle_multi_recovery", BIN / "chatgpt_oracle_multi_recovery.py")
 EXECUTION = _load("chatgpt_oracle_multi_execution", BIN / "chatgpt_oracle_multi_execution.py")
 
@@ -55,7 +63,12 @@ _merger_transport = ARTIFACTS._merger_transport
 _load_merger_envelope = ARTIFACTS._load_merger_envelope
 _materialize_bound_merger = ARTIFACTS._materialize_bound_merger
 _bound_merger_result = ARTIFACTS._bound_merger_result
-reconcile_recovered_lanes = RECOVERY.reconcile_recovered_lanes
+ATTESTATION_SCHEMA = ATTESTATION.ATTESTATION_SCHEMA
+CompletionExpectation = ATTESTATION.CompletionExpectation
+VerifiedCompletion = ATTESTATION.VerifiedCompletion
+attest_completion = ATTESTATION.attest_completion
+verify_completion = ATTESTATION.verify_completion
+reconcile_recovered_lanes = RECONCILE.reconcile_recovered_lanes
 resume_recovered_merger = RECOVERY.resume_recovered_merger
 run_multi = EXECUTION.run_multi
 

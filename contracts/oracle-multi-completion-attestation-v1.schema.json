@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ventianima-lab.github.io/codex-web-gpt-automation/contracts/oracle-multi-completion-attestation-v1.schema.json",
+  "title": "Oracle Web Multi host completion attestation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "project_root",
+    "manifest_sha256",
+    "parent_id",
+    "result_path",
+    "result_sha256",
+    "receipt_path",
+    "receipt_sha256",
+    "lease_id",
+    "capability_sha256"
+  ],
+  "properties": {
+    "schema": {"const": "codex.chatgpt.oracle-multi-completion-attestation/v1"},
+    "project_root": {"type": "string", "minLength": 1},
+    "manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "parent_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "result_path": {"type": "string", "minLength": 1},
+    "result_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "receipt_path": {"type": ["string", "null"]},
+    "receipt_sha256": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+    "lease_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "capability_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

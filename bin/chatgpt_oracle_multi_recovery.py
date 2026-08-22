@@ -7,8 +7,9 @@ from typing import Any, Callable
 
 CORE = sys.modules.get("chatgpt_oracle_multi_core")
 ARTIFACTS = sys.modules.get("chatgpt_oracle_multi_artifacts")
-if CORE is None or ARTIFACTS is None:
-    raise ImportError("Web Multi core and artifacts must be loaded first")
+ATTESTATION = sys.modules.get("chatgpt_oracle_multi_attestation")
+if CORE is None or ARTIFACTS is None or ATTESTATION is None:
+    raise ImportError("Web Multi core, artifacts, and attestation must be loaded first")
 CAPABILITY = CORE.CAPABILITY
 RESULT_SCHEMA = CORE.RESULT_SCHEMA
 RUNNER = CORE.RUNNER
@@ -23,98 +24,8 @@ _write_json = CORE._write_json
 load_manifest = CORE.load_manifest
 _bound_merger_result = ARTIFACTS._bound_merger_result
 _child_manifest = ARTIFACTS._child_manifest
-_merger_transport = ARTIFACTS._merger_transport
-_write_bytes_atomic = ARTIFACTS._write_bytes_atomic
-
-
-def reconcile_recovered_lanes(manifest_path: Path) -> dict[str, Any]:
-    """Rebind durable exact-run outputs to an interrupted parent without submitting.
-
-    This is intentionally a host-only recovery step.  It validates every
-    original lane against the persisted parent/lane/mission identity, restores
-    stable-order handoffs, and prepares the merger mission.  It never calls the
-    Oracle runner and therefore cannot create a replacement conversation.
-    """
-    config = load_manifest(manifest_path)
-    result_path = config["output_dir"] / "result.json"
-    result = _read_json(result_path)
-    if result.get("schema") != RESULT_SCHEMA:
-        raise MultiError("existing multi result schema is invalid")
-    parent_id = str(result.get("parent_id") or "").strip()
-    if len(parent_id) != 64:
-        raise MultiError("existing multi result has no valid parent identity")
-    recorded = result.get("lanes")
-    if not isinstance(recorded, list):
-        raise MultiError("existing multi result has no lane ledger")
-    by_id = {str(item.get("id") or ""): item for item in recorded if isinstance(item, dict)}
-    expected_ids = [lane["id"] for lane in config["solvers"]]
-    if set(by_id) != set(expected_ids) or len(by_id) != len(expected_ids):
-        raise MultiError("existing lane ledger does not match the manifest")
-    reconciled: list[dict[str, Any]] = []
-    for lane in config["solvers"]:
-        prior = by_id[lane["id"]]
-        run_dir = Path(str(prior.get("run_dir") or "")).expanduser()
-        if not run_dir.is_absolute():
-            raise MultiError(f"lane {lane['id']} has no absolute exact run directory")
-        run_dir = run_dir.resolve()
-        if not STATE.is_within(STATE.oracle_state_root(), run_dir):
-            raise MultiError(f"lane {lane['id']} exact run directory is outside Oracle host state")
-        state_path = run_dir / "state.json"
-        output_path = run_dir / "output.md"
-        if not state_path.is_file() or not output_path.is_file() or not output_path.read_bytes().strip():
-            raise MultiError(f"lane {lane['id']} has no durable recovered output")
-        state = _read_json(state_path)
-        mission = _dict(state.get("mission"))
-        oracle = _dict(state.get("oracle"))
-        if state.get("run_id") not in {None, run_dir.name}:
-            raise MultiError(f"lane {lane['id']} run identity mismatch")
-        if Path(str(state.get("project_root") or "")).resolve() != config["project_root"]:
-            raise MultiError(f"lane {lane['id']} project identity mismatch")
-        if state.get("parallel_parent_id") != parent_id:
-            raise MultiError(f"lane {lane['id']} parent identity mismatch")
-        expected_mission_sha = hashlib.sha256(lane["mission_path"].read_bytes()).hexdigest()
-        if mission.get("sha256") != expected_mission_sha:
-            raise MultiError(f"lane {lane['id']} mission identity mismatch")
-        if state.get("status") != "complete" or state.get("terminal_harvested") is not True:
-            raise MultiError(f"lane {lane['id']} is not terminally harvested")
-        artifact_sha = hashlib.sha256(output_path.read_bytes()).hexdigest()
-        if state.get("artifact_sha256") != artifact_sha:
-            raise MultiError(f"lane {lane['id']} durable output hash mismatch")
-        prior_locator = str(prior.get("session_locator") or "").strip()
-        exact_locator = str(oracle.get("session_locator") or oracle.get("slug") or "").strip()
-        if prior_locator and prior_locator != exact_locator:
-            raise MultiError(f"lane {lane['id']} exact session identity mismatch")
-        handoff = config["output_dir"] / "handoffs" / f"{lane['id']}.md"
-        _write_bytes_atomic(handoff, output_path.read_bytes())
-        reconciled.append({
-            "id": lane["id"],
-            "ok": True,
-            "run_dir": str(run_dir),
-            "output_path": str(handoff),
-            "session_locator": exact_locator,
-            "artifact_sha256": artifact_sha,
-        })
-    merger_mission = _merger_transport(config, reconciled, parent_id)
-    updated = _result_base(
-        status="merger_ready",
-        ok=True,
-        writes_performed=True,
-        merger_count=0,
-        lanes=reconciled,
-        merger_run_dir=result.get("merger_run_dir"),
-        capability=(
-            dict(result["capability"])
-            if isinstance(result.get("capability"), dict)
-            else {"status": "active-recovery", "lease_created": True}
-        ),
-        parent_id=parent_id,
-        manifest_sha256=config["manifest_sha256"],
-        successful_lane_count=len(reconciled),
-        merger_mission_path=str(merger_mission),
-        recovery_mode="exact-runs-no-submit",
-    )
-    _write_json(result_path, updated)
-    return updated
+CompletionExpectation = ATTESTATION.CompletionExpectation
+attest_completion = ATTESTATION.attest_completion
 
 
 def resume_recovered_merger(
@@ -127,11 +38,25 @@ def resume_recovered_merger(
     if dry_run:
         raise MultiError("v2 merger resume dry-run is forbidden because it must bind the active lease")
     config = load_manifest(manifest_path)
+    with STATE.project_submit_mutex(config["project_root"], timeout_seconds=30):
+        return _resume_recovered_merger(config, execute)
+
+
+def _resume_recovered_merger(
+    config: dict[str, Any],
+    execute: Callable[..., dict[str, Any]],
+) -> dict[str, Any]:
     result_path = config["output_dir"] / "result.json"
     result = _read_json(result_path)
     if result.get("schema") != RESULT_SCHEMA or result.get("status") != "merger_ready":
         raise MultiError("multi result is not ready for merger-only resume")
-    if result.get("merger_submission_count") not in {None, 0}:
+    if (
+        result.get("manifest_sha256") != config["manifest_sha256"]
+        or result.get("merger_count") != 0
+        or result.get("merger_submission_count") != 0
+        or result.get("merger_run_dir") is not None
+        or result.get("prior_merger_run_dirs") not in (None, [])
+    ):
         raise MultiError("the exact merger was already submitted; replacement is forbidden")
     parent_id = str(result.get("parent_id") or "").strip()
     lanes = result.get("lanes")
@@ -161,6 +86,15 @@ def resume_recovered_merger(
         parent_id,
     )
     capability, tokens = CAPABILITY.resume_web_multi(config["project_root"])
+    expected_contract = CAPABILITY.PROJECT.compile_web_multi_contract(
+        config["project_root"],
+        [(lane["id"], lane["mission_path"]) for lane in config["solvers"]],
+        config["merger_mission_path"],
+        max_concurrency=config["max_concurrency"],
+        control_root=config["output_dir"],
+    )
+    if capability.contract_json != expected_contract.canonical_json:
+        raise MultiError("active capability does not bind the exact Web Multi manifest")
     contract = capability.contract()
     binding = contract.get("binding") if isinstance(contract.get("binding"), dict) else {}
     controls = binding.get("host_control_paths") if isinstance(binding, dict) else None
@@ -223,4 +157,17 @@ def resume_recovered_merger(
         **({"merger_materialization_error": materialization_error} if materialization_error else {}),
     )
     _write_json(result_path, updated)
+    if status == "complete":
+        if capability.lease_id is None:
+            raise MultiError("complete Web Multi recovery has no lease identity")
+        attest_completion(
+            CompletionExpectation(
+                config["project_root"],
+                config["manifest_sha256"],
+                result_path,
+                materialized,
+            ),
+            capability.lease_id,
+            hashlib.sha256(capability.contract_json.encode("utf-8")).hexdigest(),
+        )
     return updated

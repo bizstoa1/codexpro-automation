@@ -10,8 +10,9 @@ from typing import Any, Callable
 
 CORE = sys.modules.get("chatgpt_oracle_multi_core")
 ARTIFACTS = sys.modules.get("chatgpt_oracle_multi_artifacts")
-if CORE is None or ARTIFACTS is None:
-    raise ImportError("Web Multi core and artifacts must be loaded first")
+ATTESTATION = sys.modules.get("chatgpt_oracle_multi_attestation")
+if CORE is None or ARTIFACTS is None or ATTESTATION is None:
+    raise ImportError("Web Multi core, artifacts, and attestation must be loaded first")
 CAPABILITY = CORE.CAPABILITY
 RUNNER = CORE.RUNNER
 STATE = CORE.STATE
@@ -25,6 +26,8 @@ _bound_merger_result = ARTIFACTS._bound_merger_result
 _child_manifest = ARTIFACTS._child_manifest
 _merger_transport = ARTIFACTS._merger_transport
 _run_lane = ARTIFACTS._run_lane
+CompletionExpectation = ATTESTATION.CompletionExpectation
+attest_completion = ATTESTATION.attest_completion
 
 
 def run_multi(
@@ -70,18 +73,20 @@ def run_multi(
     result_path = config["output_dir"] / "result.json"
     lanes: list[dict[str, Any]] = []
 
-    def running_result() -> dict[str, Any]:
+    def ordered_lanes() -> list[dict[str, Any]]:
         completed = {item["id"]: item for item in lanes}
-        ordered = [
+        return [
             completed.get(item["id"], {"id": item["id"], "status": "pending"})
             for item in config["solvers"]
         ]
+
+    def running_result() -> dict[str, Any]:
         return _result_base(
             status="running",
             ok=False,
             writes_performed=True,
             merger_count=0,
-            lanes=ordered,
+            lanes=ordered_lanes(),
             merger_run_dir=None,
             capability=_capability_evidence(capability),
             parent_id=parent_id,
@@ -98,6 +103,7 @@ def run_multi(
     with lock:
         for start in range(0, len(config["solvers"]), config["max_concurrency"]):
             wave = config["solvers"][start : start + config["max_concurrency"]]
+            wave_start = len(lanes)
             with ThreadPoolExecutor(max_workers=len(wave), thread_name_prefix="oracle-multi") as pool:
                 futures = {
                     pool.submit(
@@ -126,6 +132,14 @@ def run_multi(
                             "error_code": str(getattr(exc, "code", "ORACLE_LANE_ATTENTION_REQUIRED")),
                         })
                     _write_json(result_path, running_result())
+            launched_wave = lanes[wave_start:]
+            if not all(
+                item.get("ok")
+                and item.get("output_path")
+                and item.get("terminal_harvested") is True
+                for item in launched_wave
+            ):
+                break
         order = {item["id"]: index for index, item in enumerate(config["solvers"])}
         lanes.sort(key=lambda item: order[item["id"]])
         successful = [
@@ -133,7 +147,7 @@ def run_multi(
             for item in lanes
             if item["ok"] and item["output_path"] and item["terminal_harvested"]
         ]
-        if len(successful) != len(lanes):
+        if len(successful) != len(config["solvers"]):
             all_terminal = all(item["terminal_harvested"] for item in lanes)
             receipt = CAPABILITY.finish(
                 capability,
@@ -144,7 +158,7 @@ def run_multi(
                 ok=False,
                 writes_performed=True,
                 merger_count=0,
-                lanes=lanes,
+                lanes=ordered_lanes(),
                 merger_run_dir=None,
                 capability=_capability_evidence(capability, receipt),
                 parent_id=parent_id,
@@ -211,4 +225,17 @@ def run_multi(
         **({"merger_materialization_error": materialization_error} if materialization_error else {}),
     )
     _write_json(result_path, result)
+    if status == "complete":
+        if capability.lease_id is None:
+            raise MultiError("complete Web Multi result has no lease identity")
+        attest_completion(
+            CompletionExpectation(
+                config["project_root"],
+                config["manifest_sha256"],
+                result_path,
+                materialized,
+            ),
+            capability.lease_id,
+            hashlib.sha256(capability.contract_json.encode("utf-8")).hexdigest(),
+        )
     return result
