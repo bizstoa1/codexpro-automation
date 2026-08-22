@@ -23,10 +23,11 @@ Use this routing in the Codex global `AGENTS.md` after installing the package.
   only after an explicit user request; selecting Ultra Economy Mode is itself
   an explicit Pro-design request.
 - Qualified Pro uses Oracle, `GPT-5.6 Sol` at the Pro effort, and the manually
-  registered DevSpace app. It binds the exact project root and may inspect,
-  create, edit, and remove mission-owned files and run commands there as the
-  mission requires. Repository safety rules remain authoritative; account,
-  app-setting, or external-state changes require explicit mission authority.
+  registered DevSpace app. It binds the exact project root, tracked profile
+  SHA-256, immutable mission, current HEAD, and an explicit mission-authority
+  path list. It may edit only those paths below the profile ceiling on a clean
+  non-protected branch. Capability v1 permits no shell, Git mutation, push,
+  merge, tag, deploy, account, app-setting, or external-state action.
   One-time app qualification is sufficient: do not inspect app settings or
   picker state per run.
 - Qualified Pro output uses the v1 task-outcome marker. Exit zero and a durable
@@ -44,12 +45,14 @@ Use this routing in the Codex global `AGENTS.md` after installing the package.
   receipt. Local Codex owns transport, immutable identity, host safety, and one
   final deterministic gate rather than rewriting web output.
 - An optional comprehensive Pro stage is available only after explicit opt-in
-  and uses read/write DevSpace. A plan-authored explicit `pro-attachment` contract selects attachment-only;
+  and uses bounded-write DevSpace. Regular stages may write only their exact
+  host handoff directory. A plan-authored explicit `pro-attachment` contract selects attachment-only;
   either route returns one strict identity-bound JSON envelope whose output and
   next-mission strings the host materializes byte-for-byte.
-- Genuine Web Multi-GPT uses distinct Oracle sessions. Windows lanes use
-  independent throwaway copies of the signed-in Oracle profile, run in waves
-  of at most five, and hand compact files to one merger.
+- Genuine Web Multi-GPT v2 uses distinct read-only Oracle sessions with signed
+  lane subjects. Windows lanes use independent throwaway copies of the signed-in
+  Oracle profile, run in waves of at most five, and require all terminal
+  handoffs before exactly one merger.
 - All project roots share one host policy, not one live browser. The policy
   names an immutable signed-in profile seed and a host-wide capacity of at
   most five. Each run and exact-session recovery consumes one crash-recoverable
@@ -69,7 +72,7 @@ Use this routing in the Codex global `AGENTS.md` after installing the package.
 ## Standalone Pro versus comprehensive
 
 `chatgpt-pro-browser` is the visible standalone Pro skill. It submits one
-explicitly requested, qualified read/write DevSpace Pro session, saves the durable result,
+explicitly requested, qualified bounded-write DevSpace Pro session, saves the durable result,
 returns it to the calling Codex task, and stops. An explicit `pro-attachment`
 contract may be used only for its stated evidence boundary. It never starts
 implementation or a comprehensive review-to-implementation chain. Its required

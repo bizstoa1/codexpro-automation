@@ -1,5 +1,31 @@
 # 기술 변경 기록
 
+## 2.0.0 - exact-root capability gate와 Web Multi v2
+
+- 모든 신규 DevSpace Oracle 실행은 tracked project profile과 host의 exact-root /
+  profile SHA-256 admission을 통과해야 합니다. HMAC 서명 subject token과 durable
+  lease를 통해 각 tool 호출을 다시 검증하며, token 원문은 상태 파일에 저장하지
+  않습니다.
+- 명시적 Pro는 깨끗한 비보호 브랜치에서 immutable mission, 현재 HEAD, exact
+  relative write paths를 결속한 authority가 있을 때만 bounded write를 받습니다.
+  capability v1은 shell과 Git·push·merge·tag·deploy·external action을 허용하지
+  않으며 terminal Git postflight가 범위 밖 변경을 quarantine합니다. 동일 subject가
+  첫 쓰기 전에 exact mission과 적용되는 모든 `AGENTS.md`를 실제로 읽어야 하고,
+  guard는 매 쓰기 직전에 해당 파일의 hash를 다시 검증합니다. capability manifest의
+  임의 `run_root`는 단일 manifest parser에서 거부됩니다.
+- 일반 comprehensive 단계는 source write 대신 exact stage handoff 디렉터리에만
+  `control-write`를 받습니다. 계획·검토 결과와 다음 미션을 보존하면서 프로젝트
+  소스 권한과 제어 파일 권한을 분리합니다.
+- Oracle Web Multi manifest는 `codex.chatgpt.oracle-multi/v2`로 전환되었습니다.
+  모든 lane은 독립 read-only all-of-N이고 nested Multi와 write worktree를 금지하며,
+  최대 5개 provider session wave와 모든 terminal handoff 이후 정확히 한 merger만
+  허용합니다. 실패·불확실 lane이 하나라도 있으면 merger를 제출하지 않습니다.
+  제출 전부터 durable v2 result ledger를 기록하고 불확실 lane/merger에서는
+  `attention_required`와 기존 lease를 유지합니다.
+- v1 Web Multi 신규 manifest는 호환 변환 없이 거부됩니다. 이미 저장된 v1 child
+  provenance와 Oracle/CodexPro/agbrowse 실행은 기존 exact recovery 경계 안에서만
+  유지됩니다.
+
 ## 1.14.13 - terminal blocked implementation receipt 정산
 
 - comprehensive implementation transport가 exact terminal/harvested 상태에서

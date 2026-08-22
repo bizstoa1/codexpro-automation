@@ -74,7 +74,7 @@ python "$env:USERPROFILE\.codex\bin\chatgpt_oracle_comprehensive.py" `
   --manifest D:\project\workflow.json --dry-run
 ```
 
-dry-run은 첫 단계가 명시적으로 선택된 qualified Pro, read/write DevSpace인지 확인하고 실제 제출은
+dry-run은 첫 단계가 명시적으로 선택된 qualified Pro, capability-gated bounded-write DevSpace인지 확인하고 실제 제출은
 하지 않습니다. 실제 실행은 `--dry-run`만 제거합니다.
 
 ## 완료·중단 조건

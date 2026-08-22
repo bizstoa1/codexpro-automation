@@ -1,6 +1,10 @@
 # DevSpace + Tailscale Funnel setup
 
-This repository does not modify DevSpace upstream and does not automate the ChatGPT settings UI. DevSpace is a local MCP server; it can read, edit, and run commands inside the roots you approve, so choose narrow project directories rather than an entire drive.
+This repository does not automate the ChatGPT settings UI. It installs one
+hash-validated DevSpace compatibility patch that requires signed project
+capabilities at the tool boundary. Choose narrow project directories rather
+than an entire drive; capability v1 disables shell commands and limits writes
+to an explicit Pro authority or an exact comprehensive handoff directory.
 
 ## Prerequisites
 
@@ -34,10 +38,12 @@ python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py setup 
 
 DevSpace prints an Owner password during initialization and stores it in its standard local configuration. Do not put that password in a script, manifest, issue, or repository.
 
-The managed service is launched with `DEVSPACE_TOOL_MODE=full`, which enables
-read-only workspace discovery (`grep`, `glob`, and `ls`) without expanding the
-approved roots. Keep the root list in DevSpace's configuration; the launch
-environment only selects the tool mode.
+The managed service is launched with `DEVSPACE_TOOL_MODE=full` so the MCP
+surface includes discovery and mutation tools, but exposure is not authority.
+The compatibility guard checks the signed active lease before every read,
+write, patch, or command and rejects commands in capability v1. Keep the root
+list in DevSpace's configuration; the launch environment never widens a
+project profile or mission authority.
 
 The managed service also advertises `offline_access` together with the
 `devspace` OAuth scope so ChatGPT can renew its authorization instead of losing

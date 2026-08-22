@@ -6,8 +6,8 @@ an exact persisted v3 parent and its owned children.
 
 New parallel reasoning uses independent Oracle Web Multi sessions. New
 implementation ownership remains inside the Oracle comprehensive workflow,
-with regular stages and explicitly selected qualified Pro using exact-root
-read/write DevSpace, while explicit `pro-attachment` is limited to immutable,
+with capability-gated regular stages and explicitly selected qualified Pro using exact-root
+bounded-write DevSpace, while explicit `pro-attachment` is limited to immutable,
 external, or DevSpace-unreadable evidence.
 
 See [GLOBAL_CHATGPT_ROUTING.md](GLOBAL_CHATGPT_ROUTING.md).

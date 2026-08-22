@@ -34,10 +34,13 @@ is cached against the DevSpace config hash and repeated only when configuration
 changes.
 
 Every run records the project, mission bytes, transport, model, effort, and
-artifact identity. Regular web work defaults to the highest supported non-Pro
-reasoning tier. Pro is an explicit, quota-aware opt-in and uses exact-root
-DevSpace with mission-scoped read/write authority. Attachment mode is an
-explicit immutable-evidence contract, not an automatic fallback.
+artifact identity. Before browser creation, the host binds the exact canonical
+root and tracked `.codex/project-capabilities.json` SHA-256. Regular web work
+defaults to the highest supported non-Pro reasoning tier. Pro is an explicit,
+quota-aware opt-in and uses exact-root DevSpace with mission-scoped bounded
+write on a clean non-protected branch. Capability v1 grants no shell, Git, or
+external-action authority. Attachment mode is an explicit immutable-evidence
+contract, not an automatic fallback.
 
 ## Recoverable lifecycle
 
@@ -61,8 +64,8 @@ terminate a run, release its lock, mark it failed, or authorize a replacement.
 - `orchestrator` is one authorized web implementation pass.
 - comprehensive mode binds plan, review, implementation, and gates with
   per-stage identity and hash receipts.
-- Web Multi-GPT runs genuinely independent Oracle sessions in bounded waves and
-  merges compact handoffs.
+- Web Multi-GPT v2 runs genuinely independent read-only Oracle sessions in
+  bounded waves, requires all terminal handoffs, and invokes exactly one merger.
 - Local Multi-GPT is an optional read-only PC-local advisory tool.
 - Ultra Economy Mode constrains local command to Luna Max and separates Pro
   design, web implementation, and web verification.

@@ -263,8 +263,10 @@ python skills/chatgpt-workspace-setup/scripts/devspace_tailscale_setup.py post-r
 
 설치 후 일반 웹 작업은 최고 지원 비-Pro 추론 강도를 사용합니다. Pro는 횟수 제한이
 있으므로 사용자가 명시적으로 요청한 경우에만 선택하며 자동 승격하지 않습니다. 명시
-선택된 Pro는 저장소 안전 규칙 아래 exact root에서 미션이 허용한 쓰기와 명령 실행을
-사용할 수 있습니다.
+선택된 Pro는 tracked project profile, host profile SHA-256 admission, immutable
+mission, 현재 HEAD, exact 상대 쓰기 경로를 결속한 authority가 모두 일치할 때만
+해당 파일을 수정할 수 있습니다. capability v1은 shell, Git 변경, 외부 작업을
+허용하지 않습니다.
 
 Oracle이 같은 이름을 사용하도록 로컬 공개 설정을 기록합니다.
 

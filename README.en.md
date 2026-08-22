@@ -105,10 +105,10 @@ new exact folder. Do not inspect or automate ChatGPT app settings per task.
 | PC-local advice and counterexamples | Local Multi-GPT | Optional, Luna Max, read-only |
 | Plan through final gate | comprehensive mode | Staged web workflow |
 | Minimize local model cost | `ultra-economy` | Luna Max command + separate web stages |
-| Explicitly requested Pro work | `pro` | GPT-5.6 Sol Pro + read/write DevSpace |
+| Explicitly requested Pro work | `pro` | GPT-5.6 Sol Pro + capability-gated bounded write |
 
 Natural-language aliases use the same routes: `orchestrator` / orchestrator and
-`deep-research` / deep research. Regular web work defaults to the highest supported non-Pro reasoning tier. Pro is quota-limited, never auto-selected, and runs only after an explicit request. Qualified Pro uses Oracle + read/write DevSpace; explicit `pro-attachment` is reserved for immutable evidence that the approved workspace cannot read.
+`deep-research` / deep research. Regular web work defaults to the highest supported non-Pro reasoning tier. Pro is quota-limited, never auto-selected, and runs only after an explicit request. Qualified Pro uses Oracle plus capability-gated bounded-write DevSpace; explicit `pro-attachment` is reserved for immutable evidence that the approved workspace cannot read.
 
 See [Global Routing](docs/GLOBAL_CHATGPT_ROUTING.md) for selection rules and
 [Ultra Economy Mode](docs/ULTRA_ECONOMY_MODE.md) for its strict contract.
@@ -132,9 +132,19 @@ Remove `--dry-run` only when live execution is authorized.
 ## Safety contract
 
 - Allow one active or uncertain Oracle workflow per project.
+- Require the tracked `.codex/project-capabilities.json` to match the host's
+  exact-root and profile SHA-256 admission before browser creation.
 - Qualify the exact root before the first DevSpace submission for a new project.
 - Regular web work defaults to the highest supported non-Pro reasoning tier. Pro requires explicit opt-in and is never an automatic upgrade.
-- Explicit Pro may perform mission-authorized writes and commands inside the exact root, under the repository safety policy.
+- Explicit Pro may edit only authority-listed paths on a clean non-protected
+  branch, bound to the immutable mission and current HEAD. Capability v1 grants
+  no shell, Git mutation, push, merge, tag, deploy, or external action. Before
+  its first write, the same subject must actually read the exact mission and
+  every applicable `AGENTS.md`; the guard revalidates those bytes before each
+  write.
+- Web Multi v2 is independent read-only all-of-N: at most five provider
+  sessions run concurrently and exactly one merger runs only after every
+  terminal handoff exists.
 - Post-submit failure recovers the existing slug and URL and never resubmits the task.
 - Browser or local-process exit alone is not evidence that web work failed.
 - Never commit secrets, Owner passwords, OAuth tokens, or browser profiles.
@@ -148,7 +158,7 @@ not a public issue.
 
 | Start | Operate | Advanced modes | Project |
 |---|---|---|---|
-| [First Install](docs/FIRST_INSTALL.md) | [DevSpace + Tailscale](docs/DEVSPACE_TAILSCALE_SETUP.md) | [Ultra Economy Mode](docs/ULTRA_ECONOMY_MODE.md) | [Architecture overview](docs/ARCHITECTURE.md) |
+| [First Install](docs/FIRST_INSTALL.md) | [DevSpace + Tailscale](docs/DEVSPACE_TAILSCALE_SETUP.md) | [Ultra Economy Mode](docs/ULTRA_ECONOMY_MODE.md) | [Capability gate](docs/PROJECT_CAPABILITY_GATE.md) |
 | [Documentation index](docs/README.md) | [Global Routing](docs/GLOBAL_CHATGPT_ROUTING.md) | [Local Multi-GPT](docs/LOCAL_MULTI_GPT.md) | [Changelog](docs/CHANGELOG.md) |
 | [Contributing](CONTRIBUTING.md) | [macOS Ultrawork](docs/MACOS_ULTRAWORK.md) | [Frozen legacy boundary](docs/FROZEN_LEGACY.md) | [Versioning](docs/VERSIONING.md) |
 

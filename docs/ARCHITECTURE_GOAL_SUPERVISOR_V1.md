@@ -6,7 +6,7 @@ new work.
 
 New comprehensive work uses the Oracle comprehensive workflow. Regular stages
 default to the highest supported non-Pro tier through DevSpace; an optional Pro
-stage requires explicit opt-in and uses read/write DevSpace. `pro-attachment`
+stage requires explicit opt-in and uses capability-gated bounded-write DevSpace. `pro-attachment`
 is the separate explicit immutable-evidence route. Existing persisted legacy
 state may still be recovered by its exact original runner.
 

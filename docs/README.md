@@ -23,6 +23,7 @@ route, then open a specialized guide only when that mode applies.
 |---|---|---|
 | [DevSpace + Tailscale](DEVSPACE_TAILSCALE_SETUP.md) | English | Managed DevSpace/Funnel setup and diagnosis |
 | [Global ChatGPT Routing](GLOBAL_CHATGPT_ROUTING.md) | English | Mode-to-runner mapping and recovery boundaries |
+| [Project Capability Gate](PROJECT_CAPABILITY_GATE.md) | English | Exact-root Pro write, control handoff, and Web Multi v2 authority |
 | [macOS Ultrawork](MACOS_ULTRAWORK.md) | 한국어 | macOS lifecycle, launchd, long-run handoff |
 | [Local Multi-GPT](LOCAL_MULTI_GPT.md) | English | Optional local parallel-advisory component |
 | [Ultra Economy Mode](ULTRA_ECONOMY_MODE.md) | 한국어 | Luna Max local command with separate web stages |

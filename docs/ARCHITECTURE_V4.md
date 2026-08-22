@@ -6,7 +6,7 @@ used to start a new comprehensive run.
 New comprehensive work uses `codex.chatgpt.oracle-comprehensive/v1`. Regular
 stages use Oracle plus DevSpace, optional Web Multi uses independent Oracle
 sessions, and an optional explicitly authorized qualified Pro stage uses
-exact-root read/write DevSpace. `pro-attachment` is an explicit attachment-only route for immutable,
+exact-root bounded-write DevSpace. `pro-attachment` is an explicit attachment-only route for immutable,
 external, or DevSpace-unreadable evidence. Each web stage authors the next
 semantic mission while the host validates immutable hashes and performs the
 final deterministic gate.
